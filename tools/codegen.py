@@ -43,9 +43,33 @@ OUT = (
 )
 
 KOTLIN_HARD_KEYWORDS = {
-    "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if",
-    "in", "interface", "is", "null", "object", "package", "return", "super",
-    "this", "throw", "true", "try", "typealias", "typeof", "val", "var", "when",
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
     "while",
 }
 
@@ -99,9 +123,7 @@ class Codegen:
             raise ValueError(f"pattern reused with two names: {pattern}")
         return self._pattern_index[pattern]
 
-    def leaf(
-        self, path: str, name: str, prop: dict[str, Any]
-    ) -> tuple[str, str, list[str]]:
+    def leaf(self, path: str, name: str, prop: dict[str, Any]) -> tuple[str, str, list[str]]:
         """(Kotlin type, default expression, init checks using {v} as the value)."""
         if "enum" in prop:
             values = prop["enum"]
@@ -112,7 +134,7 @@ class Codegen:
                 raise ValueError(f"{path}: default {default!r} not in enum values")
             cls = self.unique(kotlin_name(name, upper=True), "enum class")
             cases = ",\n".join(
-                f'    @SerialName({kotlin_string(v)}) {kotlin_name(v, upper=True)}' for v in values
+                f"    @SerialName({kotlin_string(v)}) {kotlin_name(v, upper=True)}" for v in values
             )
             self.enum_defs.append(
                 f"/** Schema enum for {path}. */\n@Serializable\nenum class {cls} {{\n{cases},\n}}"
@@ -127,9 +149,7 @@ class Codegen:
                 lo = "Int.MIN_VALUE" if minimum is None else minimum
                 hi = "Int.MAX_VALUE" if maximum is None else maximum
                 if minimum is not None or maximum is not None:
-                    checks.append(
-                        f'require(%V% in {lo}..{hi}) {{ "{path} must be {lo}..{hi}" }}'
-                    )
+                    checks.append(f'require(%V% in {lo}..{hi}) {{ "{path} must be {lo}..{hi}" }}')
                 default = prop.get("default")
                 if default is None:
                     return "Int?", "null", checks
@@ -146,12 +166,16 @@ class Codegen:
                 hi = "Int.MAX_VALUE" if maximum is None else maximum
                 if minimum is not None or maximum is not None:
                     checks.append(
-                        f'require(%V%.length in {lo}..{hi}) {{ "{path} must be {lo}-{hi} characters" }}'
+                        f"require(%V%.length in {lo}..{hi}) "
+                        f'{{ "{path} must be {lo}-{hi} characters" }}'
                     )
                 if "pattern" in prop:
-                    val = self.pattern_val(prop["pattern"], f"{kotlin_name(path, upper=True)}Pattern")
+                    val = self.pattern_val(
+                        prop["pattern"], f"{kotlin_name(path, upper=True)}Pattern"
+                    )
                     checks.append(
-                        f'require({val}.matches(%V%)) {{ "{path} does not match the schema pattern" }}'
+                        f"require({val}.matches(%V%)) "
+                        f'{{ "{path} does not match the schema pattern" }}'
                     )
                 default = prop.get("default")
                 if default is None:
@@ -178,7 +202,8 @@ class Codegen:
                 fields.append(f"{doc}    {serial}val {field}: {typ} = {default}")
                 if typ.endswith("?"):
                     init_lines.extend(
-                        f"        {field}?.let {{ {check.replace('%V%', 'it')} }}" for check in checks
+                        f"        {field}?.let {{ {check.replace('%V%', 'it')} }}"
+                        for check in checks
                     )
                 else:
                     init_lines.extend(f"        {check.replace('%V%', field)}" for check in checks)

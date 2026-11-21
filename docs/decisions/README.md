@@ -12,3 +12,4 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0004](0004-build-and-toolchain.md) | Build entry point and toolchain | accepted |
 | [0005](0005-website.md) | Website | accepted |
 | [0006](0006-work-tracking.md) | Work tracking and attribution | accepted |
+| [0007](0007-android-toolchain-and-targetsdk.md) | Android toolchain and targetSdk (P2.0) | accepted |
