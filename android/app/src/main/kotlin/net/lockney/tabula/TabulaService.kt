@@ -112,8 +112,17 @@ class TabulaService : Service() {
                     TabulaStatus.pairing.value =
                         TabulaStatus.PairingView(status.code, status.deviceId.take(8))
                 }
-                store.refreshToken = paired.credential.refreshToken
-                store.haDeviceId = paired.haDeviceId
+                // The claim released the credential exactly once (PROTOCOL 2.5):
+                // savePairing commits synchronously, so it is durable before the
+                // claim is treated as complete. If the write fails, do not start
+                // a session with a credential that will be gone next boot - the
+                // user pairs again and deletes the HA entry this claim created.
+                if (!store.savePairing(paired.credential.refreshToken, paired.haDeviceId)) {
+                    Log.e(TAG, "could not persist the pairing credential; pair again")
+                    TabulaStatus.phase.value = Phase.UNPAIRED
+                    TabulaStatus.pairing.value = null
+                    return@launch
+                }
                 TabulaStatus.pairing.value = null
                 startSession()
             } catch (e: CredentialRevoked) {

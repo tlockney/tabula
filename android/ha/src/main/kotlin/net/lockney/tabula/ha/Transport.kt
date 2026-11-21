@@ -40,7 +40,11 @@ interface WsTransportFactory {
 class OkHttpWsTransportFactory(
     client: OkHttpClient? = null,
 ) : WsTransportFactory {
+    // Redirects are never followed: the WS handshake carries the access token
+    // in its headers, and a redirect must not re-send them anywhere else.
     private val client = client ?: OkHttpClient.Builder()
+        .followRedirects(false)
+        .followSslRedirects(false)
         .pingInterval(0, TimeUnit.SECONDS) // HA sends its own pings; the app's keepalive is the HA ping command (PROTOCOL 4)
         .build()
 

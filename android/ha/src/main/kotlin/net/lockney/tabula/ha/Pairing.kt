@@ -223,29 +223,5 @@ private fun kotlinx.serialization.json.JsonElement?.jsonPrimitiveOrNull(): kotli
     this as? kotlinx.serialization.json.JsonPrimitive
 
 /** base64url without padding (RFC 4648 section 5), for the pairing nonce. */
-internal fun base64Url(bytes: ByteArray): String {
-    val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-    val out = StringBuilder(((bytes.size + 2) / 3) * 4)
-    var i = 0
-    while (i + 2 < bytes.size) {
-        val n = (bytes[i].toInt() and 0xff shl 16) or (bytes[i + 1].toInt() and 0xff shl 8) or
-            (bytes[i + 2].toInt() and 0xff)
-        out.append(alphabet[n ushr 18 and 0x3f])
-        out.append(alphabet[n ushr 12 and 0x3f])
-        out.append(alphabet[n ushr 6 and 0x3f])
-        out.append(alphabet[n and 0x3f])
-        i += 3
-    }
-    val remaining = bytes.size - i
-    if (remaining == 1) {
-        val n = bytes[i].toInt() and 0xff shl 16
-        out.append(alphabet[n ushr 18 and 0x3f])
-        out.append(alphabet[n ushr 12 and 0x3f])
-    } else if (remaining == 2) {
-        val n = (bytes[i].toInt() and 0xff shl 16) or (bytes[i + 1].toInt() and 0xff shl 8)
-        out.append(alphabet[n ushr 18 and 0x3f])
-        out.append(alphabet[n ushr 12 and 0x3f])
-        out.append(alphabet[n ushr 6 and 0x3f])
-    }
-    return out.toString()
-}
+internal fun base64Url(bytes: ByteArray): String =
+    java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)

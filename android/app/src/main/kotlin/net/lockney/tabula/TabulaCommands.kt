@@ -41,10 +41,13 @@ class TabulaCommands(
 
     private fun setSettings(args: JsonObject): CommandHandler.Reply {
         val parsed = Tlp.json.decodeFromJsonElement(SetSettingsArgs.serializer(), args)
-        if (parsed.revision <= connectionRevision) {
+        if (parsed.revision < connectionRevision) {
+            // only a revision lower than one already applied on this connection
+            // is stale (PROTOCOL 4.5); an equal revision is accepted and ACKed -
+            // the integration can resend the same revision after two quick saves
             return CommandHandler.Reply.Error(
                 ErrorCode.STALE_REVISION,
-                "revision ${parsed.revision} is not newer than $connectionRevision on this connection",
+                "revision ${parsed.revision} is lower than $connectionRevision already applied on this connection",
             )
         }
         val settings = runCatching { SettingsCodec.decode(parsed.settings.toString()) }.getOrElse {

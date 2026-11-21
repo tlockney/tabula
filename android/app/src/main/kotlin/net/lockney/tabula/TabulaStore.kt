@@ -1,6 +1,7 @@
 package net.lockney.tabula
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Base64
 import java.security.KeyStore
 import java.util.UUID
@@ -20,10 +21,18 @@ import net.lockney.tabula.core.settings.SettingsCodec
  *
  * The refresh token is encrypted with an AES-GCM key that lives in the Android
  * Keystore and never leaves it (plan 5.2: Keystore-backed storage, excluded
- * from backups via allowBackup=false in the manifest).
+ * from backups via allowBackup=false in the manifest). [SharedPreferences] and
+ * [CredentialCrypto] are injected so JVM unit tests can drive the pairing
+ * write path with fakes.
  */
-class TabulaStore(context: Context) {
-    private val prefs = context.getSharedPreferences("tabula_device", Context.MODE_PRIVATE)
+class TabulaStore(
+    private val prefs: SharedPreferences,
+    private val crypto: CredentialCrypto,
+) {
+    constructor(context: Context) : this(
+        context.getSharedPreferences("tabula_device", Context.MODE_PRIVATE),
+        KeystoreCredentialCrypto,
+    )
 
     /** UUIDv4, lowercase, generated on first access and persisted (PROTOCOL 2.1). */
     val deviceId: String = prefs.getString(KEY_DEVICE_ID, null) ?: UUID.randomUUID().toString().also {
@@ -36,7 +45,13 @@ class TabulaStore(context: Context) {
 
     var haDeviceId: String?
         get() = prefs.getString(KEY_HA_DEVICE_ID, null)
-        set(value) = prefs.edit().putString(KEY_HA_DEVICE_ID, value).apply()
+        set(value) {
+            // commit, not apply: written once at pairing, when it must be on
+            // disk before the claim is treated as complete (see savePairing)
+            val edit = prefs.edit()
+            if (value == null) edit.remove(KEY_HA_DEVICE_ID) else edit.putString(KEY_HA_DEVICE_ID, value)
+            edit.commit()
+        }
 
     var settingsRevision: Int
         get() = prefs.getInt(KEY_SETTINGS_REVISION, 0)
@@ -51,27 +66,72 @@ class TabulaStore(context: Context) {
     /** The pairing credential, or null while the device is unpaired. */
     var refreshToken: String?
         get() = prefs.getString(KEY_REFRESH_TOKEN, null)?.let { blob ->
-            runCatching { decrypt(blob) }.getOrNull()
+            runCatching { crypto.decrypt(blob) }.getOrNull()
         }
-        set(value) {
+        private set(value) {
+            // commit, not apply: the credential must be durable the moment it is
+            // written, because the claim released it exactly once (PROTOCOL 2.5)
             val edit = prefs.edit()
-            if (value == null) {
-                edit.remove(KEY_REFRESH_TOKEN)
-            } else {
-                edit.putString(KEY_REFRESH_TOKEN, encrypt(value))
-            }
-            edit.apply()
+            if (value == null) edit.remove(KEY_REFRESH_TOKEN) else edit.putString(KEY_REFRESH_TOKEN, crypto.encrypt(value))
+            edit.commit()
         }
 
     val isPaired: Boolean
         get() = refreshToken != null
+
+    /**
+     * Persist the pairing outcome synchronously: [SharedPreferences.Editor.commit],
+     * not apply. The claim releases the credential exactly once (PROTOCOL 2.5),
+     * so if the process died before an asynchronous write flushed, the tablet
+     * would lose a credential HA has already issued - an orphaned device user
+     * and a forced re-pair. Returns false if either write failed, in which case
+     * the caller must not treat the claim as complete.
+     */
+    fun savePairing(credential: String, haDeviceId: String): Boolean =
+        prefs.edit().putString(KEY_REFRESH_TOKEN, crypto.encrypt(credential)).commit() and
+            prefs.edit().putString(KEY_HA_DEVICE_ID, haDeviceId).commit()
 
     /** Drop the credential (revoked in HA, or the user unpaired): back to pairing. */
     fun clearCredential() {
         refreshToken = null
     }
 
-    // --- Keystore-backed encryption ------------------------------------------
+    internal companion object {
+        internal const val KEY_DEVICE_ID = "device_id"
+        internal const val KEY_HA_URL = "ha_url"
+        internal const val KEY_HA_DEVICE_ID = "ha_device_id"
+        internal const val KEY_SETTINGS = "settings"
+        internal const val KEY_SETTINGS_REVISION = "settings_revision"
+        internal const val KEY_REFRESH_TOKEN = "refresh_token_encrypted"
+    }
+}
+
+/** Encryption of the credential blob; the app uses the Android Keystore. */
+interface CredentialCrypto {
+    fun encrypt(plainText: String): String
+
+    fun decrypt(blob: String): String
+}
+
+/** AES-256-GCM under a non-exportable AndroidKeyStore key, random IV per encryption. */
+private object KeystoreCredentialCrypto : CredentialCrypto {
+    private const val KEYSTORE_ALIAS = "tabula_credential"
+
+    override fun encrypt(plainText: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val ciphertext = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+        // IV (12 bytes) || ciphertext+tag, base64 in one blob
+        return Base64.encodeToString(cipher.iv + ciphertext, Base64.NO_WRAP)
+    }
+
+    override fun decrypt(blob: String): String {
+        val bytes = Base64.decode(blob, Base64.NO_WRAP)
+        require(bytes.size > 12) { "credential blob too short" }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes, 0, 12))
+        return String(cipher.doFinal(bytes, 12, bytes.size - 12), Charsets.UTF_8)
+    }
 
     private fun key(): SecretKey {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -88,31 +148,5 @@ class TabulaStore(context: Context) {
                 .build(),
         )
         return generator.generateKey()
-    }
-
-    private fun encrypt(text: String): String {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, key())
-        val ciphertext = cipher.doFinal(text.toByteArray(Charsets.UTF_8))
-        // IV (12 bytes) || ciphertext+tag, base64 in one blob
-        return Base64.encodeToString(cipher.iv + ciphertext, Base64.NO_WRAP)
-    }
-
-    private fun decrypt(blob: String): String {
-        val bytes = Base64.decode(blob, Base64.NO_WRAP)
-        require(bytes.size > 12) { "credential blob too short" }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes, 0, 12))
-        return String(cipher.doFinal(bytes, 12, bytes.size - 12), Charsets.UTF_8)
-    }
-
-    private companion object {
-        const val KEY_DEVICE_ID = "device_id"
-        const val KEY_HA_URL = "ha_url"
-        const val KEY_HA_DEVICE_ID = "ha_device_id"
-        const val KEY_SETTINGS = "settings"
-        const val KEY_SETTINGS_REVISION = "settings_revision"
-        const val KEY_REFRESH_TOKEN = "refresh_token_encrypted"
-        const val KEYSTORE_ALIAS = "tabula_credential"
     }
 }
