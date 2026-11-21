@@ -32,7 +32,7 @@ setup: ## Install pinned tools and dependencies (idempotent)
 # --- Quality ---
 
 .PHONY: check
-check: lint frames test site ## Everything CI checks
+check: lint frames test android site ## Everything CI checks
 
 .PHONY: lint
 lint: ## Lint, format check and repo policy checks
@@ -59,6 +59,27 @@ mock-test: ## Mock device unit tests and conformance suite (also part of make te
 conformance: ## Conformance suite against TABULA_HA_URL with a paired TABULA_STORE
 	@test -n "$${TABULA_HA_URL:-}" || { echo "set TABULA_HA_URL and TABULA_STORE" >&2; exit 2; }
 	$(UV) run pytest mockdevice/conformance
+
+# --- Android ---
+
+.PHONY: setup-android
+setup-android: ## Verify or install the Android toolchain (JDK 17-21, Android SDK)
+	@tools/setup_android.sh
+
+.PHONY: android-test
+android-test: ## Android unit tests via the Gradle wrapper (skipped without a JDK)
+	@tools/android_test.sh
+
+.PHONY: codegen
+codegen: ## Regenerate the Kotlin settings classes from the schema
+	$(UV) run python tools/codegen.py
+
+.PHONY: codegen-drift
+codegen-drift: ## Fail if the generated Kotlin settings classes are stale
+	$(UV) run python tools/codegen.py --check
+
+.PHONY: android
+android: codegen-drift android-test ## Codegen drift check and Android unit tests
 
 # --- Protocol ---
 

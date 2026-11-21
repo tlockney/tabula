@@ -16,9 +16,20 @@ ADR [0004](decisions/0004-build-and-toolchain.md) records the reasoning.
 | Python | 3.13 | integration, mock device, tools | `.python-version` |
 | uv | 0.9+ | Python environments and dependencies | `uv.lock` |
 | Node | 22+ | website; panel from Phase 5 | `.node-version`, `website/package-lock.json` |
-| JDK, Android SDK | set by P2.0 | Android app | Gradle wrapper (P2.0) |
+| JDK | 17–21 | Android build | ADR [0008](decisions/0008-android-toolchain-and-targetsdk.md), `tools/android_common.sh` |
+| Android SDK | platform 34, build-tools 34.0.0 | Android app | `tools/android_common.sh` |
 
 `make setup` runs `tools/bootstrap.sh`, which installs uv from PyPI if it is missing and checks the Node version, then installs locked dependencies.
+
+The Android toolchain is opt-in: `make setup-android` verifies a JDK 17–21 and the Android SDK components (platform `android-34`, build-tools `34.0.0`) and installs the components with `sdkmanager` when the SDK is present but incomplete. Versions and reasoning are in ADR [0008](decisions/0008-android-toolchain-and-targetsdk.md).
+
+**Network needs of `make setup-android`** (all pinned or checksum-verified, per the registry-only principle):
+
+- `dl.google.com` — SDK components, via `sdkmanager "platforms;android-34" "build-tools;34.0.0"`.
+- `services.gradle.org` — the Gradle wrapper distribution, pinned by `distributionSha256Sum` in `android/gradle/wrapper/gradle-wrapper.properties`.
+- Google's Maven repository (`maven.google.com`) and Maven Central — AGP, Kotlin and library dependencies, pinned in `android/gradle/libs.versions.toml`.
+
+Machines without a JDK or Android SDK skip the Android steps in `make check` with a message. CI installs the JDK with `actions/setup-java` and the command-line tools with `android-actions/setup-android`, sets `TABULA_REQUIRE_ANDROID=1` and runs the same targets, so the Android tests always run there.
 
 The Makefile isolates uv from your own uv settings. It points `UV_CONFIG_FILE` at `tools/uv.toml` (which holds no settings) and unsets `UV_EXCLUDE_NEWER`, `UV_RESOLUTION`, `UV_PRERELEASE` and `UV_FORK_STRATEGY`, so a user- or system-level `uv.toml` cannot change resolution. Without this, a global setting such as a rolling `exclude-newer` makes `uv sync --locked` reject `uv.lock`. Project settings stay in `pyproject.toml` (`[tool.uv]`). If you run `uv` directly instead of through `make`, set `UV_CONFIG_FILE="$PWD/tools/uv.toml"` from the repo root (or an absolute path) and leave those variables unset, or you may see the same lockfile error. Index settings such as `UV_INDEX_URL` are left alone, so package mirrors keep working.
 
@@ -43,7 +54,7 @@ Any VM that can reach PyPI and npm works.
 
 **GitHub Codespaces and other hosted VMs.** Use an image with Python 3.13 and Node 22 (for example the default Codespaces universal image) and run `make setup`.
 
-**Android builds** need a JDK and the Android SDK command-line tools. P2.0 adds a `make setup-android` target that installs them from registries and documents its network needs here.
+**Android builds** need a JDK 17–21 and the Android SDK command-line tools. Run `make setup-android`; its network needs and the JDK/SDK sources are listed under Prerequisites above. On GitHub Actions the JDK comes from `actions/setup-java` and the command-line tools from `android-actions/setup-android`.
 
 Hardware steps (ADB against a real tablet) cannot run in a cloud VM. Packets mark them `Verification: hardware`; see AGENTS.md.
 
