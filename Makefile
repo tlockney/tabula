@@ -12,7 +12,8 @@ UV  := uv
 # rolling exclude-newer) would otherwise make `uv sync --locked` fail. See
 # tools/uv.toml and docs/DEVELOPMENT.md.
 export UV_CONFIG_FILE := $(CURDIR)/tools/uv.toml
-unexport UV_EXCLUDE_NEWER
+# Same for the env-var forms of resolution settings.
+unexport UV_EXCLUDE_NEWER UV_RESOLUTION UV_PRERELEASE UV_FORK_STRATEGY
 NPM := npm --prefix website
 
 .PHONY: help
