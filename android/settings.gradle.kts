@@ -28,3 +28,4 @@ rootProject.name = "tabula"
 
 include(":app")
 include(":core")
+include(":ha")
