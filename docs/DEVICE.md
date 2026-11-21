@@ -105,7 +105,11 @@ Finish by hand:
    receives no boot broadcast until it has been launched once; after that
    the boot receiver starts the service on every boot.
 2. On the pairing screen, enter the HA address (for example
-   `http://homeassistant.local:8123`) and tap pair.
+   `http://homeassistant.local:8123`). Then check the device name, which is
+   the name HA shows and the source of the entity ids. It is prefilled with the
+   tablet's own name plus the first four characters of its device id (for
+   example "Fire Tablet 78b2"); change it to something like "Office Kiosk".
+   Then tap pair.
 3. Confirm the six-digit code in Home Assistant: Settings → Devices &
    services → the discovered Tabula device (P1.2's discovery flow).
 
@@ -132,7 +136,8 @@ addition is picking the right tablet).
    `ANDROID_SERIAL=<serial> tools/device/provision.sh` — the same grants,
    the same device admin, printed evidence for each.
 4. **Launch and pair** (the "Finish by hand" steps of provision.sh): launch
-   Tabula once, enter the HA address, confirm the new six-digit code in HA.
+   Tabula once, enter the HA address and a device name (the prefilled
+   default already differs per tablet), confirm the new six-digit code in HA.
    The new tablet appears as its own device with its own entity set
    (entity ids carry its device name); nothing about the Office Kiosk
    changes.

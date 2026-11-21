@@ -189,6 +189,11 @@ class TabulaService : Service() {
                 val haUrl = intent.getStringExtra(EXTRA_HA_URL)?.trim()?.trimEnd('/')
                 if (!haUrl.isNullOrEmpty()) {
                     store.haUrl = haUrl
+                    intent.getStringExtra(EXTRA_NAME)?.let { typed ->
+                        // kept as identity.name: the name HA shows (F-MGT-03, issue #79)
+                        val name = PairingName.resolve(typed, defaultPairingName(this, store.deviceId))
+                        store.settings = store.settings.copy(identity = store.settings.identity.copy(name = name))
+                    }
                     startPairing()
                 }
             }
@@ -245,7 +250,9 @@ class TabulaService : Service() {
                 val paired = PairingClient(http).pair(
                     haUrl,
                     store.deviceId,
-                    Build.MANUFACTURER?.takeIf { it.isNotBlank() },
+                    // the typed or default name (issue #79), never the bare
+                    // manufacturer: every Fire tablet would pair as "Amazon"
+                    store.settings.identity.name ?: defaultPairingName(this@TabulaService, store.deviceId),
                     Build.MODEL,
                 ) { status ->
                     TabulaStatus.pairing.value =
@@ -498,6 +505,7 @@ class TabulaService : Service() {
         const val ACTION_PAIR = "net.lockney.tabula.action.PAIR"
         const val ACTION_UNPAIR = "net.lockney.tabula.action.UNPAIR"
         const val EXTRA_HA_URL = "ha_url"
+        const val EXTRA_NAME = "name"
         private const val TAG = "TabulaService"
         private const val CHANNEL_ID = "tabula_connection"
         private const val NOTIFICATION_ID = 1
