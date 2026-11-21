@@ -14,11 +14,16 @@ import secrets
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+)
 from homeassistant.const import CONF_CODE
 
 from . import TabulaHub
 from .const import DOMAIN, HUB_UNIQUE_ID, PAIR_CODE_ATTEMPTS
+from .options_flow import TabulaOptionsFlow
 
 CODE_SCHEMA = vol.Schema({vol.Required(CONF_CODE): str})
 
@@ -30,6 +35,11 @@ class TabulaConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._pair: dict[str, Any] = {}
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> TabulaOptionsFlow:
+        """The hub's options flow is the settings editor until the panel exists."""
+        return TabulaOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Create the hub entry (found by unique_id; duplicates abort)."""
