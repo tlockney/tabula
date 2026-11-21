@@ -73,7 +73,8 @@ class TabulaStore(
     /**
      * The name to prefill and send at pairing: identity.name when HA's settings
      * set one (a rename in the settings editor), else the last pairing name,
-     * else [fallback].
+     * else [fallback]. HA's identity.name wins even over a newer typed name:
+     * HA's next push would bring it back, and it is the name HA shows.
      */
     fun nameForPairing(fallback: String): String =
         settings.identity.name ?: pairingName ?: fallback

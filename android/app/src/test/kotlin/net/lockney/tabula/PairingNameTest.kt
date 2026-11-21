@@ -47,7 +47,7 @@ class PairingNameTest {
         val full = "📱".repeat(63) // 63 code points, 126 chars
         assertEquals(null, PairingName.limitInsert(full, full.length, full.length, "📱"))
         assertEquals("", PairingName.limitInsert(full + "x", full.length + 1, full.length + 1, "y"))
-        assertEquals("ab", PairingName.limitInsert(full.dropLast(2) + "", 124, 124, "abc"))
+        assertEquals("ab", PairingName.limitInsert(full.dropLast(2), 124, 124, "abc"))
         // replacing a range frees its code points
         assertEquals(null, PairingName.limitInsert(full + "x", 0, 2, "z"))
         assertEquals("z", PairingName.limitInsert(full + "x", 0, 2, "zz"))
