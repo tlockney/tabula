@@ -133,6 +133,7 @@ Every command event has `command_id` (unique per device for the integration's li
 | `media_control` (`command_media_control`) | `action`: pause, resume, stop, seek (needs `position`, seconds), next, previous, set_volume (needs `volume`), mute, unmute. `seek` on a stream that cannot seek, and `next`/`previous` without a queue, get `failed` (FEATURES F-MED-01) | `audio` |
 | `screensaver` (`command_screensaver`) | `active`, optional `mode` | `screensaver` |
 | `navigate` (`command_navigate`) | `path` starting with a single `/`. The device resolves it against its HA base URL and refuses (`invalid_args`) if the result leaves that origin (ADR 0001 item 3) | `navigation` |
+| `go_home` (`command_go_home`) | `{}`. Load the start target (F-DSH-02, `dashboard.start_path`); with none set, HA's default page | `go_home` |
 | `reload`, `restart_app`, `clear_cache` | `{}` | always |
 | `log_subscription` (`command_log_subscription`) | `enabled`, optional minimum `level` | `logs` |
 | `screenshot` (`command_screenshot`) | optional JPEG `quality` | `screenshot` (Phase 3) |
