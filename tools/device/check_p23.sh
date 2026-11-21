@@ -64,13 +64,27 @@ ha_available() { [[ "$(ha_state "$1" | cut -d' ' -f1)" != unavailable ]]; }
 # Wi-Fi off/on (same fallback reasoning as check_p21.sh)
 network() { # network <down|up>
     if [[ "$1" == down ]]; then
+        radio_off=1
         adb shell cmd connectivity airplane-mode enable 2>/dev/null \
             && echo "-- airplane mode on" || { adb shell svc wifi disable; echo "-- wifi disabled"; }
     else
         adb shell cmd connectivity airplane-mode disable 2>/dev/null \
             && echo "-- airplane mode off" || { adb shell svc wifi enable; echo "-- wifi enabled"; }
+        radio_off=0
     fi
 }
+
+# Any exit (a failed gate, EOF at a prompt, Ctrl-C) puts the network back, so
+# a failed run never leaves the tablet offline.
+radio_off=0
+restore() {
+    if (( radio_off )); then
+        network up >&2 || true
+        echo "-- restore: network back up" >&2
+    fi
+}
+trap restore EXIT
+trap 'restore; exit 130' INT TERM
 
 step "1. permissions and hardware"
 adb devices -l
