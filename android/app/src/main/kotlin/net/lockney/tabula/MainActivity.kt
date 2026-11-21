@@ -94,11 +94,11 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        TabulaStatus.foreground.value = true
+        TabulaStatus.windows.onStart()
     }
 
     override fun onStop() {
-        TabulaStatus.foreground.value = false
+        TabulaStatus.windows.onStop()
         super.onStop()
     }
 
