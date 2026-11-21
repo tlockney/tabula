@@ -68,6 +68,16 @@ dash_tag=TabulaDashboard
 : "${TABULA_LIGHT:?set TABULA_LIGHT to the tablet screen light entity id}"
 : "${TABULA_CURRENT_PAGE:?set TABULA_CURRENT_PAGE to the tablet current-page sensor entity id}"
 
+# Option A must be reversible before anything is stopped (re-check): HA can
+# never be taken down without a way to bring it back.
+if [[ -n "${TABULA_HA_STOP_CMD:-}" && -z "${TABULA_HA_START_CMD:-}" ]]; then
+    echo "TABULA_HA_STOP_CMD is set but TABULA_HA_START_CMD is not: refusing to run," >&2
+    echo "since the script must never stop HA without a way to start it again" >&2
+    exit 1
+fi
+# child processes (ha_query.py, the stop/start commands) read the token
+export TABULA_HA_TOKEN
+
 step() { echo; echo "== $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -135,7 +145,8 @@ ha_is_down_by_us=0   # option A: this script stopped HA
 net_down_by_us=0     # option B / step 8: this script cut the tablet's Wi-Fi
 settings_touched=0   # step 2 changed the tablet's stored screen settings
 orig_light="on None" # the light's state and brightness, as found
-orig_adaptive="unset"  # the adaptive switch's state, as found (or "unset")
+orig_adaptive="unset" # the adaptive switch's state, as found (or "unset")
+completed=0          # the script reached its end; restore prints the closing line
 
 usb_adb() { # true when the adb transport is USB; Wi-Fi adb would be cut with the tablet
     local serialno devpath line
@@ -274,6 +285,12 @@ restore() { # on any exit: bring back what this script took down (idempotent)
     fi
     if (( ${#restored[@]} )); then
         echo "-- restore: restored ${restored[*]}" >&2
+    fi
+    # the closing line comes after any restoration output, not before it
+    # (re-check); it never prints on a failed or interrupted run
+    if (( completed )); then
+        echo
+        echo "P2.6 hardware check complete; paste everything above into the packet Result."
     fi
     return 0
 }
@@ -474,5 +491,6 @@ step "9. full service and dashboard log for the record"
 service_log | tail -80
 adb shell logcat -d -v time -s "$dash_tag:I" "$dash_tag:W" | tail -20
 
-echo
-echo "P2.6 hardware check complete; paste everything above into the packet Result."
+# the closing line prints from the restore trap, after anything it restored;
+# the EXIT trap runs when the script falls off the end here as well
+completed=1
