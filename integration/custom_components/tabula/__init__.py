@@ -100,9 +100,9 @@ def _close_device_socket(connection: Any) -> None:
     websocket_api keeps one cancel handle per connection and uses it when auth
     revocation cuts a socket. From HA 2026.11 the handle is stored on the
     connection; in 2025.1-2026.10 the connection's send_message callable is
-    the handler's bound method, and the handler owns the cancel (`_cancel_ws`
-    on the auth-phase object, `_cancel` on the handler itself; ADR 0001 item
-    8, ADR 0019).
+    bound to websocket_api's WebSocketHandler (http.py), whose `_cancel`
+    cancels both of its tasks and closes the socket (ADR 0001 item 8,
+    ADR 0019).
     """
     cancel = getattr(connection, "_cancel_ws", None)
     if cancel is None:
@@ -112,6 +112,12 @@ def _close_device_socket(connection: Any) -> None:
             cancel = getattr(owner, "_cancel", None)
     if cancel is not None:
         cancel()
+    else:
+        # If a future HA moves both handles, #97 comes back silently; keep
+        # the regression visible in the log.
+        _LOGGER.warning(
+            "No cancel handle on a device connection; its socket may stay open after unload (#97)"
+        )
 
 
 @dataclass
