@@ -19,8 +19,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import net.lockney.tabula.core.Constants
 import net.lockney.tabula.ha.BridgeAnswer
 import net.lockney.tabula.ha.DashboardLinks
 import net.lockney.tabula.ha.ExternalAuthBridge
@@ -116,6 +118,50 @@ class DashboardView(
     }
 
     override fun currentPage(): String? = currentUrl?.let(DashboardLinks::pagePath)
+
+    // --- screenshot (P3.13, F-HA-12) ----------------------------------------------
+
+    /**
+     * Draw the activity's window and JPEG-encode the bitmap on a worker: the
+     * draw must happen on the thread that owns the views, and the encode is
+     * the slow half, so it must not hold the main thread. The packet's Do
+     * item 1 says "the app's window (dashboard WebView and overlays alike)":
+     * the decor view holds the whole stack (the dashboard WebView at the
+     * bottom, the screensaver overlay and the notification cards above it,
+     * MainActivity.onCreate/ensureDashboard), so a capture while an overlay
+     * is showing shows the screen as it actually is (review blocker) - a
+     * window that has not laid out yet captures nothing.
+     *
+     * Some Fire OS WebView builds draw their hardware-accelerated layers to a
+     * blank bitmap via `View.draw`; if the hardware check (check_p313.sh step
+     * "panel on") reports the capture is blank, PixelCopy on the window is
+     * the fallback (review note, P3.13).
+     */
+    override suspend fun capture(quality: Int?): ByteArray? {
+        val bitmap = withContext(Dispatchers.Main) {
+            val decor = activity.window.decorView
+            val w = decor.width
+            val h = decor.height
+            if (w <= 0 || h <= 0) return@withContext null
+            android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888).also {
+                decor.draw(android.graphics.Canvas(it))
+            }
+        } ?: return null
+        try {
+            return withContext(Dispatchers.Default) {
+                java.io.ByteArrayOutputStream().use { out ->
+                    val ok = bitmap.compress(
+                        android.graphics.Bitmap.CompressFormat.JPEG,
+                        quality ?: Constants.SCREENSHOT_JPEG_QUALITY,
+                        out,
+                    )
+                    if (ok) out.toByteArray() else null
+                }
+            }
+        } finally {
+            bitmap.recycle() // however the encode ends, the bitmap is released
+        }
+    }
 
     // --- the V1 JavaScript interface -------------------------------------------
 

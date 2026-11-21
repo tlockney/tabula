@@ -131,3 +131,8 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A switch over the separate screensaver backlight level (screensaver.brightness_enabled): off, the screensaver keeps the panel's current level; dim and black keep theirs | F-SSV-17 | P3.2 |
 | A new idle timeout starts the screensaver countdown over; an unchanged one leaves it running | F-HA-11 | P3.2 |
 | Writing the clock background source is always a new revision and push, identical value or not | F-SSV-09 | P3.2 |
+| The screenshot capture action asks the device for a capture; the image entity shows the latest stored capture and refreshes when a new one lands | F-MGT-07, F-HA-12, PROTOCOL 5 | P3.13 |
+| The image entity serves the screen-off placeholder (a designed slate, not a black frame) whenever no capture is stored: with the screen off the device captures and uploads nothing and still ACKs | F-MGT-07, ADR 0014 | P3.13 |
+| The `last_capture` timestamp records when a capture was started by the action, is set only when the capture succeeds, persists across restarts, and is untouched by ordinary image fetches | F-HA-12 | P3.13 |
+| The image entity, the capture button and the last-capture sensor exist only when the tablet declared the screenshot capability | F-HA-02 | P3.13 |
+| Losing the link makes the screenshot entities unavailable with the rest of the device, and a stored capture survives the loss and the restore | F-HA-04 | P3.13 |
