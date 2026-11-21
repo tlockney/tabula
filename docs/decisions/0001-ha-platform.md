@@ -1,6 +1,6 @@
 # 0001: HA platform
 
-Status: accepted
+Status: accepted for items 1–5, 7 and 8; item 6 (device WebView version) pending hardware output
 Date: 2026-11-21
 Packet: P0.3
 
@@ -11,7 +11,7 @@ Plan section 5 rests on assumptions about Home Assistant (HA) and the Fire table
 ### Method
 
 - A throwaway custom integration (`tabula_spike`: hub flow, discovery flow, pairing and claim views, three WebSocket commands, `notify`, `media_player` and `tts` platforms) plus a pytest suite built on pytest-homeassistant-custom-component. Per the packet, the spike code is not committed.
-- Run against **HA 2026.2.3** (newest release on PyPI on 2026-11-21) and again against **HA 2025.1.4** (pytest-homeassistant-custom-component 0.13.316 and 0.13.205). Both produced the same evidence.
+- Run against **HA 2026.2.3** (newest release on PyPI on 2026-11-21), **HA 2025.1.4** and **HA 2025.1.0** (pytest-homeassistant-custom-component 0.13.316, 0.13.205 and 0.13.201). All three produced the same evidence lines.
 - A real HA 2026.2.3 instance (`hass -c`, onboarded through its REST API) with the shipped frontend (`home-assistant-frontend==20260128.6`), driven by headless Chromium through Playwright, for the dashboard checks.
 - Source reading, all Apache-2.0: HA core (`home-assistant/core` at `0fa84d1`), HA frontend (`home-assistant/frontend` at `113f90e`) and the HA Companion Android app (`home-assistant/android` at `cdc8537`). Nothing was copied; what we learned is recorded here.
 
@@ -42,7 +42,11 @@ system discovered flows visible to admin UI: [('integration_discovery', 'confirm
 system confirm: abort paired
 ```
 
-**Constraint found:** the manifest must **not** set `"single_config_entry": true`. With it, HA aborts every non-user flow once an entry exists (`config_entries.py`, `async_init` and `async_finish_flow` both return `single_instance_allowed`), so device discovery would stop working after the hub is set up. The hub singleton is enforced in the user step instead, with a fixed `unique_id` and `_abort_if_unique_id_configured()` (see "second hub flow" above).
+**Constraint found:** the manifest must **not** set `"single_config_entry": true`. With it, once an entry exists HA aborts every new flow except ignore, reauth and reconfigure (`config_entries.py`, `async_init` and `async_finish_flow` both return `single_instance_allowed`), so device discovery would stop working after the hub is set up.
+
+**Side effect of discovery:** pressing "Ignore" on a discovered tablet creates a `tabula` config entry with source `ignore` and `unique_id` = device ID. P1.2 must skip ignored entries when looking up the hub, and that device ID stays suppressed until the ignored entry is removed.
+
+**Claim endpoint:** the spike answered `202 pending` for an unknown or already-claimed device. P1.2 must return a terminal error for those (plan 5.3: unknown device IDs are rejected) so the device stops polling. The hub singleton is enforced in the user step instead, with a fixed `unique_id` and `_abort_if_unique_id_configured()` (see "second hub flow" above).
 
 ### 2. Credential type: system user + system refresh token
 
@@ -84,6 +88,13 @@ Why the system variant:
 
 **Constraint found (regular users only):** `async_create_user` makes the new user the **owner** (admin) if no other non-system user exists yet (`auth/__init__.py`, `_user_should_be_owner`). In a fresh test harness that produced `'is_admin': True`. A real instance always has an owner after onboarding, but P1.2 must assert `not user.is_admin` after creating any regular user. System users are never owners.
 
+**Restrictions on refresh:**
+
+- `local_only` users may refresh only from a local IP and never through the cloud relay (`components/http/auth_util.py`, `async_user_not_allowed_do_auth`). Decision: device users are created with `local_only=True` (wall tablets sit on the LAN; this limits what a stolen tablet's credential can do off-site). P1.2 adds a hub option to create them without it for remote tablets.
+- `/auth/token` failures count toward HA's IP ban (`@log_invalid_auth` on the token view). A revoked tablet that keeps retrying could get its IP, or a reverse proxy's IP, banned. P2.1 treats `invalid_grant` or 403 from `/auth/token` as final: stop retrying and show the pairing screen.
+
+**Orphaned credentials:** system users are invisible in the UI and their tokens never expire, so if the integration's files are removed without removing the hub entry, working credentials remain that the admin cannot see. P1.2 stores every device user ID, sweeps users it no longer knows at setup, and removes all of them in `async_remove_entry`. DEVICE.md (P2.1) documents how to remove leftover users.
+
 **Revocation order matters:**
 
 ```text
@@ -96,7 +107,7 @@ GET /api/ after user removal -> 401
 after user removal ws auth -> auth_invalid
 ```
 
-Removing a refresh token fires HA's revoke callback, which closes live WebSockets authenticated with it (`components/websocket_api/auth.py`, `async_register_revoke_token_callback`). Removing the user alone invalidates new requests but leaves an open socket connected (its commands fail). Revocation in P1.2: remove the device's refresh tokens first, then the user.
+Removing a refresh token fires HA's revoke callback, which closes live WebSockets authenticated with it (`components/websocket_api/auth.py`, `async_register_revoke_token_callback`). In the released versions tested (2025.1.x, 2026.2.3), removing the user alone invalidates new requests but leaves an open socket connected (its commands fail). HA core main (`0fa84d1`) now revokes a user's tokens inside `async_remove_user`, so newer releases close the socket either way. Revocation in P1.2: remove the device's refresh tokens first, then the user; that is correct on every version.
 
 ### 3. Frontend external auth in an Android WebView: works with all three credentials
 
@@ -119,7 +130,11 @@ Real-frontend check: HA 2026.2.3, frontend 20260128.6, headless Chromium 157, `w
 
 A screenshot showed the Overview dashboard rendered for user "Tabula cb5b6d5d" with no login page. No token was written to localStorage. The remaining Android-specific risk (the Fire WebView's JS engine) is item 6.
 
-Decision for P2.2: implement the V1 bridge for all versions, add V2 when the server reports 2026.4.2 or later and the WebView supports the listener, mirror the Companion app's callback-name check, and answer `config/get` on the external bus (the frontend waits for it).
+Decision for P2.2:
+
+- Implement the V1 bridge for all versions; add V2 when the server reports 2026.4.2 or later and the WebView supports the listener. Mirror the Companion app's callback-name check, and answer `config/get` on the external bus (the frontend waits for it).
+- V1 (`addJavascriptInterface`) exposes `externalApp` to every frame and every page the WebView loads, so any page reached by navigation could ask for a token. P2.2 answers `getExternalAuth` only when the WebView's current main-frame URL has the HA origin, and keeps top-level navigation on the HA origin (`shouldOverrideUrlLoading`: other origins are blocked or opened outside the WebView).
+- `revokeExternalAuth` is sent when someone taps "Log out" in the frontend. A wall tablet must not lose its credential that way: the device answers `externalAuthRevokeToken(true)` without revoking anything. Revocation happens only from HA (plan 5.2).
 
 ### 4. Custom WebSocket subscriptions, size limits, caller identity: work
 
@@ -184,9 +199,7 @@ adb shell dumpsys package com.amazon.webview.chromium | grep -E 'versionName|ver
 adb shell dumpsys package com.android.webview | grep -E 'versionName|versionCode|lastUpdateTime'
 ```
 
-Device output: pending (see the packet's Result section).
-
-How WebView updates arrive on Fire OS: Fire OS ships Amazon's own WebView package (`com.amazon.webview.chromium`) instead of Google's; it is updated by Amazon through Fire OS system updates and the Amazon Appstore, not Google Play, and the user cannot pick another provider without root. The device output above records the installed version and its last update time.
+How WebView updates arrive on Fire OS (**unverified**; no source checked in this spike): Fire OS is expected to ship Amazon's own WebView package (`com.amazon.webview.chromium`) rather than Google's, updated by Amazon rather than Google Play. The `dumpsys webviewupdate` and `lastUpdateTime` lines in the device output will confirm or correct this.
 
 PF1007L frames: they need a WebView of Chromium 67 or later to run today's frontend at all, and the frontend raises its floor over time. Before committing to them, run the same commands on one; anything below 67 rules them out for the dashboard (the native screensaver could still run).
 
@@ -200,9 +213,17 @@ From `components/assist_satellite/entity.py` and `const.py` (HA 2026.2.3):
 - The entity can point at a pipeline select and a VAD sensitivity select (`_attr_pipeline_entity_id`, `_attr_vad_sensitivity_entity_id`).
 - Dependencies: `assist_pipeline`, `stt`, `tts`. Audio can ride the existing device connection; this needs a binary channel decision in Phase 7 because TLP frames are JSON.
 
-### 8. Minimum HA version: 2025.1.0
+### 8. Minimum HA version: 2025.1.0 (a chosen floor, known to work)
 
-Every check in items 1, 2, 4 and 5 passed unchanged on HA 2025.1.4 and 2026.2.3 (the 2025.1.4 run had one harness teardown warning about a lingering thread, not a test failure). Item 3 uses the V1 bridge, which predates both. `assist_satellite` exists in both.
+Every check in items 1, 2, 4 and 5 produced identical evidence on HA 2025.1.0, 2025.1.4 and 2026.2.3. Versions before 2025.1.0 were not tried, so this is a floor we chose and verified, not a measured minimum. On both 2025.1 runs the harness reported a teardown error after the tests passed (a lingering-thread assertion in the older test plugin, not a behavior difference):
+
+```text
+2025.1.0: 6 passed, 1 error in 7.41s
+2025.1.4: 6 passed, 1 error in 7.79s
+2026.2.3: 6 passed in 7.03s
+```
+
+Not re-tested at the floor: item 3 ran only on HA 2026.2.3 with frontend 20260128.6 (the V1 bridge it uses is older than 2025.1), and the Chromium 67 floor comes from frontend main, not the frontend shipped with 2025.1. `assist_satellite` exists in all three versions.
 
 - `hacs.json` and the integration manifest declare `homeassistant: 2025.1.0` (set in P1.2).
 - CI tests the integration against the minimum and the latest HA release.
@@ -212,7 +233,7 @@ Every check in items 1, 2, 4 and 5 passed unchanged on HA 2025.1.4 and 2026.2.3 
 ## Decision
 
 1. Pairing uses an unauthenticated view that starts an `integration_discovery` flow; the hub is a singleton enforced by `unique_id`, without `single_config_entry`. A confirmed device becomes an HA device under the hub entry, and the flow ends with an abort message.
-2. Each device gets an integration-created **system user** in the user group and a **system refresh token**. The device trades it for 30-minute access tokens at `/auth/token` without a `client_id`. Fallback: regular non-admin user + normal refresh token with a fixed `client_id`.
+2. Each device gets an integration-created **system user** in the user group (`local_only=True` by default) and a **system refresh token**. The device trades it for 30-minute access tokens at `/auth/token` without a `client_id`. Fallback: regular non-admin user + normal refresh token with a fixed `client_id`.
 3. Revocation removes the device's refresh tokens, then its user.
 4. The dashboard authenticates through the frontend's external auth bridge (V1 always, V2 from HA 2026.4.2).
 5. Device commands flow down one custom WebSocket subscription; the device is resolved from `connection.user`. TLP frames stay well under 4 MiB; large data goes over HTTP.
@@ -222,8 +243,8 @@ Every check in items 1, 2, 4 and 5 passed unchanged on HA 2025.1.4 and 2026.2.3 
 ## Consequences
 
 - Plan sections 5.2, 5.3 and 5.8 hold as written; 5.2's open question is answered (system user + refresh token).
-- P1.2 must: not set `single_config_entry`; enforce the hub singleton by `unique_id`; revoke tokens before deleting users; assert regular users are not admins if the fallback is ever used; clean up all device users when the hub entry is removed.
-- P2.1/P2.2 must: refresh access tokens before `expires_in`, use a monotonic WebSocket message ID, implement V1 external auth and answer `config/get`.
+- P1.2 must: not set `single_config_entry`; enforce the hub singleton by `unique_id` and skip ignored entries; return a terminal error from claim for unknown or claimed devices; create device users with `local_only=True` (hub option to disable); revoke tokens before deleting users; track device user IDs, sweep orphans at setup and remove them all in `async_remove_entry`; assert regular users are not admins if the fallback is ever used.
+- P2.1/P2.2 must: refresh access tokens before `expires_in`; treat `invalid_grant`/403 from `/auth/token` as final (re-pair, no retry loop); use a monotonic WebSocket message ID; implement V1 external auth, answer `config/get`, answer tokens only to the HA origin, keep navigation on the HA origin, and acknowledge `revokeExternalAuth` without revoking.
 - We depend on HA accepting refresh without `client_id` for system tokens. That code path is the same one HA uses for its own system tokens, but if it changes the fallback costs one P1.2 change and a re-pair.
 
 ## Alternatives considered
