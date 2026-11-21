@@ -348,6 +348,60 @@ screensaver start/stop events never reach HA by design (ADR 0013): the
 register frame carries the current state, which is what step 7 checks
 instead.
 
+## Hardware check (P3.8, photo slideshow)
+
+Install a P3.8 build, provision and pair, and configure the photos settings
+on the tablet's HA entry (they apply when the screensaver starts, ADR 0014):
+
+- screensaver mode `photos`
+- photos source `folder`, folder path
+  `/storage/emulated/0/Android/data/net.lockney.tabula/files/photos`
+- slide interval 5 s, transition `crossfade`, fit `smart_fill`
+- edge taps on, EXIF details on
+
+Generate the test photos (small JPEGs with EXIF: a 16:10 landscape, a 4:3
+and a portrait photo that show smart fill's blurred bars, and one without
+EXIF; a large number is drawn on each so the slide change is visible from
+across the room) — output goes to `build/`, never committed:
+
+```sh
+uv run --with 'pillow>=10' --with piexif \
+    python tools/device/gen_test_photos.py
+```
+
+Then leave Tabula in front with the panel on and run:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver \
+ANDROID_SERIAL=<serial> tools/device/check_p38.sh
+```
+
+The script pushes the photos into the app's external files directory (the
+configured folder path) over adb — the app reads its own directory with no
+storage permission, and the shell can write it on the HD 10 Plus — starts
+the slideshow from HA, counts the slides the app logs, checks the edge taps
+step slides without dismissing, checks a centre tap dismisses, and compares
+`dumpsys meminfo` TOTAL PSS before and after the run against a bound
+(`TABULA_MEM_BOUND_MB`, default 48 MB: two screen-sized bitmaps plus the
+blur copies and normal jitter, ADR 0014).
+
+**Getting photos onto the device by hand.** Two routes:
+
+- **The folder source**: push any photos into the folder path above with
+  `adb push`, or configure any directory the app can read (app-scoped
+  storage; nothing broader is requested, ADR 0014).
+- **The picker source**: set the source to `picker`, tap the "Pick photos"
+  action on Tabula's ongoing notification, and pick photos with the system
+  document picker; they are copied into app storage and join the playlist
+  the next time the screensaver starts. (When Phase 4's lockdown pins the
+  device to Tabula, the DocumentsUI package
+  (`com.android.documentsui`) must be allowlisted for the picker to open —
+  a follow-up for that packet.)
+
+The URL source needs no photos: point `screensaver.photos.image_url` at any
+image URL and the slideshow fetches it fresh for every slide.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:
