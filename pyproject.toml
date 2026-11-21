@@ -1,5 +1,5 @@
 # Root Python project: repo tooling (tools/) and shared dev dependencies.
-# The integration and mock device join as uv workspace members in their packets.
+# The integration joins as a uv workspace member in its packet.
 [project]
 name = "tabula-dev"
 version = "0.0.0"
@@ -12,12 +12,20 @@ dependencies = []
 dev = [
   "jsonschema[format-nongpl]>=4.23",
   "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "tabula-mockdevice",
   "ruff>=0.8",
 ]
 
 [tool.uv]
 package = false
 default-groups = ["dev"]
+
+[tool.uv.workspace]
+members = ["mockdevice"]
+
+[tool.uv.sources]
+tabula-mockdevice = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -28,6 +36,8 @@ extend-exclude = ["build", "website/node_modules"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.pytest.ini_options]
-testpaths = ["tools/tests"]
+testpaths = ["tools/tests", "mockdevice/tests", "mockdevice/conformance"]
 addopts = "-q"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["."]

@@ -1,0 +1,20 @@
+[project]
+name = "tabula-mockdevice"
+version = "0.1.0"
+description = "Python reference device for the Tabula Link Protocol (development and conformance)"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = [
+  "aiohttp>=3.11",
+  "jsonschema>=4.23",
+]
+
+[project.scripts]
+tabula-mockdevice = "mockdevice.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mockdevice"]
