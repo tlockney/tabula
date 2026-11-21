@@ -78,14 +78,12 @@ class ScreenManager(
         return state.copy(brightness = level, screenOn = panel.isOn)
     }
 
-    override fun applySettings(settings: Settings) {
-        val decision = controller.applySettings(settings.screen, now())
-        panel.setKeepOn(controller.keepOn)
-        carryOut(decision)
+    override fun applySettings(settings: Settings) = decide {
+        controller.applySettings(settings.screen, now()).also { panel.setKeepOn(controller.keepOn) }
     }
 
     /** A light reading from the sensor. */
-    fun onLux(lux: Double) = carryOut(controller.onLux(lux, now()))
+    fun onLux(lux: Double) = decide { controller.onLux(lux, now()) }
 
     /** The panel went on or off (screen broadcasts). */
     fun onPanelPower(on: Boolean) = publish(StateDelta(screenOn = on))
@@ -98,7 +96,7 @@ class ScreenManager(
                 "panel power-off needs the device admin component; see docs/DEVICE.md",
             )
         }
-        if (brightness != null) carryOut(controller.onManualBrightness(brightness))
+        if (brightness != null) decide { controller.onManualBrightness(brightness) }
         when (on) {
             true -> if (!panel.isOn) panel.powerOn()
             false -> if (panel.isOn) panel.powerOff()
@@ -107,11 +105,20 @@ class ScreenManager(
         return CommandHandler.Reply.Ok()
     }
 
+    /**
+     * Compute a decision and start carrying it out under one monitor (the same
+     * one [write] takes), so a decision computed before another one can never
+     * take a newer generation after it: a reading decided just before a manual
+     * command cannot overwrite the manual level.
+     */
+    @Synchronized
+    private fun decide(compute: () -> ScreenController.Decision) = carryOut(compute())
+
     private fun carryOut(decision: ScreenController.Decision) {
         decision.level?.let { target ->
             val gen = generation.incrementAndGet()
             fadeJob?.cancel()
-            val from = synchronized(this) { onPanel }
+            val from = onPanel
             if (decision.fade && from != null) {
                 val steps = ScreenController.fadeSteps(from, target)
                 val stepMs = Constants.ADAPTIVE_FADE_MS / steps.size.coerceAtLeast(1)
@@ -131,7 +138,7 @@ class ScreenManager(
             recheckJob?.cancel()
             recheckJob = scope.launch {
                 delay(wait)
-                carryOut(controller.recheck(now()))
+                decide { controller.recheck(now()) }
             }
         }
     }

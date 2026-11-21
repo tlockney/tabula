@@ -146,8 +146,7 @@ class ScreenManagerTest {
         panel.adminActive = false
         manager.applySettings(settings(brightness = 50))
         val reply = manager.command(on = false, brightness = 10)
-        assertTrue(reply is CommandHandler.Reply.Error)
-        assertEquals(ErrorCode.FAILED, (reply as CommandHandler.Reply.Error).code)
+        assertEquals(ErrorCode.FAILED, (reply as? CommandHandler.Reply.Error)?.code)
         assertEquals(0, panel.powerOffs)
         assertEquals(50, panel.writes.last())
     }
