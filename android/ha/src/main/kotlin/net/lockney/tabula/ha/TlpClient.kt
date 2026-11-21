@@ -10,12 +10,17 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -101,6 +106,15 @@ class TlpClient(
     class ProtocolRejected(val code: String, val detail: String) :
         IOException("registration refused: $code: $detail")
 
+    private val _channel = MutableStateFlow<HaChannel?>(null)
+
+    /**
+     * HA core commands on the current registered connection, or null while
+     * none is (ADR 0017: the entity data subscription shares this socket).
+     * A new value per connection; consumers re-subscribe when it changes.
+     */
+    val channel: StateFlow<HaChannel?> = _channel.asStateFlow()
+
     private val registerTimeoutMs = (Constants.REGISTER_TIMEOUT_S * 1000).toLong()
     private val pongTimeoutMs = (Constants.PONG_TIMEOUT_S * 1000).toLong()
     private val pingIntervalMs = (Constants.APP_PING_INTERVAL_S * 1000).toLong()
@@ -151,6 +165,9 @@ class TlpClient(
         val initial = CompletableDeferred<Result<Unit>>()
         val inbound = Channel<String>(Channel.UNLIMITED)
         private val pending = ConcurrentHashMap<Int, CompletableDeferred<JsonObject>>()
+
+        /** HA subscription id -> event consumer (HaChannel.subscribe). */
+        val eventRoutes = ConcurrentHashMap<Int, (JsonObject) -> Unit>()
         private val sendMutex = Mutex()
         var nextId = 1
         var subscribeId = -1
@@ -251,6 +268,7 @@ class TlpClient(
                 subscribe(conn)
                 config.commands.onNewConnection()
                 events.onRegistered(result)
+                _channel.value = ConnectionChannel(conn)
                 val stableJob = launch {
                     delay(stableAfterMs)
                     backoff.markStable()
@@ -265,6 +283,8 @@ class TlpClient(
                 stateJob.cancelAndJoin()
             }
         } finally {
+            if (_channel.value.let { it is ConnectionChannel && it.conn === conn }) _channel.value = null
+            conn.eventRoutes.clear()
             // A timed-out handshake closes the socket too (PROTOCOL 4.1).
             conn.transport.close(1000, "session end")
             conn.failPending(IOException("session ended"))
@@ -388,12 +408,67 @@ class TlpClient(
 
                             message.str("type") == "result" || message.str("type") == "pong" ->
                                 dispatch(conn, message)
+
+                            message.str("type") == "event" -> routeEvent(conn, message)
                         }
                     }
                 }
             }
         } finally {
             conn.failPending(IOException("connection closed"))
+        }
+    }
+
+    /** An HA core subscription's event (HaChannel.subscribe); unknown ids are dropped. */
+    private fun routeEvent(conn: Connection, message: JsonObject) {
+        val id = message["id"]?.jsonPrimitive?.intOrNull ?: return
+        val route = conn.eventRoutes[id] ?: return
+        val event = message["event"] as? JsonObject ?: return
+        runCatching { route(event) } // a consumer's bug must not end the TLP session
+    }
+
+    /** [HaChannel] over one registered connection (ADR 0017). */
+    private inner class ConnectionChannel(val conn: Connection) : HaChannel {
+        override suspend fun call(message: JsonObject): JsonElement? {
+            val id = conn.allocId()
+            val reply = conn.request(id, { msgId -> withId(message, msgId) }, registerTimeoutMs)
+            return resultOf(reply)
+        }
+
+        override suspend fun subscribe(message: JsonObject, onEvent: (JsonObject) -> Unit): HaSubscription {
+            val id = conn.allocId()
+            conn.eventRoutes[id] = onEvent
+            try {
+                resultOf(conn.request(id, { msgId -> withId(message, msgId) }, registerTimeoutMs))
+            } catch (e: Exception) {
+                conn.eventRoutes.remove(id)
+                throw e
+            }
+            return object : HaSubscription {
+                override val id: Int = id
+
+                override suspend fun cancel() {
+                    if (conn.eventRoutes.remove(id) == null) return
+                    runCatching {
+                        call(buildJsonObject {
+                            put("type", "unsubscribe_events")
+                            put("subscription", id)
+                        })
+                    }
+                }
+            }
+        }
+
+        private fun withId(message: JsonObject, id: Int): String =
+            JsonObject(mapOf("id" to JsonPrimitive(id)) + message.filterKeys { it != "id" }).toString()
+
+        private fun resultOf(reply: JsonObject): JsonElement? {
+            if (reply["success"]?.jsonPrimitive?.booleanOrNull == true) return reply["result"]
+            val error = reply["error"] as? JsonObject
+            throw HaCommandError(
+                error?.str("code") ?: "unknown_error",
+                (error?.str("message") ?: reply.toString()).take(200),
+            )
         }
     }
 

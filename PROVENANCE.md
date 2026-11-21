@@ -131,6 +131,11 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A switch over the separate screensaver backlight level (screensaver.brightness_enabled): off, the screensaver keeps the panel's current level; dim and black keep theirs | F-SSV-17 | P3.2 |
 | A new idle timeout starts the screensaver countdown over; an unchanged one leaves it running | F-HA-11 | P3.2 |
 | Writing the clock background source is always a new revision and push, identical value or not | F-SSV-09 | P3.2 |
+| While the screensaver shows, the device subscribes to exactly the entities its At a Glance row, widgets and weather scene need, over its own HA connection, and unsubscribes when it closes. Last-known values stay through a dropped connection, and it subscribes again on reconnect | F-AAG-04, F-SSV-11, F-WGT-04, F-WGT-09 | P3.5 |
+| A configured entity HA does not have shows as unavailable, never as a gap | F-AAG-03 | P3.5 |
+| Daily forecasts for the weather scene and forecast widget come from HA's forecast subscription. A weather entity without a daily forecast yields none | F-SSV-11, F-WGT-05 | P3.5 |
+| States are shown with HA's translations, icons and display precision, falling back as HA's frontend does | F-AAG-03 | P3.5 |
+| Calendar mode opens no entity subscription | F-AAG-01, F-WGT-01 | P3.5 |
 | The screenshot capture action asks the device for a capture; the image entity shows the latest stored capture and refreshes when a new one lands | F-MGT-07, F-HA-12, PROTOCOL 5 | P3.13 |
 | The image entity serves the screen-off placeholder (a designed slate, not a black frame) whenever no capture is stored: with the screen off the device captures and uploads nothing and still ACKs | F-MGT-07, ADR 0014 | P3.13 |
 | The `last_capture` timestamp records when a capture was started by the action, is set only when the capture succeeds, persists across restarts, and is untouched by ordinary image fetches | F-HA-12 | P3.13 |
@@ -145,4 +150,5 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | An optional EXIF details overlay shows the date taken and the camera (no location) in a free corner, bottom corners first | F-SSV-12, F-WGT-02 | P3.8 |
 | A playlist in which every photo fails to decode (e.g. HEIC on an old build) falls back to the clock stand-in too, not a black screen | F-SSV-12; ADR 0016 item 1 | P3.8 |
 | The slideshow pauses while Tabula's window is not in front (a powered-off panel included) and resumes where it was, so no decode or fetch runs against a dark screen | F-SSV-02; ADR 0016 item 9 | P3.8 |
+| The pairing screen asks for the device name HA will show. The default is the tablet's own name (or model) plus the first four characters of its device id, so identical tablets pair under different names | F-MGT-03 | #79 |
 | The integration imports and runs on every supported HA release: target extraction prefers `homeassistant.helpers.target` (from HA 2026.1) and falls back to `homeassistant.helpers.service` below it, so the floor 2025.1.0 through the latest release all load (ADR 0001 item 8) | independent design (ADR 0001 item 8) | #83 |

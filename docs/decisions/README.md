@@ -22,3 +22,4 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0014](0014-screenshot-screen-off-placeholder.md) | Screenshot screen-off placeholder (P3.13) | accepted |
 | [0015](0015-settings-entities.md) | Settings entities (P3.2) | accepted |
 | [0016](0016-gallery-core.md) | Gallery core (P3.8) | accepted |
+| [0017](0017-entity-data-connection.md) | Entity data connection (P3.5); amends PLAN 5.1 | accepted |
