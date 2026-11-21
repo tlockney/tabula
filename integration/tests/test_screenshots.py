@@ -259,7 +259,7 @@ async def _image_entity(hass: HomeAssistant, paired: Paired) -> ImageEntity:
 
 async def test_capture_button_round_trip(hass_setup, tablet):
     """Button -> command -> capture -> upload -> result; entities follow (P3.13)."""
-    hass, paired, device = hass_setup, tablet.paired, tablet.device
+    hass, paired = hass_setup, tablet.paired
     hub = TabulaHub.get(hass)
     assert hub is not None
 
@@ -368,4 +368,6 @@ async def test_entities_need_the_capability(hass_setup, server, hub, session):
         is None
     )
     assert registry.async_get_entity_id("image", DOMAIN, f"{paired.device_id}_screenshot") is None
-    assert registry.async_get_entity_id("sensor", DOMAIN, f"{paired.device_id}_last_capture") is None
+    assert (
+        registry.async_get_entity_id("sensor", DOMAIN, f"{paired.device_id}_last_capture") is None
+    )

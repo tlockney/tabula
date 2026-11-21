@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from aiohttp import web
 from homeassistant.components.http import KEY_HASS_USER, HomeAssistantView
@@ -27,9 +26,6 @@ from homeassistant.helpers.http import HTTPStatus
 
 from .const import DOMAIN, SCREENSHOT_MAX_BYTES, SIGNAL_SCREENSHOT
 from .pairing import _http_error, _hub, _not_configured
-
-if TYPE_CHECKING:
-    from . import TabulaHub
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,9 +88,7 @@ class TabulaScreenshotView(HomeAssistantView):
         tlp = hub.tlp
         record = hub.device_for_user(request[KEY_HASS_USER])
         if record is None:
-            return _http_error(
-                tlp, HTTPStatus.FORBIDDEN, "forbidden", "Not a Tabula device user"
-            )
+            return _http_error(tlp, HTTPStatus.FORBIDDEN, "forbidden", "Not a Tabula device user")
         command_id = request.headers.get("X-Tabula-Command-Id", "")
         pending = hub.result_futures.get((record.device_id, command_id))
         if (

@@ -41,9 +41,7 @@ class TabulaImage(TabulaEntity, ImageEntity):
     # type is honest for both (the placeholder asset is JPEG-encoded, ADR 0014).
     _attr_content_type = "image/jpeg"
 
-    def __init__(
-        self, hub: TabulaHub, record, description: TabulaEntityDescription
-    ) -> None:
+    def __init__(self, hub: TabulaHub, record, description: TabulaEntityDescription) -> None:
         # ImageEntity.__init__ sets up the image proxy client and its access
         # tokens; TabulaEntity.__init__ sets the entity's identity.
         ImageEntity.__init__(self, hub.hass)

@@ -128,9 +128,7 @@ class TabulaCaptureSensor(TabulaEntity, SensorEntity):
         return _timestamp(record.last_capture)
 
 
-def _factory(
-    hub: TabulaHub, record: Any, description: TabulaSensorDescription
-) -> TabulaEntity:
+def _factory(hub: TabulaHub, record: Any, description: TabulaSensorDescription) -> TabulaEntity:
     if description.key == "last_capture":
         return TabulaCaptureSensor(hub, record, description)
     return TabulaSensor(hub, record, description)
