@@ -186,7 +186,8 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 | Peer fleet management | Handled by the Tabularium panel + profiles in HA |
 | LED control / Echo Dot | Dropped |
 | Immich screensaver source | Dropped (possible future plugin) |
-| Camera views + device camera | Deferred: design hooks only |
+| Device front camera as a presence sensor | Phase 10, gated on the P10.1 spike; processing stays on the device |
+| Camera views, streams, snapshots, camera gestures | Deferred: design hooks only |
 | Echo Show 8 (2nd gen) target | In v1, gated on P0.6 (feasibility) and brought up in P2.7 |
 | Other Echo Show models, Portal, Raspberry Pi targets | Dropped for v1 |
 | Bluetooth proxy | Deferred indefinitely (no free path without ESPHome) |
@@ -282,6 +283,8 @@ Standard platforms mean standard HA services work with no Tabula-specific glue. 
 | select | Screensaver mode, dashboard view | Phase 1 |  |
 | button | Restart app, reload dashboard, clear cache | Phase 1 |  |
 | sensor / binary\_sensor | Battery, charging, connectivity, current page, next screensaver, app version | Phase 1 |  |
+| sensor | Ambient light (illuminance, lx) | Phase 3 (P3.16) | Room light for automations; only on tablets with a light sensor |
+| binary\_sensor | Camera presence, camera active | Phase 10 (P10.4) | A tablet in a room doubles as an occupancy sensor; "camera active" shows when the camera runs |
 | image | Latest screenshot (on demand) | Phase 3 | Not camera, to avoid confusion with deferred camera work |
 | update | App version + install | Phase 5 | Needs update orchestration |
 | assist\_satellite | Voice | Phase 7 | HA's native custom-satellite path |
@@ -567,10 +570,11 @@ Each phase gets a packet breakdown by the architect (`docs/packets/P{n}-*.md`) b
 - **Phase 7 — Voice (gated).** P7.0 is a mic-persistence spike on each Fire OS device type in use (the Fire tablet, and the Echo Show if it is in v1 and runs Fire OS). For each device type that passes, implement an `assist_satellite` entity in the integration and stream audio through the Assist pipeline API (per the ADR-0001 notes): wake word on device, overlay, chimes, cross-device arbitration of our own design. Device types that fail get no voice; voice may then target other hardware only.
 - **Phase 8 — Media (gated).** Following other HA media players, a DLNA renderer, a now-playing overlay, Music Assistant. EQ, echo cancellation and AirPlay only if voice lands.
 - **Phase 9 — Intercom (future).** HA as the directory. Direct device-to-device PCM audio with our own framing. Signaling over TLP.
+- **Phase 10 — Presence.** A presence rule fed by several sources: an HA occupancy/motion entity (F-SSV-24) and the tablet's front camera. Numbered last but not sequenced after Phase 9: it depends only on Phase 3 work (P3.5, night power-off from P3.4) and runs in parallel with Phases 4 onward. Packets and constraints in 7.6.
 
 Hooks to preserve, not build:
 
-- A `camera_view` slot in navigation, plus an ADR noting the WebRTC gap in the Fire WebView.
+- A `camera_view` slot in navigation, plus an ADR noting the WebRTC gap in the Fire WebView. (The device camera as a presence sensor is Phase 10; camera views stay a hook.)
 - The `window.tabula` bridge + action registry as the plugin seam, with an ADR on the manifest concept.
 
 ### 7.5 Packets and dependencies (Phase 3)
@@ -593,10 +597,33 @@ Written by the architect in issue #21's breakdown (`docs/packets/P3.*`, issues #
 | P3.12 Screensaver schedule | build, standard | P3.1 | hardware |
 | P3.13 Screenshots (capture, upload, image entity) | build, standard | none | hardware |
 | P3.14 Engine polish (pixel shift, fade, dim level) | build, standard | P3.1 | hardware |
+| P3.15 Start page and return to it after idle | build, standard | none | hardware |
+| P3.16 Ambient light sensor entity (illuminance) | build, standard | none | hardware |
 
-Parallel tracks after P3.1: the clock track (P3.3 → P3.4), the entity-data track (P3.5 → P3.6 → P3.11, and P3.5 → P3.7), the gallery track (P3.8 → P3.9), and P3.10, P3.12, P3.13 and P3.14 independently. P3.13 has no Phase 3 dependency and can run immediately. Night wiring lands in whichever of P3.4, P3.6 and P3.11 merges last, against the pre-committed `NightState` contract. Integration-side work (P3.1, P3.2, P3.13's view and entities, P3.9's buttons) is separated from Android rendering wherever the sides can move at their own pace.
+Parallel tracks after P3.1: the clock track (P3.3 → P3.4), the entity-data track (P3.5 → P3.6 → P3.11, and P3.5 → P3.7), the gallery track (P3.8 → P3.9), and P3.10, P3.12, P3.13 and P3.14 independently. P3.13, P3.15 and P3.16 have no Phase 3 dependency and can run immediately. P3.15 and P3.16 were added after the breakdown (issues #85, #86); P3.15 sets the start page as a frontend path until the page catalog (F-DSH-03) arrives with Phase 4 navigation, and P3.16 answers F-HA-06's open question: the illuminance sensor ships. Night wiring lands in whichever of P3.4, P3.6 and P3.11 merges last, against the pre-committed `NightState` contract. Integration-side work (P3.1, P3.2, P3.13's view and entities, P3.9's buttons) is separated from Android rendering wherever the sides can move at their own pace.
 
-Out of Phase 3 scope, recorded for later: F-SSV-15 (HA dashboard view mode), F-SSV-19/F-SSV-20 (panel off after a while, wake behavior), F-SSV-24 (HA presence source), the postpone action, and F-WGT-07/F-WGT-08 (alarm and calendar widgets, Phase 6).
+Out of Phase 3 scope, recorded for later: F-SSV-15 (HA dashboard view mode), F-SSV-19/F-SSV-20 (panel off after a while, wake behavior), F-SSV-24 (HA presence source, now P10.2), the postpone action, and F-WGT-07/F-WGT-08 (alarm and calendar widgets, Phase 6).
+
+### 7.6 Phase 10 — Presence
+
+Issues #87–#91. The tablet senses people nearby and reacts: dismiss the screensaver, hold the idle timer, wake the panel from off, and report occupancy to HA. Two sources feed one presence rule: an HA binary sensor chosen by the user (F-SSV-24, already specified) and the tablet's front camera (specified by P10.0, on the spec side under the clean-room rules).
+
+| Packet | Side, tier | Depends on | Verification |
+| --- | --- | --- | --- |
+| P10.0 Spec: camera-based presence | spec, standard | none | review |
+| P10.1 Front camera spike (2 working days) | build, deep | none | hardware |
+| P10.2 Presence sources and HA presence sensor | build, deep | P3.4, P3.5 | hardware |
+| P10.3 On-device camera presence detector | build, deep | P10.0, P10.1 (go), P10.2 | hardware |
+| P10.4 Camera presence in HA | build, standard | P10.3 | ci |
+
+P10.0, P10.1 and (once P3.4 and P3.5 merge) P10.2 run in parallel. On a no-go from P10.1, P10.3 and P10.4 close as not planned and the phase ends with P10.2.
+
+Device constraints, which P10.1 measures and its ADR settles:
+
+- **Camera.** The Fire HD 10 Plus front camera is the only sensor. Its placement, field of view, lowest frame rate and resolution, and behavior in a dim room are unknown until measured. Fire OS 7 (API 28) restricts camera use by apps not in the foreground; whether Tabula's foreground service keeps the camera behind another app or with the panel off is a spike question.
+- **No Google services.** Fire OS has no Google Play services, so detection uses plain frame differencing, Android's built-in face detection, or a bundled model whose license is compatible with Apache-2.0.
+- **Privacy.** Processing stays on the device. Frames live in memory only: never stored, logged or sent. Only presence state leaves the tablet. Off by default; turning it on needs a person at the device or an ADB grant; HA shows when the camera is active.
+- **CPU and battery.** The camera runs only when a rule needs it (screensaver up or panel off), at the lowest frame rate that detects reliably. Its cost counts against the Phase 4 idle CPU target (< 15% on the HD 10 Plus). Wall tablets sit on chargers, so heat and battery wear matter more than runtime; P10.1 measures both.
 
 ## 8. Testing and validation
 
@@ -624,6 +651,8 @@ Out of Phase 3 scope, recorded for later: F-SSV-15 (HA dashboard view mode), F-S
 | Voice on Fire OS (mic revocation) | Gated spike; voice may be non-Fire only |
 | Silent updates on Fire OS | Shizuku in Phase 4; otherwise a manual tap |
 | Weather animation on API 28 | Canvas path first; AGSL optional |
+| Front camera unusable or too costly on Fire OS | P10.1 spike measures access, CPU, battery and heat before any presence code; on no-go only the HA presence source ships |
+| Camera presence read as surveillance | Off by default; frames never leave memory; HA shows when the camera runs; enabling needs a person at the device or ADB |
 | Clean-room leakage through executors | Two-sided separation; cache paths only in the spec-side brief; no constants in FEATURES.md; spec review by a second model family |
 | Clean-room leakage through Thomas | Recorded in PROVENANCE.md; design input via FEATURES.md or reasoned ADRs; no constants from memory |
 | Hardware verification bottleneck | Packets split CI vs hardware parts; device checks scripted so one session covers several packets |
