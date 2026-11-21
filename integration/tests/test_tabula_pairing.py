@@ -7,6 +7,9 @@ unknown device ids rejected with no side effects.
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 import aiohttp
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN, PAIR_PENDING_CAP, PAIR_RATE_LIMIT
@@ -150,6 +153,27 @@ async def test_pair_invalid_body(hass_setup, server, hub, session):
     assert (await short.json())["error"] == "invalid_request"
 
 
+async def test_pair_chunked_body(hass_setup, server, hub, session):
+    """A body that arrives in several chunks is read in full, not truncated."""
+    body = json.dumps(await pair_body(DEVICE)).encode()
+
+    async def slow_chunks():
+        yield body[:120]
+        await asyncio.sleep(0.05)  # two arrival waves: read(n) alone would truncate
+        yield body[120:]
+
+    response = await session.post(
+        f"{server}/api/tabula/pair",
+        data=slow_chunks(),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status == 202
+    assert (await response.json())["status"] == "pending"
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.pending.get(DEVICE) is not None
+
+
 async def test_pair_view_404_without_hub_entry(hass_setup, server, session):
     """The views exist with the component set up, but no entry: plain 404."""
     body = await pair_body(uid())
@@ -199,7 +223,24 @@ async def test_wrong_code_of_any_shape_burns_an_attempt(hass_setup, server, hub,
     await hass_setup.async_block_till_done()
     assert junk["type"] == "form"
     assert junk["errors"] == {"code": "invalid_code"}
-    # Attempts left; the real code still works.
+    right = await confirm_code(hass_setup, DEVICE, attempt.code)
+    assert right["reason"] == "paired"
+
+
+async def test_non_ascii_code_rejected_cleanly(hass_setup, server, hub, session):
+    """Full-width digits from an IME get a form error, not a TypeError/500."""
+    attempt, _ = await post_pair(session, server, DEVICE)
+    flow_id = await wait_for_flow(hass_setup, DEVICE)
+    # Full-width digits are the point of this test (some IMEs emit them); the
+    # ambiguity ruff flags is exactly what the flow must reject cleanly.
+    wide = await hass_setup.config_entries.flow.async_configure(
+        flow_id,
+        {"code": "１２３４５６"},  # noqa: RUF001 - intentional full-width digits
+    )
+    await hass_setup.async_block_till_done()
+    assert wide["type"] == "form"
+    assert wide["errors"] == {"code": "invalid_code"}
+    # It burned one attempt, but the real code still pairs.
     right = await confirm_code(hass_setup, DEVICE, attempt.code)
     assert right["reason"] == "paired"
 
@@ -244,6 +285,31 @@ async def test_expired_flow_aborts(hass_setup, server, hub, session):
     assert result["reason"] == "expired"
 
 
+async def test_repair_after_expiry_creates_a_fresh_flow(hass_setup, server, hub, session):
+    """Re-pairing after the TTL aborts the stale flow instead of blocking."""
+    stale_attempt, _ = await post_pair(session, server, DEVICE)
+    stale_flow = await wait_for_flow(hass_setup, DEVICE)
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    hub_runtime.pending._entries[DEVICE].expires_at -= 601.0  # pretend it is stale
+
+    attempt, response = await post_pair(session, server, DEVICE)
+    assert attempt.nonce != stale_attempt.nonce
+    flows = [
+        f
+        for f in hass_setup.config_entries.flow.async_progress_by_handler(DOMAIN)
+        if f["context"].get("device_id") == DEVICE
+    ]
+    assert len(flows) == 1
+    assert flows[0]["flow_id"] != stale_flow
+
+    result = await confirm_code(hass_setup, DEVICE, attempt.code)
+    assert result["type"] == "abort"
+    assert result["reason"] == "paired"
+    claimed = await post_claim(session, server, attempt, response)
+    assert claimed["status"] == "paired"
+
+
 # --- claim view (PROTOCOL.md 2.3) ----------------------------------------------------
 
 
@@ -280,6 +346,32 @@ async def test_credential_released_exactly_once(hass_setup, server, hub, session
     assert second.status == 404
     assert (await second.json())["error"] == "expired"
     assert token
+
+
+# --- confirmed but never claimed (ADR 0001 item 4) ----------------------------------
+
+
+async def test_confirmed_but_unclaimed_is_revoked_on_expiry(hass_setup, server, hub, session):
+    """A confirmed attempt that never claims leaves no live credential behind."""
+    attempt, _ = await post_pair(session, server, DEVICE)
+    result = await confirm_code(hass_setup, DEVICE, attempt.code)
+    assert result["reason"] == "paired"
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    record = hub_runtime.devices[DEVICE]
+    user_id = record.user_id
+    ha_device_id = record.ha_device_id
+    assert await hass_setup.auth.async_get_user(user_id) is not None
+
+    # The tablet never claims; the entry expires and the TTL sweep drops it.
+    hub_runtime.pending._entries[DEVICE].expires_at -= 601.0  # pretend it is stale
+    assert hub_runtime.pending.get(DEVICE) is None
+    await hass_setup.async_block_till_done()
+
+    assert DEVICE not in hub_runtime.devices
+    assert await hass_setup.auth.async_get_user(user_id) is None
+    assert dr.async_get(hass_setup).async_get(ha_device_id) is None
+    assert hub_runtime.entry.data.get("devices", {}) == {}
 
 
 # --- unknown device ids: no side effects (packet Done-when) -------------------------

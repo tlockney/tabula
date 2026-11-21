@@ -59,15 +59,22 @@ class PendingPairing:
 class PendingPairings:
     """TTL'd, cap-bounded store of pending pairings (PAIR_PENDING_TTL, PAIR_PENDING_CAP)."""
 
-    def __init__(self, clock: Any = time.monotonic) -> None:
+    def __init__(self, clock: Any = time.monotonic, on_drop: Any = None) -> None:
         self._clock = clock
+        self._on_drop = on_drop
         self._entries: dict[str, PendingPairing] = {}
 
     def sweep(self) -> None:
-        """Drop expired entries; also the cap enforcement point."""
+        """Drop expired entries; also the cap enforcement point.
+
+        ``on_drop`` (set by the hub) runs for every dropped entry: a confirmed
+        but unclaimed attempt leaves a live credential behind (ADR 0001 item 4).
+        """
         now = self._clock()
         for device_id in [d for d, p in self._entries.items() if p.expired(now)]:
-            del self._entries[device_id]
+            pending = self._entries.pop(device_id)
+            if self._on_drop is not None:
+                self._on_drop(pending)
 
     def get(self, device_id: str) -> PendingPairing | None:
         self.sweep()
@@ -170,10 +177,22 @@ def _http_error(
 
 
 async def _read_body(request: web.Request) -> dict[str, Any] | None:
-    """Read a JSON object of at most PAIR_MAX_BODY bytes (oversized → 400)."""
-    raw = await request.content.read(PAIR_MAX_BODY + 1)
-    if len(raw) > PAIR_MAX_BODY:
-        return None
+    """Read a JSON object of at most PAIR_MAX_BODY bytes (oversized → 400).
+
+    ``content.read(n)`` returns whatever has arrived so far, not the whole
+    body, so read in a loop until EOF and stop once the limit is exceeded.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await request.content.read(8192)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > PAIR_MAX_BODY:
+            return None
+        chunks.append(chunk)
+    raw = b"".join(chunks)
     try:
         body = json.loads(raw)
     except (ValueError, UnicodeDecodeError):

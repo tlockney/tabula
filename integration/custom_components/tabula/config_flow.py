@@ -72,9 +72,11 @@ class TabulaConfigFlow(ConfigFlow, domain=DOMAIN):
             # Expired, or replaced by a newer pairing attempt from the same device.
             return self.async_abort(reason="expired")
         code = user_input[CONF_CODE].strip()
-        if not secrets.compare_digest(code, pending.code):
-            # Any wrong entry burns an attempt, whatever shape it has (ADR 0002:
-            # PAIR_CODE_ATTEMPTS is the whole defense; the code is 6 digits).
+        # Compared as UTF-8 bytes: secrets.compare_digest raises TypeError on a
+        # non-ASCII str (full-width digits from some IMEs), which would 500 the
+        # flow. Any wrong entry still burns an attempt (ADR 0002: the code is 6
+        # digits, PAIR_CODE_ATTEMPTS is the whole defense).
+        if not secrets.compare_digest(code.encode(), pending.code.encode()):
             pending.attempts += 1
             if pending.attempts >= PAIR_CODE_ATTEMPTS:
                 hub.pending.delete(device_id)

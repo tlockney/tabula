@@ -35,6 +35,7 @@ from .const import (
     USER_NAME_PREFIX,
 )
 from .pairing import (
+    PendingPairing,
     PendingPairings,
     RateLimiter,
 )
@@ -130,7 +131,7 @@ class TabulaHub:
         # replaces an unsubscribed session. ActiveConnection has __slots__ and no
         # __weakref__, so a WeakKeyDictionary is not possible here.
         self.sessions: dict[Any, DeviceSession] = {}
-        self.pending = PendingPairings()
+        self.pending = PendingPairings(on_drop=self._drop_pending)
         self.pair_limiter = RateLimiter(PAIR_RATE_LIMIT, PAIR_RATE_WINDOW)
         self.claim_limiter = RateLimiter(CLAIM_RATE_LIMIT, PAIR_RATE_WINDOW)
         # (device_id, command_id) -> Future; the P1.4 command path resolves these.
@@ -234,6 +235,27 @@ class TabulaHub:
             await self.revoke_device(record)
 
     @callback
+    def _drop_pending(self, pending: PendingPairing) -> None:
+        """The TTL sweep expired a pairing attempt (ADR 0001 item 4).
+
+        A confirmed attempt that was never claimed leaves a live refresh token
+        nobody holds: schedule revocation of its user and HA device.
+        """
+        if pending.confirmed_token is None:
+            return
+        self.hass.async_create_task(self._revoke_unclaimed(pending))
+
+    async def _revoke_unclaimed(self, pending: PendingPairing) -> None:
+        """A confirmed-but-unclaimed attempt must leave nothing behind."""
+        record = self.devices.get(pending.device_id)
+        if record is not None:
+            # Revoking first pops the record, so the device-registry remove
+            # event below finds no record and does not revoke a second time.
+            await self.revoke_device(record)
+        if pending.confirmed_ha_device_id is not None:
+            dr.async_get(self.hass).async_remove_device(pending.confirmed_ha_device_id)
+
+    @callback
     def _persist(self) -> None:
         data = {"devices": {r.device_id: r.to_storage() for r in self.devices.values()}}
         if data != self.entry.data:
@@ -243,11 +265,16 @@ class TabulaHub:
 
     @callback
     def start_discovery_flow(self, pair_request: dict[str, Any]) -> None:
-        """A pending pairing gets an integration_discovery flow (ADR 0001 item 1)."""
+        """A pending pairing gets an integration_discovery flow (ADR 0001 item 1).
+
+        Reached only for a freshly created entry, so a flow still in progress
+        for this device belongs to an expired attempt: it would answer the new
+        code with "expired" and block re-pairing for the whole TTL. Abort it.
+        """
         device_id = pair_request["device_id"]
         for flow in self.hass.config_entries.flow.async_progress_by_handler(DOMAIN):
             if flow["context"].get("device_id") == device_id:
-                return  # already waiting for the user
+                self.hass.config_entries.flow.async_abort(flow["flow_id"])
         self.hass.async_create_task(
             self._async_create_flow(
                 {
