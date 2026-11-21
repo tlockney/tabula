@@ -1,0 +1,5 @@
+{
+  "connection": {
+    "ha_url": "http://ha.example.com:8123/?x=1"
+  }
+}

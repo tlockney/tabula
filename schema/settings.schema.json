@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tabula.lockney.net/schema/settings.schema.json",
   "title": "Tabula device settings (v1)",
-  "description": "Single source of truth for per-device settings. HA is authoritative (plan 5.6): the integration validates and stores settings, pushes them with set_settings (docs/PROTOCOL.md 4.5) and the device caches them. This file covers only what Phases 1-2 use: identity, connection, screen, screensaver, notifications and audio. Every property carries a role tag (x-tabula-role); profiles may manage only 'shared' keys (F-MGT-03, F-MGT-04). Every leaf property names its behavior in x-tabula-feature (a docs/FEATURES.md item ID, or 'independent design' with the ADR). Defaults come only from docs/decisions/0002-constants.md. A key HA does not send keeps the device default (PROTOCOL 4.5); settings.schema.json versions independently of the protocol (schema_version in set_settings).",
+  "description": "Single source of truth for per-device settings. HA is authoritative (plan 5.6): the integration validates and stores settings, pushes them with set_settings (docs/PROTOCOL.md 4.5) and the device caches them. This file covers only what Phases 1-2 use: identity, connection, screen, screensaver, notifications and audio. Every property carries a role tag (x-tabula-role); profiles may manage only 'shared' keys (F-MGT-03, F-MGT-04). No v1 property carries the 'hardware' role — codegen must not assume every role in x-tabula-roles has members. Every leaf property names its behavior in x-tabula-feature (a docs/FEATURES.md item ID, or 'independent design' with the ADR). Defaults come only from docs/decisions/0002-constants.md. A key HA does not send keeps the device default (PROTOCOL 4.5); settings.schema.json versions independently of the protocol (schema_version in set_settings).",
   "x-tabula-schema-version": 1,
   "x-tabula-roles": [
     "identity",
@@ -37,10 +37,10 @@
         "ha_url": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https?://",
+          "pattern": "^https?://[^/@\\s?#]+(/[^\\s?#]*)?$",
           "x-tabula-role": "connection",
           "x-tabula-feature": "F-MGT-11",
-          "description": "Base URL of the HA server (http or https, no trailing slash needed). Relative command paths (navigate, play_media) resolve against it (PROTOCOL 4.5). No default: the device keeps the address it paired with."
+          "description": "Base URL of the HA server: http or https scheme, host, optional port and optional path only — no userinfo, query or fragment. Credentials in the URL would be stored, cached and exported with settings, and a query or fragment breaks resolving relative navigate/play_media paths (PROTOCOL 4.5). No default: the device keeps the address it paired with."
         }
       }
     },
@@ -91,10 +91,11 @@
         "idle_timeout": {
           "type": "integer",
           "minimum": 1,
+          "maximum": 86400,
           "default": 300,
           "x-tabula-role": "shared",
           "x-tabula-feature": "F-SSV-01",
-          "description": "Seconds without interaction before the screensaver starts (F-SSV-01). Default per ADR 0002; the minimum is a non-zero floor, not an ADR value."
+          "description": "Seconds without interaction before the screensaver starts (F-SSV-01). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002."
         },
         "mode": {
           "enum": [
@@ -185,10 +186,11 @@
         "max_visible": {
           "type": "integer",
           "minimum": 1,
+          "maximum": 10,
           "default": 3,
           "x-tabula-role": "shared",
           "x-tabula-feature": "F-NTF-07",
-          "description": "Cards shown at once; overflow evicts the oldest (F-NTF-07). Default per ADR 0002; the minimum is a non-zero cap, not an ADR value."
+          "description": "Cards shown at once; overflow evicts the oldest (F-NTF-07). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002."
         }
       }
     },
