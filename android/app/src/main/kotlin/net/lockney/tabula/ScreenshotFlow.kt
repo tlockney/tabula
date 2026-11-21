@@ -32,7 +32,13 @@ class ScreenshotFlow(
         val base = haUrl()
             ?: return CommandHandler.Reply.Error(ErrorCode.FAILED, "no HA URL stored; cannot screenshot")
         val jpeg = bus.capture(quality)
-            ?: return CommandHandler.Reply.Error(ErrorCode.FAILED, "no dashboard is showing; cannot screenshot")
+            ?: return CommandHandler.Reply.Error(
+                ErrorCode.FAILED,
+                // Covers the dashboard-bus cases together (review nit): no
+                // handle attached (no dashboard), a window not laid out yet,
+                // or a JPEG encode that produced no image.
+                "no dashboard is showing or the capture produced no image; cannot screenshot",
+            )
         return try {
             val result = http.postBytes(
                 "$base/api/tabula/screenshot",

@@ -25,10 +25,9 @@ from pathlib import Path
 from aiohttp import web
 from homeassistant.components.http import KEY_HASS_USER, HomeAssistantView
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.http import HTTPStatus
 
-from .const import DOMAIN, SCREENSHOT_MAX_BYTES, SIGNAL_SCREENSHOT
+from .const import DOMAIN, SCREENSHOT_MAX_BYTES
 from .pairing import _http_error, _hub, _not_configured
 
 _LOGGER = logging.getLogger(__name__)
@@ -148,7 +147,10 @@ class TabulaScreenshotView(HomeAssistantView):
         # placeholder is served. Keyed by the command, so overlapping
         # captures cannot read each other's uploads (review).
         hub.note_screenshot_upload(command_id)
-        async_dispatcher_send(hub.hass, SIGNAL_SCREENSHOT.format(record.device_id))
+        # No dispatcher signal here: the capture flow (async_capture) signals
+        # the image entity once the command settles, so the entity writes one
+        # state, with the capture's own timestamp, instead of a throwaway
+        # state with the previous timestamp first (review nit).
         _LOGGER.debug("screenshot stored for %s (%d bytes)", record.device_id, len(data))
         body = {"status": "stored", "bytes": len(data)}
         # Strict sender: a body we would refuse ourselves is a bug.

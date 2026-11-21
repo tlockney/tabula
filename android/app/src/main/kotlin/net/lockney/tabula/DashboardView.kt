@@ -122,10 +122,15 @@ class DashboardView(
     // --- screenshot (P3.13, F-HA-12) ----------------------------------------------
 
     /**
-     * Draw the WebView on the main thread and JPEG-encode the bitmap on a
-     * worker: the draw must happen on the thread that owns the view, and the
-     * encode is the slow half, so it must not hold the main thread. A view
-     * with no size yet (the dashboard never laid out) captures nothing.
+     * Draw the activity's window and JPEG-encode the bitmap on a worker: the
+     * draw must happen on the thread that owns the views, and the encode is
+     * the slow half, so it must not hold the main thread. The packet's Do
+     * item 1 says "the app's window (dashboard WebView and overlays alike)":
+     * the decor view holds the whole stack (the dashboard WebView at the
+     * bottom, the screensaver overlay and the notification cards above it,
+     * MainActivity.onCreate/ensureDashboard), so a capture while an overlay
+     * is showing shows the screen as it actually is (review blocker) - a
+     * window that has not laid out yet captures nothing.
      *
      * Some Fire OS WebView builds draw their hardware-accelerated layers to a
      * blank bitmap via `View.draw`; if the hardware check (check_p313.sh step
@@ -134,11 +139,12 @@ class DashboardView(
      */
     override suspend fun capture(quality: Int?): ByteArray? {
         val bitmap = withContext(Dispatchers.Main) {
-            val w = view.width
-            val h = view.height
+            val decor = activity.window.decorView
+            val w = decor.width
+            val h = decor.height
             if (w <= 0 || h <= 0) return@withContext null
             android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888).also {
-                view.draw(android.graphics.Canvas(it))
+                decor.draw(android.graphics.Canvas(it))
             }
         } ?: return null
         try {
