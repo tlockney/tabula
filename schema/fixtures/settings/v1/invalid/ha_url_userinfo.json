@@ -1,0 +1,5 @@
+{
+  "connection": {
+    "ha_url": "http://user:pw@ha.example.com:8123"
+  }
+}

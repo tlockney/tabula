@@ -1,5 +1,7 @@
 # Build output
 /build/
+# Gradle keeps per-module build directories under android/ (docs/DEVELOPMENT.md)
+android/**/build/
 
 # Git worktrees (AGENTS.md, "Worktrees")
 /.worktrees/

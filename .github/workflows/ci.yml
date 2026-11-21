@@ -23,5 +23,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
+      # Android toolchain (P2.0): JDK from setup-java, command-line tools from
+      # the official setup-android action; make setup-android then installs the
+      # pinned SDK components. TABULA_REQUIRE_ANDROID stops tools/android_test.sh
+      # from skipping, so CI always runs the Android unit tests.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          # The action's default includes the retired 'tools' package, which
+          # sdkmanager no longer has; only platform-tools is needed.
+          packages: platform-tools
       - run: make setup
+      - run: make setup-android
       - run: make check
+        env:
+          TABULA_REQUIRE_ANDROID: "1"

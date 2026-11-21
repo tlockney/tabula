@@ -1,0 +1,28 @@
+{
+  "screen": {
+    "brightness": 60,
+    "adaptive_brightness": false,
+    "keep_screen_on": true
+  },
+  "screensaver": {
+    "enabled": true,
+    "idle_timeout": 300,
+    "mode": "clock",
+    "brightness": 20
+  },
+  "notifications": {
+    "default_duration": 10,
+    "default_level": "info",
+    "chime_by_level": {
+      "info": false,
+      "success": false,
+      "warning": true,
+      "error": true
+    },
+    "max_visible": 3
+  },
+  "audio": {
+    "media_volume": 50,
+    "announce_volume_boost": "none"
+  }
+}
