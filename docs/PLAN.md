@@ -160,7 +160,7 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
   | Device | Count | Status |
   | --- | --- | --- |
   | Amazon Fire HD 10 Plus (11th gen, Fire OS 7 / Android 9, API 28), 1920×1200 | 2 | First target. "Office Kiosk" is built and accepted first (Phase 2); the second unit is provisioned from DEVICE.md alone |
-  | Amazon Echo Show 8 (2nd gen), 1280×800 expected (confirmed by P0.6) | 2 | In v1, gated on the P0.6 feasibility check; boot start checked early in P2.1; brought up in P2.7 after the Fire tablets pass P2.6 |
+  | Amazon Echo Show 8 (2nd gen), 1280×800 expected (to be confirmed by P0.6) | 2 | In v1, gated on the P0.6 feasibility check; boot start checked early in P2.1; brought up in P2.7 after the Fire tablets pass P2.6 |
 
   All units are managed over ADB from the Mac.
 - **Later targets:** PF1007L photo frames (low-spec Android). They need a WebView of Chromium 67 or later (ADR 0001); check one before committing to them.
@@ -496,7 +496,7 @@ Output: `docs/decisions/0001-ha-platform.md`, recording what worked (with eviden
 
 - Foreground service, boot receiver, pairing screen (code + device\_id), nonce and claim, Keystore-backed credential storage, persisted device\_id and the WS client (auth, register with versions, command loop, ACKs, backoff, heartbeat). Battery, charging, connectivity and app-version sensors.
 - Start `docs/DEVICE.md`: the ADB provisioning steps this phase needs (install, `pm grant`, `appops set` for WRITE\_SETTINGS, deviceidle whitelist, `dpm set-active-admin`) as a script in `tools/device/`, plus ADB recovery steps.
-- Done when (hardware): the tablet pairs and appears in HA; airplane mode makes it unavailable; reconnect brings it back (ADB-scripted check + HA state query). If P0.6 said go, the same build is installed on one Echo Show, which is rebooted, and the hardware verifier records whether the service starts on boot.
+- Done when (hardware): the tablet pairs and appears in HA; airplane mode makes it unavailable; reconnect brings it back (ADB-scripted check + HA state query). If P0.6 said go, the same build is provisioned on one Echo Show per DEVICE.md, launched and paired, then rebooted, and the hardware verifier records whether the service starts on boot. If P0.6 has not concluded, this observation is skipped and noted.
 
 **P2.2 — Dashboard WebView** (deep; depends on P2.1; hardware)
 
