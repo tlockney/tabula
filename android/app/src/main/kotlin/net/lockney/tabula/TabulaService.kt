@@ -436,12 +436,27 @@ class TabulaService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE,
         )
+        // the picker source's photo picker (P3.8, F-SSV-12): the only
+        // device-side UI surface the kiosk has (ADR 0014)
+        val pickPhotos = PendingIntent.getActivity(
+            this,
+            1,
+            Intent(this, PhotoPickActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Tabula")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
             .setContentIntent(open)
             .setOngoing(true)
+            .addAction(
+                Notification.Action.Builder(
+                    android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_menu_gallery),
+                    "Pick photos",
+                    pickPhotos,
+                ).build(),
+            )
             .build()
     }
 

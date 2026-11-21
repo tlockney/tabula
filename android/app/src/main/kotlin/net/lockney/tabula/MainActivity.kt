@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var native: LinearLayout
     private var dashboard: DashboardView? = null
     private lateinit var screensaver: ScreensaverView
+    private lateinit var gallery: GalleryView
     private lateinit var cards: NotificationCardsView
 
     /** The touch being dispatched, so [onUserInteraction] can tell a card tap from other activity (F-NTF-12). */
@@ -69,6 +70,12 @@ class MainActivity : Activity() {
         // the screensaver overlay sits above everything else in the window (P2.4)
         screensaver = ScreensaverView(this)
         addContentView(screensaver, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        // the photo slideshow sits above the clock overlay and below the
+        // notification cards (P3.8; cards draw over every mode, F-SSV-21)
+        gallery = GalleryView(this, scope)
+        addContentView(gallery, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
         ))
         // the notification cards sit above the screensaver too (P2.5, F-NTF-12, F-SSV-21)
@@ -110,6 +117,9 @@ class MainActivity : Activity() {
         super.onUserInteraction()
         val touch = dispatchingTouch
         if (touch != null && cards.cardAt(touch.x, touch.y)) return
+        // an edge tap on a photo slideshow steps a slide and restarts the
+        // interval instead of dismissing (F-SSV-04's exception, F-SSV-12)
+        if (touch != null && gallery.edgeTap(touch.x)) return
         TabulaStatus.userActivity.tryEmit(Unit)
     }
 
@@ -126,7 +136,19 @@ class MainActivity : Activity() {
 
     private fun observe() {
         scope.launch {
-            TabulaStatus.screensaver.collect { screensaver.show(it) }
+            TabulaStatus.screensaver.collect { mode ->
+                // photos mode draws through the gallery overlay (P3.8); what
+                // the gallery cannot render (an unbuilt source, an empty
+                // playlist) falls back to the clock stand-in (ADR 0013 item 3)
+                if (mode == net.lockney.tabula.core.tlp.ScreensaverMode.PHOTOS &&
+                    gallery.show(store.settings.screensaver.photos)
+                ) {
+                    screensaver.show(null)
+                } else {
+                    gallery.hide()
+                    screensaver.show(mode)
+                }
+            }
         }
         scope.launch {
             TabulaStatus.notifications.collect { cards.render(it) }

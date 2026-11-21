@@ -95,6 +95,11 @@ class GalleryController(
     val nextDueMs: Long?
         get() = dueMs
 
+    /** True while a fetch or decode is in flight: the engine's loop waits on its wake channel instead of spinning. */
+    @get:Synchronized
+    val busy: Boolean
+        get() = running && loading
+
     /** Begin the slideshow: decode (or fetch) the first slide. Returns empty when the source has no content. */
     @Synchronized
     fun start(config: Config): Outcome {

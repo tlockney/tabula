@@ -180,8 +180,9 @@ class ScreensaverController(
     }
 
     companion object {
-        /** The modes P2.4 renders; the others arrive in Phase 3. */
-        val BUILT_MODES: Set<ScreensaverMode> = setOf(ScreensaverMode.CLOCK, ScreensaverMode.BLACK, ScreensaverMode.DIM)
+        /** The modes the app renders: P2.4's clock, black and dim, and photos (P3.8); the rest arrive in Phase 3. */
+        val BUILT_MODES: Set<ScreensaverMode> =
+            setOf(ScreensaverMode.CLOCK, ScreensaverMode.BLACK, ScreensaverMode.DIM, ScreensaverMode.PHOTOS)
 
         val FALLBACK = ScreensaverMode.CLOCK
 
