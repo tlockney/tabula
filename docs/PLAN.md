@@ -611,11 +611,11 @@ Issues #87–#91. The tablet senses people nearby and reacts: dismiss the screen
 | --- | --- | --- | --- |
 | P10.0 Spec: camera-based presence | spec, standard | none | review |
 | P10.1 Front camera spike (2 working days) | build, deep | none | hardware |
-| P10.2 Presence sources and HA presence sensor | build, deep | P3.5 | hardware |
+| P10.2 Presence sources and HA presence sensor | build, deep | P3.4, P3.5 | hardware |
 | P10.3 On-device camera presence detector | build, deep | P10.0, P10.1 (go), P10.2 | hardware |
 | P10.4 Camera presence in HA | build, standard | P10.3 | ci |
 
-P10.0, P10.1 and (once P3.5 merges) P10.2 run in parallel. On a no-go from P10.1, P10.3 and P10.4 close as not planned and the phase ends with P10.2.
+P10.0, P10.1 and (once P3.4 and P3.5 merge) P10.2 run in parallel. On a no-go from P10.1, P10.3 and P10.4 close as not planned and the phase ends with P10.2.
 
 Device constraints, which P10.1 measures and its ADR settles:
 
