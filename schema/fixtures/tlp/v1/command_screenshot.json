@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0015-shot",
+    "command": "screenshot",
+    "args": {
+      "quality": 70
+    }
+  }
+}

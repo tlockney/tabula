@@ -1,0 +1,17 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0003-settings",
+    "command": "set_settings",
+    "args": {
+      "revision": 3,
+      "schema_version": 1,
+      "settings": {
+        "screensaver": {
+          "mode": "clock"
+        }
+      }
+    }
+  }
+}

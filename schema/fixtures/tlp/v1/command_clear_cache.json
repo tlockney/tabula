@@ -1,0 +1,9 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0013-cache",
+    "command": "clear_cache",
+    "args": {}
+  }
+}

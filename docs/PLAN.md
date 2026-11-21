@@ -215,7 +215,7 @@ Android app ──(HA WebSocket API, per-device credential)──► HA
  ◄─ tabula/subscribe   long-lived subscription: server pushes command frames
 
 HTTP (authenticated HomeAssistantView):
-   POST /api/tabula/{device_id}/screenshot    binary JPEG upload
+   POST /api/tabula/screenshot                binary JPEG upload; device from token
 
 HTTP (unauthenticated, rate-limited; pairing only):
    POST /api/tabula/pair                       {device_id, code, nonce_hash}

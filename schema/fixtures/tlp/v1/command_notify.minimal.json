@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0005-notify",
+    "command": "notify",
+    "args": {
+      "message": "Laundry done"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0002-screen",
+    "command": "screen",
+    "args": {
+      "on": true,
+      "brightness": 40
+    }
+  }
+}

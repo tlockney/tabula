@@ -1,0 +1,17 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0001-notify",
+    "command": "notify",
+    "args": {
+      "message": "Front door open",
+      "title": "Door",
+      "level": "warning",
+      "duration": 15,
+      "icon": "mdi:door-open",
+      "chime": true,
+      "tag": "door"
+    }
+  }
+}

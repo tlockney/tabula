@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0004-screen",
+    "command": "screen",
+    "args": {
+      "on": false
+    }
+  }
+}

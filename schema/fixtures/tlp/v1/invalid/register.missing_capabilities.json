@@ -1,0 +1,31 @@
+{
+  "id": 1,
+  "type": "tabula/register",
+  "device_id": "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b",
+  "protocol_version": 1,
+  "schema_version": 1,
+  "app_version": "0.1.0",
+  "manufacturer": "Amazon",
+  "model": "KFTRPWI",
+  "os_version": "Fire OS 7.3.2.9 (Android 9)",
+  "settings_revision": 0,
+  "state": {
+    "screen_on": true,
+    "brightness": 60,
+    "adaptive_brightness": false,
+    "keep_screen_on": true,
+    "screensaver_active": false,
+    "screensaver_mode": "clock",
+    "screensaver_brightness": 20,
+    "next_screensaver": "2026-11-21T14:08:12Z",
+    "battery_level": 87,
+    "charging": true,
+    "network": "wifi",
+    "wifi_rssi": -54,
+    "current_page": "/lovelace/0",
+    "volume": 50,
+    "muted": false,
+    "media_state": "idle",
+    "app_version": "0.1.0"
+  }
+}

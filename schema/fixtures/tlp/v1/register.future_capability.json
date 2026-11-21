@@ -1,0 +1,20 @@
+{
+  "id": 1,
+  "type": "tabula/register",
+  "device_id": "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b",
+  "protocol_version": 1,
+  "schema_version": 1,
+  "app_version": "0.9.0",
+  "manufacturer": "Amazon",
+  "model": "KFTRPWI",
+  "os_version": "Fire OS 7.3.2.9 (Android 9)",
+  "capabilities": [
+    "screen",
+    "screensaver",
+    "weather_screensaver"
+  ],
+  "settings_revision": 4,
+  "state": {
+    "screen_on": true
+  }
+}

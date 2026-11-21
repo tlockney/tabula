@@ -1,0 +1,9 @@
+{
+  "id": 10,
+  "type": "tabula/event",
+  "event": "screensaver_started",
+  "data": {
+    "mode": "clock",
+    "trigger": "idle"
+  }
+}

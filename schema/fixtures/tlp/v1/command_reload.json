@@ -1,0 +1,9 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0011-reload",
+    "command": "reload",
+    "args": {}
+  }
+}

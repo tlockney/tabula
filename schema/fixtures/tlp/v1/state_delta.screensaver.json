@@ -1,0 +1,8 @@
+{
+  "id": 5,
+  "type": "tabula/state",
+  "state": {
+    "screensaver_active": true,
+    "next_screensaver": null
+  }
+}

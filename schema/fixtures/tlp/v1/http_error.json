@@ -1,0 +1,5 @@
+{
+  "error": "rate_limited",
+  "message": "Too many pairing requests",
+  "retry_after": 60
+}
