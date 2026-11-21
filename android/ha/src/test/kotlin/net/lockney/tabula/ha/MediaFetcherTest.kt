@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import net.lockney.tabula.core.Constants
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /**
@@ -122,6 +123,70 @@ class MediaFetcherTest {
         fetcher.fetch("${server.url}/a.mp3", file)
         val request = server.requests.first()
         assertTrue("Authorization" !in request.keys, "no credential is attached (ADR 0001 item 5): $request")
+    }
+
+    @Test
+    fun `the media read timeout is the ADR 0002 constant, not the library default`() {
+        val client = OkHttpExchange.noRedirectClient((Constants.MEDIA_READ_TIMEOUT_S * 1000).toLong())
+        assertEquals((Constants.MEDIA_READ_TIMEOUT_S * 1000).toLong(), client.readTimeoutMillis.toLong())
+    }
+
+    @Test
+    fun `a response that arrives after the cancellation is closed, not leaked`() = runBlocking {
+        // The response is delivered only after the coroutine was cancelled:
+        // the race awaitCall's resume handler must survive. A real OkHttp
+        // cannot reach it (OkHttp itself closes a cancelled call's response
+        // before delivery), so the call is a fake the test drives by hand.
+        val request = okhttp3.Request.Builder().url("http://127.0.0.1:1/audio").build()
+        var delivered: okhttp3.Callback? = null
+        var callCancelled = false
+        val call = object : okhttp3.Call {
+            override fun cancel() { callCancelled = true }
+
+            override fun execute() = error("not used")
+
+            override fun enqueue(responseCallback: okhttp3.Callback) { delivered = responseCallback }
+
+            override fun isExecuted() = false
+
+            override fun isCanceled() = callCancelled
+
+            override fun request() = request
+
+            override fun timeout() = okio.Timeout.NONE
+
+            override fun clone() = error("not used")
+        }
+        val fetcher = MediaFetcher(
+            client = object : okhttp3.OkHttpClient() {
+                override fun newCall(request: okhttp3.Request) = call
+            },
+        )
+        val job = launch { fetcher.awaitCall(request) }
+        withTimeout(10_000) { while (delivered == null) delay(10) } // reached the suspension
+        job.cancelAndJoin() // cancels the coroutine; invokeOnCancellation cancels the call
+        assertTrue(callCancelled, "cancelling the coroutine cancels the HTTP call")
+
+        val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val response = okhttp3.Response.Builder()
+            .request(request)
+            .protocol(okhttp3.Protocol.HTTP_1_1)
+            .code(200)
+            .message("OK")
+            .body(
+                object : okhttp3.ResponseBody() {
+                    override fun contentType() = null
+                    override fun source() = okio.Buffer()
+                    override fun contentLength() = 0L
+                    override fun close() {
+                        closed.set(true)
+                        super.close()
+                    }
+                },
+            )
+            .build()
+        delivered!!.onResponse(call, response) // the response arrives late, into the cancelled coroutine
+        assertTrue(closed.get(), "the late response was resumed but never closed")
     }
 }
 

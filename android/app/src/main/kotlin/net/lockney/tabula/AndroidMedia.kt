@@ -6,6 +6,7 @@ import android.media.MediaPlayer
 import android.media.ToneGenerator
 import java.io.File
 import kotlin.math.roundToInt
+import net.lockney.tabula.core.Constants
 
 /**
  * The Android side of notifications and audio (packet P2.5): the music
@@ -80,7 +81,7 @@ class NotificationChime {
 
     fun play() {
         runCatching {
-            (tone ?: ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100).also { tone = it })
+            (tone ?: ToneGenerator(AudioManager.STREAM_NOTIFICATION, Constants.CHIME_VOLUME).also { tone = it })
                 .startTone(ToneGenerator.TONE_PROP_BEEP)
         }
     }

@@ -61,7 +61,11 @@ class HttpException(val status: Int, message: String) : IOException(message)
  * sensible announcement - fails with HTTP 413 and leaves no file.
  */
 class MediaFetcher(
-    private val client: OkHttpClient = OkHttpExchange.noRedirectClient(),
+    private val client: OkHttpClient = OkHttpExchange.noRedirectClient(
+        // the download's read timeout is an ADR 0002 constant, not the
+        // library's default: a stalled server must not hold the load slot
+        (Constants.MEDIA_READ_TIMEOUT_S * 1000).toLong(),
+    ),
     private val maxBytes: Long = Constants.MEDIA_MAX_BYTES,
     private val maxRedirects: Int = Constants.MEDIA_MAX_REDIRECTS,
 ) {
@@ -116,8 +120,18 @@ class MediaFetcher(
         }
     }
 
-    /** Await one HTTP response; cancelling the coroutine cancels the call, which unblocks the read. */
-    private suspend fun awaitCall(request: Request): Response =
+    /**
+     * Await one HTTP response; cancelling the coroutine cancels the call, which
+     * unblocks the read. A response that arrives after the cancellation is
+     * closed by the resume handler rather than resumed into a cancelled
+     * coroutine (which would throw) or leaked.
+     *
+     * Internal (not private) so the fetch tests can drive the late-response
+     * race directly (like TlpClient's Connection for its concurrency test);
+     * OkHttp itself closes a cancelled call's response before delivery, so
+     * the race cannot be reached through a real [client.newCall].
+     */
+    internal suspend fun awaitCall(request: Request): Response =
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
             continuation.invokeOnCancellation { call.cancel() }
@@ -127,7 +141,7 @@ class MediaFetcher(
                 }
 
                 override fun onResponse(call: Call, response: Response) {
-                    continuation.resume(response)
+                    continuation.resume(response) { response.close() }
                 }
             })
         }
@@ -207,10 +221,15 @@ class OkHttpExchange(private val client: OkHttpClient = noRedirectClient()) : Ht
     }
 
     companion object {
-        /** A client that never follows a redirect, for credential-bearing calls. */
-        fun noRedirectClient(): OkHttpClient = OkHttpClient.Builder()
+        /**
+         * A client that never follows a redirect, for credential-bearing calls.
+         * [readTimeoutMs] sets an explicit socket read timeout where a caller
+         * needs one (the media download, ADR 0002 MEDIA_READ_TIMEOUT).
+         */
+        fun noRedirectClient(readTimeoutMs: Long? = null): OkHttpClient = OkHttpClient.Builder()
             .followRedirects(false)
             .followSslRedirects(false)
+            .apply { readTimeoutMs?.let { readTimeout(it, java.util.concurrent.TimeUnit.MILLISECONDS) } }
             .build()
     }
 }

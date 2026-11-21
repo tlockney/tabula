@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.roundToInt
+import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.notifications.NotificationCards
 import net.lockney.tabula.core.tlp.NotificationLevel
 
@@ -69,7 +70,7 @@ class NotificationCardsView(
             orientation = HORIZONTAL
             background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
-                setColor(CARD_BACKGROUND)
+                setColor(Constants.CARD_BACKGROUND)
             }
             setPadding(dp(12), dp(12), dp(16), dp(12))
             elevation = dp(8).toFloat()
@@ -130,9 +131,4 @@ class NotificationCardsView(
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
-
-    private companion object {
-        /** Card background: near-opaque dark, so whatever is behind only shows through faintly. */
-        const val CARD_BACKGROUND = 0xEE1C1C1C.toInt()
-    }
 }
