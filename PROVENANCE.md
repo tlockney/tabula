@@ -52,8 +52,8 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Screensaver mode select | F-HA-10, F-SSV-05 | P1.3 |
 | Buttons: restart app, reload dashboard, clear cache | F-HA-08 | P1.3 |
 | Sensors: battery level, charging, current page, app version, next screensaver | F-HA-05, F-HA-07 | P1.3 |
-| Network type sensor and Wi-Fi signal sensor (disabled by default), diagnostic | independent design | P1.3 |
-| Connectivity binary sensor that stays available and reads off when the tablet's link drops | F-HA-09 (its open question settled as "reads off") | P1.3 |
+| Network type sensor and Wi-Fi signal sensor (disabled by default), diagnostic | independent design (ADR 0009) | P1.3 |
+| Connectivity binary sensor that stays available and reads off when the tablet's link drops | F-HA-09 (its open question settled as "reads off", ADR 0009) | P1.3 |
 | Entities exist only for declared capabilities; a capability dropped at registration removes its entities | F-HA-02 | P1.3 |
 | Losing the link makes every other entity unavailable; reconnecting refreshes them from the tablet's state; nothing is removed on disconnect | F-HA-04 | P1.3 |
 | Entities of a paired tablet survive an HA restart (unavailable until it reconnects) | independent design | P1.3 |

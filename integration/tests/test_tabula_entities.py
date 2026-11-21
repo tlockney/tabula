@@ -13,6 +13,7 @@ import time
 import pytest
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
+from custom_components.tabula.entity import TabulaEntity
 from custom_components.tabula.sensor import _timestamp
 from helpers import Paired, frame_fixture, pair_device, ws_connect
 from homeassistant.const import STATE_UNAVAILABLE
@@ -304,3 +305,28 @@ async def test_no_capabilities_still_gets_always_present_entities(
 def test_timestamp_without_offset_is_unknown():
     assert _timestamp("2026-11-21T14:08:12") is None
     assert _timestamp("2026-11-21T14:08:12Z") is not None
+
+
+async def test_one_write_per_affected_entity_per_frame(
+    hass_setup, server, hub, session, paired, monkeypatch
+):
+    """A frame writes each entity that reads a changed key once, and no others."""
+    client = await ws_connect(session, server, paired.refresh_token)
+    await register(client, paired)
+    await hass_setup.async_block_till_done()
+
+    writes: list[str] = []
+    original = TabulaEntity.async_write_ha_state
+
+    def spy(self):
+        writes.append(self.entity_description.key)
+        original(self)
+
+    monkeypatch.setattr(TabulaEntity, "async_write_ha_state", spy)
+    reply = await client.reply(
+        frame_fixture("state_delta", id=3, state={"brightness": 10, "screen_on": False})
+    )
+    assert reply["success"], reply
+    await hass_setup.async_block_till_done()
+    assert writes == ["screen"]
+    await client.close()
