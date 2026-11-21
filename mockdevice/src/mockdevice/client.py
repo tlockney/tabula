@@ -164,6 +164,7 @@ class TLPClient:
         self.ping_interval = APP_PING_INTERVAL
         self.connections = 0
         self._tasks: set[asyncio.Task] = set()
+        self._registered_at: float | None = None
         self.superseded = 0  # connections closed because a newer one replaced them
         self._token: AccessToken | None = None
         self._stop = asyncio.Event()
@@ -182,7 +183,7 @@ class TLPClient:
     async def run(self, session: aiohttp.ClientSession) -> None:
         """Connect, and reconnect with backoff, until stop() or a fatal error."""
         while not self._stop.is_set():
-            started = time.monotonic()
+            self._registered_at = None
             try:
                 await self._session(session)
             except (CredentialRevoked, ProtocolRejected):
@@ -192,7 +193,10 @@ class TLPClient:
             self.registered.clear()
             if self._stop.is_set():
                 break
-            stable = time.monotonic() - started if self.connections else 0.0
+            # The reset window counts from successful registration (ADR 0002).
+            stable = (
+                time.monotonic() - self._registered_at if self._registered_at is not None else 0.0
+            )
             self.backoff.connection_ended(stable)
             delay = self.backoff.next_delay()
             _LOGGER.info("reconnecting in %.1f s", delay)
@@ -280,6 +284,7 @@ class TLPClient:
         if self.codec.classify_server_message(sub) != "ack":
             raise ConnectionError(f"subscribe refused: {sub}")
         self.connections += 1
+        self._registered_at = time.monotonic()
         self.registered.set()
         if self.on_registered:
             self.on_registered(reply)

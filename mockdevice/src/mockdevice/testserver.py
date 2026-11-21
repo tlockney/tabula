@@ -19,7 +19,13 @@ from typing import Any
 from aiohttp import WSMsgType, web
 
 from mockdevice.codec import Codec, Frame, FrameError
-from mockdevice.constants import CLAIM_POLL_INTERVAL, PROTOCOL_VERSION
+from mockdevice.constants import (
+    ACCESS_TOKEN_LIFETIME,
+    CLAIM_POLL_INTERVAL,
+    PAIR_CODE_ATTEMPTS,
+    PAIR_PENDING_TTL,
+    PROTOCOL_VERSION,
+)
 
 SUPPORTED_PROTOCOLS = {PROTOCOL_VERSION}
 V1_CAPABILITIES = {
@@ -34,9 +40,6 @@ V1_CAPABILITIES = {
     "logs",
     "screenshot",
 }
-PAIR_PENDING_TTL = 600
-PAIR_CODE_ATTEMPTS = 5
-ACCESS_TOKEN_LIFETIME = 1800
 
 
 @dataclass
@@ -106,6 +109,7 @@ class TestServer:
         await self._runner.setup()
         site = web.TCPSite(self._runner, "127.0.0.1", 0)
         await site.start()
+        # aiohttp has no public accessor for the port bound to 0; test-only use of a private.
         port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
         self.url = f"http://127.0.0.1:{port}"
         return self
