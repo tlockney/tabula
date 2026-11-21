@@ -489,6 +489,12 @@ class TestServer:
                         "registered": record.current is not None,
                         "state": record.state,
                         "capabilities": record.capabilities,
+                        "screenshot": {
+                            "uploaded": record.last_upload is not None,
+                            "bytes": len(record.last_upload or b""),
+                            "command_id": record.upload_command_id,
+                            "before_result": record.upload_before_result,
+                        },
                     }
                     for device_id, record in self.devices.items()
                 },
