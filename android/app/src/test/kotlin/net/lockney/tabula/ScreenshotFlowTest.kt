@@ -2,7 +2,10 @@ package net.lockney.tabula
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import net.lockney.tabula.ha.CommandHandler
 import net.lockney.tabula.ha.HttpExchange
@@ -65,7 +68,7 @@ class ScreenshotFlowTest {
     }
 
     private fun flow(
-        http: FakeHttp,
+        http: HttpExchange,
         bus: DashboardBus,
         screenOn: Boolean = true,
         url: String? = "http://ha:8123",
@@ -145,5 +148,42 @@ class ScreenshotFlowTest {
         val reply = run(flow(http, bus))
         assertTrue(reply is CommandHandler.Reply.Error)
         assertEquals(net.lockney.tabula.core.tlp.ErrorCode.FAILED, reply.code)
+    }
+
+    @Test
+    fun `a connection closing mid-upload propagates cancellation, not a failed reply`() = runTest {
+        // postBytes suspends forever: the upload is in flight when the
+        // connection dies and the command's scope is cancelled (review).
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val http = object : HttpExchange {
+            override suspend fun post(url: String, contentType: String, body: String, headers: Map<String, String>) =
+                HttpExchange.Result(200, "")
+
+            override suspend fun postBytes(
+                url: String,
+                contentType: String,
+                body: ByteArray,
+                headers: Map<String, String>,
+            ): HttpExchange.Result {
+                entered.complete(Unit)
+                kotlinx.coroutines.awaitCancellation()
+            }
+
+            override suspend fun get(url: String, headers: Map<String, String>) = HttpExchange.Result(200, "")
+        }
+        val bus = DashboardBus().apply { attach(CapturingHandle(byteArrayOf(1))) }
+        val outcome = kotlinx.coroutines.CompletableDeferred<CommandHandler.Reply>()
+        val job = launch { outcome.complete(flow(http, bus).capture(60, "cmd-9")) }
+        entered.await()
+
+        var completion: Throwable? = null
+        job.invokeOnCompletion { completion = it }
+        job.cancelAndJoin()
+
+        // The cancellation propagated: no reply was produced (a swallowed
+        // cancellation would have completed the outcome with FAILED), and the
+        // command's coroutine ended cancelled, not failed.
+        assertFalse(outcome.isCompleted)
+        assertTrue(completion is kotlinx.coroutines.CancellationException, "job ended by: $completion")
     }
 }

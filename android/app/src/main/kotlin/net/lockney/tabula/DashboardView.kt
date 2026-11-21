@@ -126,6 +126,11 @@ class DashboardView(
      * worker: the draw must happen on the thread that owns the view, and the
      * encode is the slow half, so it must not hold the main thread. A view
      * with no size yet (the dashboard never laid out) captures nothing.
+     *
+     * Some Fire OS WebView builds draw their hardware-accelerated layers to a
+     * blank bitmap via `View.draw`; if the hardware check (check_p313.sh step
+     * "panel on") reports the capture is blank, PixelCopy on the window is
+     * the fallback (review note, P3.13).
      */
     override suspend fun capture(quality: Int?): ByteArray? {
         val bitmap = withContext(Dispatchers.Main) {
@@ -136,16 +141,19 @@ class DashboardView(
                 view.draw(android.graphics.Canvas(it))
             }
         } ?: return null
-        return withContext(Dispatchers.Default) {
-            java.io.ByteArrayOutputStream().use { out ->
-                val ok = bitmap.compress(
-                    android.graphics.Bitmap.CompressFormat.JPEG,
-                    quality ?: Constants.SCREENSHOT_JPEG_QUALITY,
-                    out,
-                )
-                bitmap.recycle()
-                if (ok) out.toByteArray() else null
+        try {
+            return withContext(Dispatchers.Default) {
+                java.io.ByteArrayOutputStream().use { out ->
+                    val ok = bitmap.compress(
+                        android.graphics.Bitmap.CompressFormat.JPEG,
+                        quality ?: Constants.SCREENSHOT_JPEG_QUALITY,
+                        out,
+                    )
+                    if (ok) out.toByteArray() else null
+                }
             }
+        } finally {
+            bitmap.recycle() // however the encode ends, the bitmap is released
         }
     }
 

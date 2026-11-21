@@ -51,6 +51,11 @@ class ScreenshotFlow(
                     "screenshot upload rejected: HTTP ${result.status} ${result.body.take(200)}",
                 )
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // A closing connection cancelled the upload: not a command
+            // failure. Rethrow so the command's launch ends cancelled instead
+            // of writing a result to the dead socket (review must-fix).
+            throw e
         } catch (e: Exception) {
             CommandHandler.Reply.Error(ErrorCode.FAILED, "screenshot upload failed: ${e.message}")
         }
