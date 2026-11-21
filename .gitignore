@@ -1,0 +1,33 @@
+# Build output
+/build/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+
+# Android / Gradle (android/ arrives in P2.0)
+.gradle/
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local secrets and device credentials never belong in the repo
+.env
+.env.*
+*.local

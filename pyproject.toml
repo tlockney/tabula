@@ -1,0 +1,32 @@
+# Root Python project: repo tooling (tools/) and shared dev dependencies.
+# The integration and mock device join as uv workspace members in their packets.
+[project]
+name = "tabula-dev"
+version = "0.0.0"
+description = "Tabula repository tooling (not published)"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.8",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["build", "website/node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tools/tests"]
+addopts = "-q"
+pythonpath = ["."]

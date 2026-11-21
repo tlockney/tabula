@@ -1,0 +1,34 @@
+# Provenance
+
+This file records where Tabula's behavior comes from. It is append-only: entries are corrected by new entries, never removed or rewritten.
+
+## Prior art and process
+
+Tabula's feature set was informed by the public documentation of Kiosk Satellite, an Android kiosk app for Home Assistant licensed CC BY-NC-ND 4.0. That license forbids derivative works of its code and documentation, so Tabula is built clean-room:
+
+- **Spec side.** Only spec-side contexts read the original documentation, which is kept outside this repository. Their single output is `docs/FEATURES.md`: behavior described in our own words, with our own names and no constants.
+- **Build side.** Everyone who designs or writes code sees only this repository. Constants are chosen by the architect and recorded in ADRs.
+- No source code, APK, decompilation or SDK interface file of the original was read by either side.
+
+The full rules are in `AGENTS.md` and `docs/PLAN.md` section 2.
+
+## Human exception
+
+Thomas Lockney, who directs the project, has read the original documentation. To limit carry-over:
+
+- His design input to the build side goes through `docs/FEATURES.md` (spec side) or an ADR written as independent design with its reasoning stated.
+- He does not supply constants from memory. The architect picks them and records the reasoning in an ADR.
+
+## Restricted names
+
+The names below may appear only in the files listed under "Public framing" in `AGENTS.md`. `make check` reads this list and fails if a name appears anywhere else. One name per line, as a list item.
+
+- Kiosk Satellite
+
+## Feature provenance
+
+One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "independent design" (with the ADR, if any).
+
+| Behavior | Source | Packet |
+| --- | --- | --- |
+| (none yet) | | |
