@@ -23,7 +23,7 @@ adb() {
     if [[ -n "$serial" ]]; then command adb -s "$serial" "$@"; else command adb "$@"; fi
 }
 pkg=net.lockney.tabula
-log_tags="TabulaService:I TabulaService:W TabulaDashboard:I TabulaDashboard:W"
+log_tags="TabulaService:I TabulaDashboard:I"
 
 : "${TABULA_HA_URL:?set TABULA_HA_URL, e.g. http://homeassistant.local:8123}"
 : "${TABULA_HA_TOKEN:?set TABULA_HA_TOKEN to a long-lived access token}"
