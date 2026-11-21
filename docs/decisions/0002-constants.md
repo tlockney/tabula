@@ -180,6 +180,18 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | pixel_shift.enabled / interval / amplitude | default false / 10–86400 s, default 300 / 1–64 px, default 4 | Image-retention shift (F-SSV-22). Five minutes moves content often enough to prevent burn-in and rarely enough to be invisible; 4 px is under what an across-the-room viewer resolves. |
 | fade.enabled | default false | In/out fade (F-SSV-23) as an option; its duration is P3.14's to add with its own reasoning if it needs one. |
 
+### Gallery core (P3.8)
+
+Photo-slideshow constants (F-SSV-12, packet P3.8). Same rules: chosen here only.
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `GALLERY_TRANSITION_MS` | 800 ms | The slide, zoom and crossfade animations' duration. A slide change on a wall panel should read as a gentle change, not a flicker, and 800 ms matches `ADAPTIVE_FADE` — a pace already chosen for this panel — while staying far under the shortest slide interval (5 s), so no two transitions ever overlap. |
+| `GALLERY_RELEASE_MARGIN_MS` | 1000 ms | How long after a transition starts the replaced slide's bitmap is released. The view clears the old `ImageView` at the animation's end; the margin covers the animation's start lag and the main thread's jitter, so a recycled bitmap is never drawn, while the old bitmap still does not survive into the next slide (the margin plus the transition is under half the shortest interval). |
+| `GALLERY_SMART_FILL_TOLERANCE` | 10 % of the panel's aspect ratio | Smart fill's "shapes nearly match" line (F-SSV-12): within it, the small crop of always-fill beats bars (a 3:2 photo on a 16:10 panel crops 6 %); beyond it, the photo keeps its full frame over blurred, darkened bars (a 4:3 photo would lose 17 % of its width). One line, no per-photo tuning. |
+| `GALLERY_EDGE_ZONE_FRACTION` | 8 % of the panel width | The edge-tap zones' width (F-SSV-12). At a 1200 px panel that is 96 px — a thumb's arc from the bezel — while a deliberate dismiss tap aimed at the middle of a 1200 px panel cannot land inside 96 px of an edge by accident. |
+| `GALLERY_URL_HISTORY` | 8 photos | The URL source's history for stepping back (F-SSV-12): enough to review the last few fetches of a slow-changing source, while the ring's disk use stays bounded (8 × a screen-sized JPEG is a few MiB). |
+
 **At a Glance (`at_a_glance`, F-AAG-01/F-AAG-02).**
 
 | Field | Bound / default | Reasoning |
