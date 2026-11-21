@@ -1,0 +1,14 @@
+{
+  "announce_boost_unknown": "audio/announce_volume_boost",
+  "brightness_out_of_range": "screen/brightness",
+  "chime_unknown_level": "notifications/chime_by_level",
+  "duration_out_of_range": "notifications/default_duration",
+  "ha_url_wrong_scheme": "connection/ha_url",
+  "idle_timeout_zero": "screensaver/idle_timeout",
+  "max_visible_zero": "notifications/max_visible",
+  "media_volume_out_of_range": "audio/media_volume",
+  "mode_unknown": "screensaver/mode",
+  "name_empty": "identity/name",
+  "unknown_key": "",
+  "unknown_level": "notifications/default_level"
+}

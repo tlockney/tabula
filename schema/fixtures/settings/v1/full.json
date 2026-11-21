@@ -1,0 +1,34 @@
+{
+  "identity": {
+    "name": "Kitchen tablet"
+  },
+  "connection": {
+    "ha_url": "http://homeassistant.local:8123"
+  },
+  "screen": {
+    "brightness": 75,
+    "adaptive_brightness": true,
+    "keep_screen_on": false
+  },
+  "screensaver": {
+    "enabled": true,
+    "idle_timeout": 120,
+    "mode": "weather",
+    "brightness": 35
+  },
+  "notifications": {
+    "default_duration": 0,
+    "default_level": "warning",
+    "chime_by_level": {
+      "info": false,
+      "success": true,
+      "warning": true,
+      "error": true
+    },
+    "max_visible": 2
+  },
+  "audio": {
+    "media_volume": 80,
+    "announce_volume_boost": "none"
+  }
+}
