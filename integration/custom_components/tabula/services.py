@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.service import async_extract_referenced_entity_ids
+from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
 
 from . import DeviceRecord, TabulaHub
 from .const import DOMAIN
@@ -63,7 +63,9 @@ TARGET_KEYS = set(cv.ENTITY_SERVICE_FIELDS)
 
 def target_records(hass: HomeAssistant, hub: TabulaHub, call: ServiceCall) -> list[DeviceRecord]:
     """The paired tablets a service call targets; raises when it names none."""
-    selected = async_extract_referenced_entity_ids(hass, call)
+    # helpers.target is the stable home of this API: helpers.service's wrapper
+    # was removed in later HA releases (it is gone in 2026.11).
+    selected = async_extract_referenced_entity_ids(hass, TargetSelection(call.data))
     ha_devices = set(selected.referenced_devices)
     registry = er.async_get(hass)
     for entity_id in selected.referenced | selected.indirectly_referenced:
