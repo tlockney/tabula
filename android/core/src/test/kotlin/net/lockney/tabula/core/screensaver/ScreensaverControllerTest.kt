@@ -155,7 +155,29 @@ class ScreensaverControllerTest {
         c.onCommand(active = true, requested = ScreensaverMode.BLACK, nowMs = t0 + 62_000)
         assertEquals(0, c.brightnessWhileShown, "black keeps its own lowest level either way")
         c.onCommand(active = true, requested = ScreensaverMode.DIM, nowMs = t0 + 63_000)
-        assertEquals(20, c.brightnessWhileShown, "dim dims either way (F-SSV-07)")
+        assertEquals(10, c.brightnessWhileShown, "dim keeps its own level either way (F-SSV-07)")
+    }
+
+    @Test
+    fun `dim holds its own level, not the screensaver brightness`() {
+        val c = controller(timeoutS = 60) // brightness 20, dim_brightness 10 (the defaults, ADR 0002)
+        c.onCommand(active = true, requested = ScreensaverMode.DIM, nowMs = t0 + 1000)
+        assertEquals(10, c.brightnessWhileShown, "dim_brightness, not the borrowed screensaver brightness (ADR 0013 item 4, resolved)")
+
+        c.applySettings(
+            Screensaver(enabled = true, idleTimeout = 60, brightness = 20, dimBrightness = 35),
+            t0 + 2000,
+        )
+        assertEquals(35, c.brightnessWhileShown, "a settings change applies while dim shows")
+
+        c.applySettings(
+            Screensaver(enabled = true, idleTimeout = 60, brightness = 20, dimBrightness = 35, brightnessEnabled = false),
+            t0 + 3000,
+        )
+        assertEquals(35, c.brightnessWhileShown, "brightness_enabled does not govern dim's own level")
+
+        c.onCommand(active = false, requested = null, nowMs = t0 + 4000)
+        assertNull(c.brightnessWhileShown, "dismissed: the panel goes back to its own level")
     }
 
     @Test
