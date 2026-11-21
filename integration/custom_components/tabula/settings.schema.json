@@ -75,6 +75,33 @@
         }
       }
     },
+    "dashboard": {
+      "type": "object",
+      "description": "The dashboard's start target and return-after-idle rule (FEATURES F-DSH-02, F-DSH-15). Shared keys.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "start_path": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 2048,
+          "pattern": "^(?:$|/(?![/\\\\])[^\\\\s\\\\?]*$)",
+          "default": "",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-DSH-02",
+          "description": "The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0019). Bounds per ADR 0002."
+        },
+        "return_home_after": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400,
+          "default": 0,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-DSH-15",
+          "description": "Seconds without touch before the dashboard returns to its start target; 0 never returns. The timer keeps running behind a screensaver, so a covered panel resets without lighting. Bounds and the never default per ADR 0002."
+        }
+      }
+    },
     "screensaver": {
       "type": "object",
       "description": "Idle screensaver (FEATURES F-SSV): the engine keys and one nested group per mode.",
