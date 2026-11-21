@@ -4,8 +4,11 @@ Fixture layout (docs/PROTOCOL.md, "Fixtures"):
 
     schema/fixtures/tlp/v1/<frame>[.<variant>].json          must validate as <frame>
     schema/fixtures/tlp/v1/invalid/<frame>.<variant>.json    must fail validation as <frame>
+    schema/fixtures/tlp/v1/invalid/EXPECTED.json             where each invalid fixture fails
 
-Every frame type listed in the schema's x-tabula-frames needs at least one valid fixture.
+Every frame type listed in the schema's x-tabula-frames needs at least one valid fixture, and
+x-tabula-frames must match the frame $defs. Formats (date-time, uuid, …) are checked; this needs
+jsonschema's format extras (jsonschema[format-nongpl]).
 Exit status is non-zero when any check fails.
 """
 
@@ -24,10 +27,22 @@ SCHEMA = ROOT / "schema" / "tlp-v1.schema.json"
 FIXTURES = ROOT / "schema" / "fixtures" / "tlp" / "v1"
 
 
+SHARED_DEFS = {"device_id", "command_id", "capability", "error_code", "error", "state", "log_line"}
+
+
 def load_schema(path: Path = SCHEMA) -> dict[str, Any]:
     schema = json.loads(path.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     return schema
+
+
+def check_frame_list(schema: dict[str, Any]) -> list[str]:
+    """x-tabula-frames must list exactly the $defs that are not shared types."""
+    listed = set(schema.get("x-tabula-frames", []))
+    defined = set(schema.get("$defs", {})) - SHARED_DEFS
+    return [
+        f"x-tabula-frames lists '{f}' but $defs has no such entry" for f in sorted(listed - defined)
+    ] + [f"$defs entry '{f}' is missing from x-tabula-frames" for f in sorted(defined - listed)]
 
 
 def frame_validator(schema: dict[str, Any], frame: str) -> Draft202012Validator:
@@ -49,8 +64,14 @@ def frame_of(path: Path) -> str:
 def validate(schema: dict[str, Any], fixtures: Path = FIXTURES) -> tuple[list[str], list[str]]:
     """Return (report lines, errors)."""
     report: list[str] = []
-    errors: list[str] = []
+    errors: list[str] = check_frame_list(schema)
+    if errors:
+        return report, errors
     frames = schema["x-tabula-frames"]
+    expected_path = {}
+    expected_file = fixtures / "invalid" / "EXPECTED.json"
+    if expected_file.is_file():
+        expected_path = json.loads(expected_file.read_text(encoding="utf-8"))
     validators: dict[str, Draft202012Validator] = {}
     covered: set[str] = set()
 
@@ -60,7 +81,9 @@ def validate(schema: dict[str, Any], fixtures: Path = FIXTURES) -> tuple[list[st
         if frame not in frames:
             errors.append(f"{rel}: no frame type '{frame}' in the schema")
             return
-        validator = validators.setdefault(frame, frame_validator(schema, frame))
+        if frame not in validators:
+            validators[frame] = frame_validator(schema, frame)
+        validator = validators[frame]
         try:
             message = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
@@ -73,6 +96,13 @@ def validate(schema: dict[str, Any], fixtures: Path = FIXTURES) -> tuple[list[st
                 errors.append(f"{rel}: {where}: {p.message}")
         elif not expect_valid and not problems:
             errors.append(f"{rel}: expected to be invalid, but it validates")
+        elif not expect_valid and path.stem not in expected_path:
+            errors.append(f"{rel}: no entry in invalid/EXPECTED.json")
+        elif not expect_valid and not any(
+            "/".join(str(x) for x in p.path) == expected_path[path.stem] for p in problems
+        ):
+            got = sorted({"/".join(str(x) for x in p.path) for p in problems})
+            errors.append(f"{rel}: fails at {got}, expected at '{expected_path[path.stem]}'")
         else:
             report.append(f"{'ok  ' if expect_valid else 'bad '} {rel}")
             if expect_valid:
@@ -80,7 +110,9 @@ def validate(schema: dict[str, Any], fixtures: Path = FIXTURES) -> tuple[list[st
 
     for path in sorted(fixtures.glob("*.json")):
         check(path, expect_valid=True)
-    for path in sorted((fixtures / "invalid").glob("*.json")):
+    for path in sorted(
+        p for p in (fixtures / "invalid").glob("*.json") if p.name != "EXPECTED.json"
+    ):
         check(path, expect_valid=False)
     errors += [f"frame type '{f}' has no valid fixture" for f in frames if f not in covered]
     return report, errors

@@ -1,0 +1,14 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0016-media",
+    "command": "play_media",
+    "args": {
+      "url": "/api/tts_proxy/MColJQbb4pDnaAEVEeJf7Q.mp3",
+      "media_type": "music",
+      "announce": false,
+      "volume": 40
+    }
+  }
+}

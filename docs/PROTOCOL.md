@@ -31,16 +31,19 @@ Both views are unauthenticated, rate-limited per source IP (`PAIR_RATE_LIMIT`, `
    - `code`: `PAIR_CODE_DIGITS` random decimal digits, shown on screen with the first 8 characters of `device_id`.
 2. `POST /api/tabula/pair` with `http_pair_request`: `device_id`, `code`, `nonce_hash` (lowercase hex SHA-256 of the nonce's ASCII string), `protocol_version`, optional `name`, `model`.
    - `202` + `http_pair_response`: `status: "pending"`, `expires_in` (= `PAIR_PENDING_TTL`), `poll_interval` (= `CLAIM_POLL_INTERVAL`).
-   - `400 invalid_request`, `400 unsupported_protocol`, `429 rate_limited` (with `retry_after`), `503 too_many_pending` (more than `PAIR_PENDING_CAP` pending devices). Errors use `http_error`.
-   - A repeat request for the same `device_id` replaces its pending entry (new code, new hash) and restarts the TTL.
-3. The integration starts an `integration_discovery` flow for the device. The user opens it in HA and types the code shown on the tablet. After `PAIR_CODE_ATTEMPTS` wrong codes the pending entry is deleted and the device must start over.
+   - `400 invalid_request`, `400 unsupported_protocol`, `409 already_pending` (with `retry_after`), `429 rate_limited` (with `retry_after`), `503 too_many_pending` (more than `PAIR_PENDING_CAP` pending devices). Errors use `http_error`.
+   - The integration reads `protocol_version` before validating the rest of the body, so a device speaking a newer major gets `unsupported_protocol`, not `invalid_request`.
+   - A repeat request for a `device_id` that already has a pending entry is accepted only with the same `nonce_hash` (a retry; the entry is unchanged). A different `nonce_hash` gets `409 already_pending` until the entry expires, so whoever sees a pairing request on the network cannot replace it with their own nonce.
+3. The integration starts an `integration_discovery` flow for the device, bound to that pending entry's `nonce_hash`; confirming it pairs exactly that entry. The user opens it in HA and types the code shown on the tablet. After `PAIR_CODE_ATTEMPTS` wrong codes the pending entry is deleted and the device must start over.
 4. On a correct code the integration creates the device's system user and refresh token (ADR 0001) and an HA device under the hub.
 5. The device polls `POST /api/tabula/pair/claim` with `http_claim_request` (`device_id`, `nonce`) every `poll_interval` seconds:
    - `202` + `http_claim_pending` while the user has not confirmed.
    - `200` + `http_claim_response`: `credential` (`type: "refresh_token"`, `refresh_token`, `token_url: "/auth/token"`) and `ha_device_id`. Returned once; the pending record is then deleted.
-   - `403 bad_nonce` if the nonce does not hash to the stored value. The pending entry is kept (a guessing attacker cannot cancel a real pairing) and the attempt counts toward the rate limit.
+   - `403 bad_nonce` if the nonce does not hash to the stored value. The pending entry is kept (a guessing attacker cannot cancel a real pairing) and the attempt counts toward the rate limit. A device that gets `bad_nonce` for its own nonce stops polling and shows a pairing error; something else on the network has interfered.
    - `404 expired` if no pending or confirmed record exists for `device_id` (expired, never paired, or already claimed). Terminal: the device stops polling and starts pairing again.
 6. The device stores the refresh token (Keystore-backed) and discards nonce and code.
+
+**Threat model over plain http.** Pairing resists guessing (code attempts, nonce, rate limits) and replacement (above), but not an on-path attacker on a plain-http LAN: the nonce travels in each claim poll and the refresh token in the claim response, so someone who can read the traffic can race the claim or copy the credential. That is the same exposure as every later request (plan 5.2). Use HTTPS to remove it; DEVICE.md says so.
 
 ## 3. Credential use
 
@@ -57,6 +60,16 @@ Standard HA WebSocket API at `/api/websocket`: `auth_required` → `{"type":"aut
 - Integration-to-device commands arrive as HA subscription events on the `tabula/subscribe` ID: `{"id": <subscribe id>, "type": "event", "event": {command}}`.
 - **Connection binding:** every `tabula/*` command resolves the device from the authenticated user (`connection.user`). `device_id` in `tabula/register` must match the device bound to that user, else `unknown_device`. No other frame carries a device ID.
 - **Size:** no frame may exceed `FRAME_MAX_BYTES` (UTF-8 JSON). Larger data goes over HTTP.
+- **Keepalive:** HA's own pings are answered by the WebSocket library and are invisible to the app, so the device sends HA's `ping` command (`{"id": n, "type": "ping"}` → `{"id": n, "type": "pong"}`) every `APP_PING_INTERVAL` and treats a missing `pong` after `PONG_TIMEOUT` as a dead connection.
+
+### 4.0 Strict senders, tolerant receivers
+
+The schema describes exactly what a sender of this version produces, and fixtures are checked against it strictly. Receivers are tolerant so the app and the integration can update independently (plan 5.4):
+
+- A receiver ignores object members it does not know (it validates with `additionalProperties` relaxed), then validates the rest strictly.
+- The integration ignores capabilities it does not know and answers, in `register_result.capabilities`, the subset it accepts.
+- The device sends only state keys, events and frame types covered by the accepted capabilities (state keys and events defined in this document belong to v1 and are always covered by their capability or by none). A device with a newer feature therefore stays fully working against an older integration; the feature simply does not appear in HA.
+- The integration sends only commands and arguments covered by the device's declared capabilities.
 
 ### 4.1 Session order
 
@@ -68,13 +81,13 @@ The device waits up to `REGISTER_TIMEOUT` for each reply; on timeout it closes t
 
 ### 4.2 `register` → `register_result`
 
-Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and a full `state` snapshot.
+Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and its current `state`: every state key it supports, so HA starts from a complete picture. (The schema checks only that `state` is non-empty, since the same object type carries deltas.)
 
 Integration:
 
-- Rejects an unsupported `protocol_version` with `unsupported_protocol` (section 8), raises a repair issue and leaves the device unavailable.
-- Otherwise records the connection as the device's current one. A newer registration replaces an older connection for the same device; the integration closes the older socket.
-- Replies `register_result`: `ha_device_id`, the `protocol_version` it will speak, HA's `settings_revision` and `server_time`.
+- Reads `protocol_version` first, before validating the rest of the frame. An unsupported major gets `unsupported_protocol` (section 8), a repair issue, and the device stays unavailable.
+- Otherwise records the connection as the device's current one (see 4.9).
+- Replies `register_result`: `ha_device_id`, the `protocol_version` it will speak, HA's `settings_revision`, `server_time` and the accepted `capabilities`.
 - If HA's `settings_revision` differs from the device's, the integration sends `set_settings` right after the subscription opens (plan 5.6: HA is authoritative).
 
 ### 4.3 `subscribe`
@@ -99,7 +112,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `charging` | bool | |
 | `network` | `wifi` \| `ethernet` \| `none` | |
 | `wifi_rssi` | dBm \| null | |
-| `current_page` | string \| null | Frontend path shown in the WebView |
+| `current_page` | string \| null | Frontend path shown in the WebView, without query string or fragment |
 | `volume` | 0–100 | Media stream volume |
 | `muted` | bool | |
 | `media_state` | `idle` \| `playing` \| `paused` | |
@@ -109,48 +122,61 @@ The device coalesces changes and sends at most one `state` frame per `STATE_MIN_
 
 ### 4.5 Commands (integration → device)
 
-Every command event has `command_id` (unique per connection), `command` and `args`. The device must answer each with exactly one `tabula/result`.
+Every command event has `command_id` (unique per device for the integration's lifetime; a ULID works), `command` and `args`. The device must answer each with exactly one `tabula/result`, on the connection the command arrived on.
 
 | Command (`$defs`) | `args` | Capability |
 | --- | --- | --- |
 | `set_settings` (`command_set_settings`) | `revision`, `schema_version`, `settings` (full document, validated against the settings schema, P0.5) | always |
 | `screen` (`command_screen`) | `on`, `brightness` (at least one) | `screen` / `brightness` |
 | `notify` (`command_notify`) | `message`; optional `title`, `level`, `duration` (s, 0 = until dismissed), `icon` (`mdi:…`), `chime`, `tag` (same tag replaces) | `notifications` |
-| `play_media` (`command_play_media`) | absolute http(s) `url`, `media_type`, `announce`, optional `volume` | `audio` |
+| `play_media` (`command_play_media`) | `url` (absolute http(s) without userinfo, or a `/` path resolved against the device's HA base URL), `media_type`, `announce`, optional `volume`. The device never attaches its HA token when fetching it (ADR 0001 item 5). | `audio` |
 | `media_control` (`command_media_control`) | `action`: stop, pause, resume, set_volume (needs `volume`), mute, unmute | `audio` |
 | `screensaver` (`command_screensaver`) | `active`, optional `mode` | `screensaver` |
-| `navigate` (`command_navigate`) | `path` starting with `/` (HA frontend path only) | `navigation` |
+| `navigate` (`command_navigate`) | `path` starting with a single `/`. The device resolves it against its HA base URL and refuses (`invalid_args`) if the result leaves that origin (ADR 0001 item 3) | `navigation` |
 | `reload`, `restart_app`, `clear_cache` | `{}` | always |
 | `log_subscription` (`command_log_subscription`) | `enabled`, optional minimum `level` | `logs` |
 | `screenshot` (`command_screenshot`) | optional JPEG `quality` | `screenshot` (Phase 3) |
 
 The integration never sends a command whose capability the device did not declare.
 
+**Settings revisions.** HA is authoritative (plan 5.6). The `set_settings` the integration sends after registration, when revisions differ, is applied whatever its revision, so a device whose revision is ahead of HA's (after an HA backup restore, or after the hub was removed and added again) converges on HA's copy. Within one connection, a `set_settings` with a lower revision than one already applied on that connection gets `stale_revision`. A device whose own settings schema is newer than `schema_version` applies the document and keeps its defaults for keys HA does not send.
+
 ### 4.6 `result`
 
-`command_id`, `ok`; `error` (`code`, `message`) exactly when `ok` is false; optional `data` (for `set_settings`: `{"revision": n}` applied). The integration waits `COMMAND_TIMEOUT` (`SCREENSHOT_TIMEOUT` for `screenshot`) and raises `HomeAssistantError` on NACK or timeout. A result for an unknown or already-answered `command_id` is acknowledged and ignored.
+`command_id`, `ok`; `error` (`code`, `message`) exactly when `ok` is false; optional `data` (for `set_settings`: `{"revision": n}` applied; no other command returns data in v1). The integration waits `COMMAND_TIMEOUT` (`SCREENSHOT_TIMEOUT` for `screenshot`) and raises `HomeAssistantError` on NACK or timeout. It matches a result by (connection, `command_id`): a result for an unknown or already-answered command, or one arriving on a different connection, is acknowledged and ignored.
 
 `restart_app` is answered before the restart; `reload` and `clear_cache` when the reload has started.
 
 ### 4.7 `event`
 
-`event` and `data`. The integration fires `tabula_<event family>` on the HA bus (plan 5.7) with `device_id` (HA) and `tabula_device_id` added.
+`event` and `data` (each event's `data` has its own schema). The integration fires an HA bus event (plan 5.7) with `type` set to the TLP event name, plus `device_id` (HA) and `tabula_device_id`:
 
-| `event` | `data` |
-| --- | --- |
-| `notification_shown`, `notification_dismissed` | `tag` (if any), `reason` for dismissal: `touch`, `timeout`, `replaced`, `command` |
-| `notification_action` | `tag`, `action` (reserved for actionable notifications) |
-| `screensaver_started`, `screensaver_stopped` | `mode`, `trigger`: `idle`, `command`, `touch`, `schedule` |
-| `media_finished` | `url`, `reason`: `ended`, `stopped`, `error` |
-| `page_changed` | `path` |
+| `event` | `data` | HA bus event |
+| --- | --- | --- |
+| `notification_shown` | `tag` (if any) | `tabula_notification` |
+| `notification_dismissed` | `tag` (if any), `reason`: `touch`, `timeout`, `replaced`, `command` | `tabula_notification` |
+| `notification_action` | `tag`, `action` (reserved for actionable notifications) | `tabula_notification` |
+| `screensaver_started` | `mode`, `trigger`: `idle`, `command`, `schedule` | `tabula_screensaver` |
+| `screensaver_stopped` | `mode`, `trigger`: `touch`, `command`, `schedule` | `tabula_screensaver` |
+| `media_finished` | `reason`: `ended`, `stopped`, `error` | `tabula_media` |
+| `page_changed` | `path` (no query string or fragment) | `tabula_page` |
 
 ### 4.8 `log`
 
-While a log subscription is on, the device sends batches of 1–`LOG_MAX_LINES` lines (`ts`, `level`, `tag`, `message`), at most one frame per `LOG_MIN_INTERVAL`. The subscription ends on `log_subscription {enabled: false}`, on disconnect, or after `LOG_SUBSCRIPTION_TTL` (the integration re-sends to extend). Lines never contain credentials, nonces or codes.
+While a log subscription is on, the device sends batches of 1–`LOG_MAX_LINES` lines (`ts`, `level`, `tag`, `message`), at most one frame per `LOG_MIN_INTERVAL`. The subscription ends on `log_subscription {enabled: false}`, on disconnect, or after `LOG_SUBSCRIPTION_TTL` (the integration re-sends to extend). Lines never contain credentials, nonces or codes: the device redacts `Authorization` headers, `access_token=`, `authSig=` and `refresh_token` values, and strips query strings from URLs before logging. The same rule is why `current_page` and `page_changed` carry paths only.
+
+### 4.9 Superseded connections
+
+A device has one current connection. When a newer `tabula/register` succeeds for the same device (typically the device reconnected before HA noticed the old socket died):
+
+- The integration makes the new connection current and stops sending commands on the old one. HA gives integrations no way to close one socket, so the old one stays open until it dies.
+- Any later `tabula/*` frame on the old connection gets `error_result` `superseded` and has no effect, so stale state never overwrites fresh state. A device that receives `superseded` closes that socket.
+- Commands still waiting for results on the old connection fail when their timeout expires (results are matched per connection, 4.6).
+- The old connection closing does not change the device's availability; only the current connection's close does.
 
 ## 5. Screenshot upload (HTTP, authenticated)
 
-`POST /api/tabula/screenshot`, `Authorization: Bearer <access token>`, `Content-Type: image/jpeg`, header `X-Tabula-Command-Id: <command_id>`, body at most `SCREENSHOT_MAX_BYTES`. The device is resolved from the token (no device ID in the path; this replaces the `{device_id}` path in plan 5.1, for connection binding). Responses: `200 http_screenshot_response`, `401`, `403 forbidden` (not a Tabula device user), `413 too_large`. The device uploads first, then sends `tabula/result` for the `screenshot` command.
+`POST /api/tabula/screenshot`, `Authorization: Bearer <access token>`, `Content-Type: image/jpeg`, header `X-Tabula-Command-Id: <command_id>`, body at most `SCREENSHOT_MAX_BYTES`. The device is resolved from the token (no device ID in the path; this replaces the `{device_id}` path in plan 5.1, for connection binding). The integration accepts the upload only if the command ID names a pending `screenshot` command for that device. Responses: `200 http_screenshot_response`, `401`, `403 forbidden` (not a Tabula device user), `409 no_pending_screenshot`, `413 too_large`. The device uploads first, then sends `tabula/result` for the `screenshot` command.
 
 ## 6. Errors
 
@@ -164,7 +190,8 @@ While a log subscription is on, the device sends batches of 1–`LOG_MAX_LINES` 
 | `not_registered` | `tabula/*` frame before `tabula/register` |
 | `unsupported_command` | Device cannot run this command |
 | `invalid_args` | Command args fail validation on the device |
-| `stale_revision` | `set_settings` revision older than the applied one |
+| `stale_revision` | `set_settings` revision older than one applied on this connection (4.5) |
+| `superseded` | Frame on a connection that a newer registration replaced (4.9) |
 | `busy` | Device cannot run it now (e.g. a restart is in progress) |
 | `failed` | Anything else; `message` explains |
 
@@ -175,14 +202,15 @@ HA itself may also return its own codes (`unauthorized`, `unknown_command`, …)
 - The device keeps one WebSocket. On close or error it reconnects after a delay: attempt *n* (from 0) waits a uniformly random time in [d/2, d], d = min(`BACKOFF_MAX`, `BACKOFF_BASE` × 2ⁿ). *n* resets once a connection has stayed registered for `BACKOFF_RESET_AFTER`.
 - A reconnect repeats the whole session order (register, subscribe). Registration is idempotent.
 - Commands in flight when a connection drops are lost; the integration's wait times out and the HA service call fails. The device never replays results on a new connection.
-- HA pings every 55 s (ADR 0001 item 4); the device sends no keepalive of its own but treats `PING_TIMEOUT` without any inbound frame or pong as a dead connection.
+- The device's keepalive is the `ping` command (section 4); a missing `pong` ends the connection.
 - While disconnected, the device keeps working from cached settings (plan 5.6) and buffers nothing except the latest full state, which it sends with `register`.
 
 ## 8. Versions and compatibility
 
 - `protocol_version` is an integer major. This document is major 1.
 - The integration supports its current major and the one before it (plan 5.4). It answers `register_result.protocol_version` with the major it will speak, which is the device's.
-- Additive changes do not bump the major: new optional fields, new state keys, commands, events or frame types **gated by a new capability**. A device ignores unknown optional fields in commands; the integration never sends anything a capability does not cover.
+- Additive changes do not bump the major: new optional fields, new state keys, commands, events or frame types **gated by a new capability**. Both sides follow 4.0 (tolerant receivers, capability negotiation at registration).
+- Both sides read `protocol_version` before validating the rest of `tabula/register` or `http_pair_request`, so a mismatch is always reported as `unsupported_protocol`.
 - Anything else (removing or renaming a field, changing a type or meaning, making a field required) bumps the major, adds `schema/tlp-v<N>.schema.json` and a new fixture directory, and keeps the previous ones for the N-1 conformance run (plan 8).
 - `schema_version` versions the settings schema (P0.5) independently; translation rules are in plan 5.4.
 

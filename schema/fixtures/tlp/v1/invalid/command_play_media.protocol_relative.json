@@ -5,7 +5,7 @@
     "command_id": "c-0006-media",
     "command": "play_media",
     "args": {
-      "url": "/api/tts_proxy/x.mp3",
+      "url": "//evil.example/x.mp3",
       "media_type": "music",
       "announce": true
     }

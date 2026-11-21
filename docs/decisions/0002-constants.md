@@ -41,7 +41,8 @@ Each value is chosen from first principles: the HA facts in ADR 0001, the Office
 | `COMMAND_TIMEOUT` | 10 s | Long enough for a WebView reload to start or audio to buffer; short enough that an automation's failed service call is noticed. |
 | `SCREENSHOT_TIMEOUT` | 30 s | Capture, JPEG encode and upload on a weak SoC over Wi-Fi. |
 | `STATE_MIN_INTERVAL` | 250 ms | Plan 5.5 targets under 1 s from device change to HA state; 250 ms coalesces bursts (a brightness slider) with plenty of margin. |
-| `PING_TIMEOUT` | 120 s | HA pings every 55 s; two missed pings plus margin before the device declares the socket dead. |
+| `APP_PING_INTERVAL` | 30 s | The device's own `ping` command (HA's library pings are invisible to the app). Detects a dead socket within about 40 s, well inside the time someone notices a dashboard is stale, at negligible cost. |
+| `PONG_TIMEOUT` | 10 s | A `pong` takes milliseconds on a LAN; 10 s tolerates a busy HA. |
 
 ### Reconnect
 
@@ -75,6 +76,12 @@ These appear as bounds in `schema/tlp-v1.schema.json` and are chosen here:
 | `error.message`, `http_error.message` | 500 chars | |
 | `log_line.message` | 4000 chars | One stack trace frame group. |
 | `screenshot.quality` | 10–95 | JPEG quality outside this range is useless or wasteful. |
+| `app_version`, `manufacturer`, `model`, `os_version`, pair `name`/`model`, `tag`, `notification_action.action`, `log_line.tag` | 64 chars | Identifiers and labels; long enough for any real value. |
+| `current_page`, `navigate.path`, `page_changed.path` | 2048 chars | Common URL length limit in browsers and proxies. |
+| `play_media.url` | 4096 chars | Signed media URLs carry long query strings. |
+| `wifi_rssi` | −127 to 0 dBm | The range Android reports. |
+| `capabilities` (register) | 64 items, names `[a-z][a-z0-9_]{0,31}` | Room for many future capabilities while bounding the frame. |
+| `credential.refresh_token` | at least 32 chars | HA refresh tokens are far longer; a shorter one is a bug. |
 
 ### Phase 1–2 behavior defaults
 
@@ -98,7 +105,7 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 ## Consequences
 
 - PROTOCOL.md refers to these names; code defines each once (integration: `const.py`; device: a constants file) with a comment pointing here.
-- P0.5 takes the behavior defaults from this table.
+- P0.5 takes the behavior defaults from this table and adds their `PROVENANCE.md` rows ("independent design, ADR 0002") when it makes them settings.
 - Changing a value means editing this ADR (or superseding it) in the same pull request as the code.
 
 ## Alternatives considered

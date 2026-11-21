@@ -1,0 +1,8 @@
+{
+  "id": 13,
+  "type": "tabula/event",
+  "event": "media_finished",
+  "data": {
+    "reason": "ended"
+  }
+}

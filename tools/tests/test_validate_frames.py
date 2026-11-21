@@ -42,6 +42,44 @@ def test_unknown_frame_name(schema, tmp_path: Path):
     assert "bogus.json: no frame type 'bogus' in the schema" in errors
 
 
+def test_formats_are_checked(schema):
+    v = vf.frame_validator(schema, "state_delta")
+    assert not v.is_valid({"id": 1, "type": "tabula/state", "state": {"next_screensaver": "soon"}})
+    assert v.is_valid({"id": 1, "type": "tabula/state", "state": {"next_screensaver": None}})
+
+
+def test_frame_list_must_match_defs(schema):
+    broken = {**schema, "x-tabula-frames": [*schema["x-tabula-frames"], "ghost"]}
+    assert vf.check_frame_list(broken) == [
+        "x-tabula-frames lists 'ghost' but $defs has no such entry"
+    ]
+
+
+def test_invalid_fixture_must_fail_where_expected(schema, tmp_path: Path):
+    (tmp_path / "invalid").mkdir()
+    (tmp_path / "invalid" / "state_delta.x.json").write_text(
+        json.dumps({"id": 1, "type": "tabula/state", "state": {"brightness": 500}})
+    )
+    (tmp_path / "invalid" / "EXPECTED.json").write_text(
+        json.dumps({"state_delta.x": "state/muted"})
+    )
+    _, errors = vf.validate(schema, tmp_path)
+    assert (
+        "invalid/state_delta.x.json: fails at ['state/brightness'], expected at 'state/muted'"
+        in errors
+    )
+
+
+@pytest.mark.parametrize(
+    "path", ["//evil.example/x", "/\\evil.example", "https://evil.example/", "lovelace"]
+)
+def test_navigate_stays_on_origin(schema, path):
+    v = vf.frame_validator(schema, "command_navigate")
+    msg = json.loads((vf.FIXTURES / "command_navigate.json").read_text())
+    msg["event"]["args"]["path"] = path
+    assert not v.is_valid(msg)
+
+
 def test_unknown_state_key_rejected(schema):
     v = vf.frame_validator(schema, "state_delta")
     assert not v.is_valid({"id": 1, "type": "tabula/state", "state": {"nope": 1}})

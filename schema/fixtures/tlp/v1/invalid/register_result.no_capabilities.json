@@ -1,0 +1,11 @@
+{
+  "id": 1,
+  "type": "result",
+  "success": true,
+  "result": {
+    "ha_device_id": "9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50",
+    "protocol_version": 1,
+    "settings_revision": 3,
+    "server_time": "2026-11-21T14:03:12Z"
+  }
+}

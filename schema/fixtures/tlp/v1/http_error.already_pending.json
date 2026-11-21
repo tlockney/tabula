@@ -1,0 +1,5 @@
+{
+  "error": "already_pending",
+  "message": "A pairing attempt for this device is pending",
+  "retry_after": 600
+}

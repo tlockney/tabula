@@ -11,6 +11,8 @@
     "command_result",
     "event",
     "log",
+    "ping",
+    "pong",
     "register_result",
     "ack",
     "error_result",
@@ -44,7 +46,7 @@
     "command_id": {
       "type": "string",
       "pattern": "^[0-9A-Za-z_-]{8,64}$",
-      "description": "Opaque ID chosen by the integration; unique per device connection."
+      "description": "Opaque ID chosen by the integration; unique per device for the integration's lifetime (e.g. a ULID)."
     },
     "capability": {
       "enum": [
@@ -69,6 +71,7 @@
         "unsupported_command",
         "invalid_args",
         "stale_revision",
+        "superseded",
         "busy",
         "failed"
       ]
@@ -156,7 +159,9 @@
             "string",
             "null"
           ],
-          "maxLength": 2048
+          "pattern": "^/(?![/\\\\])[^\\s\\\\?#]*$",
+          "maxLength": 2048,
+          "description": "Frontend path only; query string and fragment are stripped."
         },
         "volume": {
           "type": "integer",
@@ -255,9 +260,12 @@
         "capabilities": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/capability"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,31}$"
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "maxItems": 64,
+          "description": "Capabilities the device supports, including ones this protocol version does not know; the integration ignores unknown ones."
         },
         "settings_revision": {
           "type": "integer",
@@ -402,7 +410,225 @@
         "event",
         "data"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "notification_shown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "notification_dismissed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "reason": {
+                    "enum": [
+                      "touch",
+                      "timeout",
+                      "replaced",
+                      "command"
+                    ]
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "notification_action"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "action": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "screensaver_started"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "clock",
+                      "black"
+                    ]
+                  },
+                  "trigger": {
+                    "enum": [
+                      "idle",
+                      "command",
+                      "schedule"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "trigger"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "screensaver_stopped"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "clock",
+                      "black"
+                    ]
+                  },
+                  "trigger": {
+                    "enum": [
+                      "touch",
+                      "command",
+                      "schedule"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "trigger"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "media_finished"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "ended",
+                      "stopped",
+                      "error"
+                    ]
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "page_changed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "pattern": "^/(?![/\\\\])[^\\s\\\\?#]*$",
+                    "maxLength": 2048
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      ]
     },
     "log": {
       "type": "object",
@@ -429,6 +655,42 @@
         "lines"
       ],
       "additionalProperties": false
+    },
+    "ping": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "ping"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "HA core keepalive command; the device sends it every APP_PING_INTERVAL."
+    },
+    "pong": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "pong"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "HA core's reply to ping."
     },
     "register_result": {
       "type": "object",
@@ -461,13 +723,22 @@
             "server_time": {
               "type": "string",
               "format": "date-time"
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/capability"
+              },
+              "uniqueItems": true,
+              "description": "The device's capabilities that the integration accepts. The device sends only state keys and events these cover."
             }
           },
           "required": [
             "ha_device_id",
             "protocol_version",
             "settings_revision",
-            "server_time"
+            "server_time",
+            "capabilities"
           ],
           "additionalProperties": false
         }
@@ -610,7 +881,7 @@
         "event"
       ],
       "additionalProperties": false,
-      "description": "Replace the device's settings. Validated against settings.schema.json (P0.5)."
+      "description": "Replace the device's settings document (validated against settings.schema.json, P0.5). Revision rules: docs/PROTOCOL.md 4.5."
     },
     "command_screen": {
       "type": "object",
@@ -768,9 +1039,9 @@
               "properties": {
                 "url": {
                   "type": "string",
-                  "format": "uri",
-                  "pattern": "^https?://",
-                  "maxLength": 4096
+                  "maxLength": 4096,
+                  "pattern": "^(https?://[^/@\\s?#]+(/[^\\s]*)?|/(?![/\\\\])[^\\s\\\\]*)$",
+                  "description": "Absolute http(s) URL without userinfo, or a path resolved against the device's HA base URL. The device never sends its HA token when fetching it."
                 },
                 "media_type": {
                   "enum": [
@@ -961,8 +1232,9 @@
               "properties": {
                 "path": {
                   "type": "string",
-                  "pattern": "^/",
-                  "maxLength": 2048
+                  "pattern": "^/(?![/\\\\])[^\\s\\\\]*$",
+                  "maxLength": 2048,
+                  "description": "HA frontend path; the device resolves it against its HA base URL and refuses any result off that origin."
                 }
               },
               "required": [
@@ -1350,11 +1622,12 @@
             "invalid_request",
             "rate_limited",
             "too_many_pending",
+            "already_pending",
             "expired",
             "bad_nonce",
-            "unknown_device",
             "unsupported_protocol",
             "forbidden",
+            "no_pending_screenshot",
             "too_large"
           ]
         },
