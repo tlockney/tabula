@@ -7,7 +7,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import net.lockney.tabula.core.settings.Dashboard
 
-/** The return-to-start countdown (F-DSH-15, ADR 0019). Times in ms. */
+/** The return-to-start countdown (F-DSH-15, ADR 0021). Times in ms. */
 class StartPageControllerTest {
     private val t0 = 1_800_000_000_000L // 2027-01-15T08:00:00Z
 

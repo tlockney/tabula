@@ -150,7 +150,7 @@ class TabulaService : Service() {
         startPage.applySettings(store.settings)
         startPage.start()
         scope.launch { TabulaStatus.userActivity.collect { startPage.onActivity() } }
-        // a page change - the user's or HA's - resets the countdown (ADR 0019);
+        // a page change - the user's or HA's - resets the countdown (ADR 0021);
         // listeners must be quick, and the controller call is synchronized
         stopPageListener = bus.onPageChanged { startPage.onPageChanged() }
     }

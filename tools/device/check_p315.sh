@@ -4,7 +4,7 @@
 #   an app restart land on it, the go-to-start-page button returns to it from
 #   another view, and with dashboard.return_home_after set short the tablet
 #   returns to the start page after idle - also while a screensaver covers it
-#   (F-DSH-02, F-DSH-15, F-NAV-03; ADR 0019).
+#   (F-DSH-02, F-DSH-15, F-NAV-03; ADR 0021).
 #
 # Prerequisites: the tablet runs a P3.15 build, is provisioned
 # (tools/device/provision.sh) and paired, the app is in the foreground, and

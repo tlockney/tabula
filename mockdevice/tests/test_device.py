@@ -210,7 +210,7 @@ async def test_a_changed_return_delay_restarts_the_mock_countdown():
     )
     clock["now"] += 50
     assert device.tick() is False
-    # a changed delay restarts the countdown (ADR 0019 item 5); an unchanged
+    # a changed delay restarts the countdown (ADR 0021 item 5); an unchanged
     # one (same document resent) does not
     await device.handle(
         "set_settings",

@@ -202,7 +202,7 @@ data class Screen(
 /** The dashboard's start target and return-after-idle rule (FEATURES F-DSH-02, F-DSH-15). Shared keys. */
 @Serializable
 data class Dashboard(
-    /** The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0019). Bounds per ADR 0002. */
+    /** The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0021). Bounds per ADR 0002. */
     @SerialName("start_path") val startPath: String = "",
     /** Seconds without touch before the dashboard returns to its start target; 0 never returns. The timer keeps running behind a screensaver, so a covered panel resets without lighting. Bounds and the never default per ADR 0002. */
     @SerialName("return_home_after") val returnHomeAfter: Int = 0

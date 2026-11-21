@@ -1,4 +1,4 @@
-# 0019: Start target as a settings path (P3.15)
+# 0021: Start target as a settings path (P3.15)
 
 Status: accepted
 Date: 2026-11-21

@@ -10,7 +10,7 @@ import net.lockney.tabula.core.settings.Dashboard
  * - The countdown runs from the last touch. Any touch resets it, and so does
  *   any page change - including a client-side route change inside the
  *   frontend - which is this feature's observable form of "HA navigated"
- *   (independent design, ADR 0019 item 3).
+ *   (independent design, ADR 0021 item 3).
  * - It keeps running while a screensaver shows and while the panel is off
  *   (F-OPT: a covered dashboard can reset overnight without lighting the
  *   screen); the screensaver's own idle timer is a separate countdown.
@@ -59,7 +59,7 @@ class StartPageController {
 
     /**
      * The dashboard's page changed (F-NAV-02): a navigation the user or HA
-     * made. The countdown starts over (independent design, ADR 0019 item 3).
+     * made. The countdown starts over (independent design, ADR 0021 item 3).
      */
     @Synchronized
     fun onPageChanged(nowMs: Long) {

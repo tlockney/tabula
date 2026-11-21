@@ -23,7 +23,7 @@ START_PATH = TabulaEntityDescription(
     key="start_path",
     translation_key="start_path",
     entity_category=EntityCategory.CONFIG,
-    setting="dashboard_start_path",  # a frontend path until the catalog (ADR 0019)
+    setting="dashboard_start_path",  # a frontend path until the catalog (ADR 0021)
 )
 
 

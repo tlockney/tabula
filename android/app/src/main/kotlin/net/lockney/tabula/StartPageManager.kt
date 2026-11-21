@@ -16,7 +16,7 @@ interface StartPageControl {
 }
 
 /**
- * The return-to-start timer (packet P3.15, FEATURES F-DSH-15, ADR 0019): runs
+ * The return-to-start timer (packet P3.15, FEATURES F-DSH-15, ADR 0021): runs
  * [StartPageController]'s countdown against the clock and carries out its
  * verdict by telling the dashboard to load the start target
  * ([DashboardBus.loadStart], F-DSH-02). Touches and page changes reach it from
@@ -72,7 +72,7 @@ class StartPageManager(
 
     /**
      * The dashboard's page changed (F-NAV-02): a navigation by the user or HA
-     * resets the countdown (independent design, ADR 0019 item 3).
+     * resets the countdown (independent design, ADR 0021 item 3).
      */
     fun onPageChanged() {
         controller.onPageChanged(now())

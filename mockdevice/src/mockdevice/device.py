@@ -191,7 +191,7 @@ class MockDevice:
         The countdown runs behind a screensaver (F-DSH-15, F-OPT) and from the
         last touch; a device already on the start target (path only, so a
         fragment target counts as home) stays put. Either way the countdown
-        starts over once the deadline has passed (ADR 0019).
+        starts over once the deadline has passed (ADR 0021).
         """
         delay = self._return_after()
         if delay <= 0:
@@ -240,7 +240,7 @@ class MockDevice:
             raise CommandError("stale_revision", f"revision {applied} applied on this connection")
         old_delay = self._return_after()
         self.settings = args["settings"]
-        # A changed return delay restarts the countdown (ADR 0019 item 5);
+        # A changed return delay restarts the countdown (ADR 0021 item 5);
         # a changed start path never moves the page (F-DSH-02).
         if self._return_after() != old_delay:
             self.touch()

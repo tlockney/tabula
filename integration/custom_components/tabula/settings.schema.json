@@ -89,7 +89,7 @@
           "default": "",
           "x-tabula-role": "shared",
           "x-tabula-feature": "F-DSH-02",
-          "description": "The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0019). Bounds per ADR 0002."
+          "description": "The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0021). Bounds per ADR 0002."
         },
         "return_home_after": {
           "type": "integer",
