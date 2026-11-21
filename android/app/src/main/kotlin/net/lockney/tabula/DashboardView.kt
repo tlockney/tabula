@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import net.lockney.tabula.ha.BridgeAnswer
 import net.lockney.tabula.ha.DashboardLinks
 import net.lockney.tabula.ha.ExternalAuthBridge
 import net.lockney.tabula.ha.LinkDecision
@@ -121,34 +122,47 @@ class DashboardView(
     /**
      * The frontend's contract (external_auth.ts in home-assistant/frontend,
      * Apache-2.0; the shape follows the Companion app's FrontendJsBridge.kt).
-     * Every answer is evaluated asynchronously on the main thread.
+     * Every answer is gated twice: at arrival on the page's URL, and again
+     * on the main thread against the WebView's own URL right before the
+     * script is evaluated, because building the answer (a token refresh) can
+     * suspend and the main frame may navigate in that gap.
      */
     private inner class Bridge {
         @JavascriptInterface
         fun getExternalAuth(payload: String) {
-            scope.launch { answer("getExternalAuth") { bridge.getExternalAuth(payload, onHaOrigin()) } }
+            scope.launch { answer("getExternalAuth") { bridgeCall { o, u -> bridge.getExternalAuth(payload, o, u) } } }
         }
 
         @JavascriptInterface
         fun revokeExternalAuth(payload: String) {
-            scope.launch { answer("revokeExternalAuth") { bridge.revokeExternalAuth(payload, onHaOrigin()) } }
+            scope.launch { answer("revokeExternalAuth") { bridgeCall { o, u -> bridge.revokeExternalAuth(payload, o, u) } } }
         }
 
         @JavascriptInterface
         fun externalBus(message: String) {
-            scope.launch { answer("externalBus") { bridge.externalBus(message, onHaOrigin()) } }
+            scope.launch { answer("externalBus") { bridgeCall { o, u -> bridge.externalBus(message, o, u) } } }
         }
     }
 
-    private suspend fun answer(what: String, js: suspend () -> String?) {
-        val script = js() ?: return // refused: off origin, bad payload, or nothing to say
-        Log.i(TAG, "bridge $what: answered")
-        main.post { runCatching { view.evaluateJavascript(script, null) } }
+    /** The arrival gate: the origin and the page's URL as of the call. */
+    private suspend fun <T> bridgeCall(call: suspend (origin: URI, pageUrl: String) -> T): T? {
+        val origin = haUri ?: return null
+        return call(origin, currentUrl.orEmpty())
     }
 
-    private fun onHaOrigin(): Boolean {
-        val origin = haUri ?: return false
-        return DashboardLinks.sameOrigin(currentUrl.orEmpty(), origin)
+    private suspend fun answer(what: String, build: suspend () -> BridgeAnswer?) {
+        val answer = build() ?: return // refused at arrival: off origin or bad payload
+        main.post {
+            // Re-check against the WebView's own URL, on this thread: an
+            // answer built for one page must not be evaluated on another that
+            // navigated in while the answer was being built.
+            if (!answer.deliverTo(view.url)) {
+                Log.i(TAG, "bridge $what: dropped; the page left the origin while the answer was built")
+                return@post
+            }
+            Log.i(TAG, "bridge $what: answered")
+            runCatching { view.evaluateJavascript(answer.script, null) }
+        }
     }
 
     // --- navigation ------------------------------------------------------------
@@ -177,6 +191,17 @@ class DashboardView(
 
         override fun onPageStarted(webView: WebView, url: String, favicon: android.graphics.Bitmap?) {
             currentUrl = url
+            // POST navigations (a form submit) and some scripted location
+            // changes never reach shouldOverrideUrlLoading, so the origin
+            // rule is enforced here too: an off-origin main-frame load is
+            // stopped and the dashboard returns to the HA root (ADR 0001
+            // item 3). The bridge also refuses such a page any answer.
+            val origin = haUri ?: return
+            if (DashboardLinks.offOriginLoad(url, origin)) {
+                Log.w(TAG, "dashboard: navigation to $url left the origin; returning to the dashboard")
+                webView.stopLoading()
+                load()
+            }
         }
 
         override fun onPageFinished(webView: WebView, url: String) {

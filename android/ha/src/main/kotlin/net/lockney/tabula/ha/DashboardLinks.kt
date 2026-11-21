@@ -74,6 +74,21 @@ object DashboardLinks {
     }
 
     /**
+     * Whether a main-frame load of [url] must be stopped because it left the
+     * HA origin (ADR 0001 item 3). POST navigations (a form submit) and some
+     * scripted `location` changes never reach [route] — the WebView does not
+     * call shouldOverrideUrlLoading for them — so the page-start callback
+     * enforces the rule a second time. `about:blank` is exempt (the WebView
+     * loads it when the dashboard is torn down), and a URL that does not
+     * parse is treated as off the origin.
+     */
+    fun offOriginLoad(url: String, haOrigin: URI): Boolean {
+        if (url == ABOUT_BLANK) return false
+        val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return true
+        return !sameOrigin(uri, haOrigin)
+    }
+
+    /**
      * Resolve a `navigate` command's [path] against [haOrigin] (PROTOCOL 4.5).
      * Returns the absolute URL to load, or null when the path is not a single
      * leading-slash path or the result leaves the origin (ADR 0001 item 3).
@@ -119,4 +134,7 @@ object DashboardLinks {
 
     private const val SCHEME_TABULA = "tabula"
     private const val SCHEME_APP = "app"
+
+    /** Loaded by the WebView when the dashboard is torn down; never an escape. */
+    private const val ABOUT_BLANK = "about:blank"
 }

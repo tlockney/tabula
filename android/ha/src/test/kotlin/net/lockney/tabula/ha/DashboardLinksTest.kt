@@ -96,4 +96,25 @@ class DashboardLinksTest {
         assertTrue(!DashboardLinks.sameOrigin("https://homeassistant.local:8123/home", ha))
         assertTrue(!DashboardLinks.sameOrigin("http://other.local:8123/home", ha))
     }
+
+    @Test
+    fun `an off-origin page start is stopped`() {
+        // POST navigations and some scripted location changes never reach
+        // shouldOverrideUrlLoading, so the page-start callback decides
+        assertTrue(DashboardLinks.offOriginLoad("http://evil.example/x", ha))
+        assertTrue(DashboardLinks.offOriginLoad("https://homeassistant.local:8123/", ha))
+        assertTrue(DashboardLinks.offOriginLoad("http://homeassistant.local:8124/", ha))
+        assertTrue(DashboardLinks.offOriginLoad("not a url", ha))
+    }
+
+    @Test
+    fun `an on-origin page start and teardown blank are left alone`() {
+        assertTrue(!DashboardLinks.offOriginLoad("http://homeassistant.local:8123/profile", ha))
+        assertTrue(!DashboardLinks.offOriginLoad("http://HOMEASSISTANT.local:8123/", ha))
+        // query strings and traversal stay on the origin; the origin is the
+        // whole rule, not the path
+        assertTrue(!DashboardLinks.offOriginLoad("http://homeassistant.local:8123/redirect?to=http://evil", ha))
+        assertTrue(!DashboardLinks.offOriginLoad("http://homeassistant.local:8123/../..//x", ha))
+        assertTrue(!DashboardLinks.offOriginLoad("about:blank", ha)) // loaded on teardown
+    }
 }
