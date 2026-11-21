@@ -237,12 +237,12 @@ Every check in items 1, 2, 4 and 5 produced identical evidence on HA 2025.1.0, 2
 
 Not re-tested at the floor: item 3 ran only on HA 2026.2.3 with frontend 20260128.6 (the V1 bridge it uses is older than 2025.1), and the Chromium 67 floor comes from frontend main, not the frontend shipped with 2025.1. `assist_satellite` exists in all three versions.
 
-The full integration suite is now verified across the supported range: `make test-ha-matrix` runs it against one HA release per leg (selected by the pytest-homeassistant-custom-component pin), CI runs all three legs, and all 148 tests pass on the floor, the pin and the newest release (local run, 2026-11-21):
+The full integration suite is now verified across the supported range: `make test-ha-matrix` runs it against one HA release per leg (selected by the pytest-homeassistant-custom-component pin), CI runs all three legs, and all 159 tests pass on the floor, the pin and the newest release (CI on this change, 2026-11-21):
 
 ```text
-phacc 0.13.201 -> HA 2025.1.0, Python 3.13: 148 passed
-phacc 0.13.316 -> HA 2026.2.3, Python 3.13: 148 passed
-phacc 0.13.375 -> HA 2026.10.4, Python 3.14: 148 passed
+phacc 0.13.201 -> HA 2025.1.0, Python 3.13: 159 passed
+phacc 0.13.316 -> HA 2026.2.3, Python 3.13: 159 passed
+phacc 0.13.375 -> HA 2026.10.4, Python 3.14: 159 passed
 ```
 
 Two harness differences are handled in the test scaffolding, not in the integration:
