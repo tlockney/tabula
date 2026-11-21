@@ -1,0 +1,6 @@
+# Repo uv config, passed to every uv call by the Makefile (UV_CONFIG_FILE).
+# Its job is to stop user- and system-level uv.toml files (for example a
+# rolling `exclude-newer`) from changing resolution, which makes
+# `uv sync --locked` reject uv.lock. Project settings stay in pyproject.toml
+# [tool.uv]; uv still reads those. Leave this file empty of settings unless
+# every environment (laptop, cloud VM, CI) should get them.
