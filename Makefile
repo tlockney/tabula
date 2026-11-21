@@ -26,7 +26,7 @@ setup: ## Install pinned tools and dependencies (idempotent)
 # --- Quality ---
 
 .PHONY: check
-check: lint test site ## Everything CI checks
+check: lint frames test site ## Everything CI checks
 
 .PHONY: lint
 lint: ## Lint, format check and repo policy checks
@@ -42,6 +42,12 @@ fmt: ## Apply formatting and auto-fixable lint
 .PHONY: test
 test: ## Run tests
 	$(UV) run pytest
+
+# --- Protocol ---
+
+.PHONY: frames
+frames: ## Validate golden TLP fixtures against the protocol schema
+	$(UV) run python tools/validate_frames.py
 
 # --- Website ---
 

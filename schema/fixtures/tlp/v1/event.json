@@ -1,0 +1,9 @@
+{
+  "id": 9,
+  "type": "tabula/event",
+  "event": "notification_dismissed",
+  "data": {
+    "tag": "door",
+    "reason": "touch"
+  }
+}

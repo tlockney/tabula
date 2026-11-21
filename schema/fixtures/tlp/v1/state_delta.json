@@ -1,0 +1,8 @@
+{
+  "id": 3,
+  "type": "tabula/state",
+  "state": {
+    "battery_level": 86,
+    "charging": false
+  }
+}

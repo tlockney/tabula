@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0008-media",
+    "command": "media_control",
+    "args": {
+      "action": "stop"
+    }
+  }
+}

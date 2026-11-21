@@ -1,0 +1,18 @@
+{
+  "id": 11,
+  "type": "tabula/log",
+  "lines": [
+    {
+      "ts": "2026-11-21T14:03:12Z",
+      "level": "info",
+      "tag": "ws",
+      "message": "registered as 9c1e4b7f"
+    },
+    {
+      "ts": "2026-11-21T14:03:12Z",
+      "level": "warning",
+      "tag": "web",
+      "message": "page load slow: 4210 ms"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0010-nav",
+    "command": "navigate",
+    "args": {
+      "path": "/lovelace/kitchen"
+    }
+  }
+}
