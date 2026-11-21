@@ -76,6 +76,10 @@ setup-android: ## Verify or install the Android toolchain (JDK 17-21, Android SD
 android-test: ## Android unit tests via the Gradle wrapper (skipped without a JDK)
 	@tools/android_test.sh
 
+.PHONY: android-apk
+android-apk: ## Build the debug APK for device provisioning (skipped without a JDK)
+	@tools/android_build.sh
+
 .PHONY: codegen
 codegen: ## Regenerate the Kotlin settings classes from the schema
 	$(UV) run python tools/codegen.py

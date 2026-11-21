@@ -72,3 +72,8 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | `tabula.screensaver` starts or stops the screensaver, optionally in a given mode | F-SSV-03, F-SSV-05, F-HA-14 | P1.4 |
 | `tts.speak` and `media_player.play_media` play on the tablet speaker; announcements are flagged; HA media is sent as a path the tablet fetches without its credential | F-TTS-01, F-TTS-02, ADR 0001 item 5, ADR 0010 | P1.4 |
 | A manual brightness change through the screen light turns adaptive brightness off | plan 5.5; F-SCR-07 open question settled in ADR 0010 | P1.4 |
+| The tablet's pairing screen asks for the HA address, then shows the code and the device ID to confirm in Home Assistant | independent design (ADR 0001, PROTOCOL.md section 2) | P2.1 |
+| The pairing credential is stored on the device encrypted under an Android Keystore key and excluded from backups | independent design (plan 5.2, ADR 0001) | P2.1 |
+| A foreground service with an ongoing notification keeps the HA connection alive, holds a Wi-Fi wake lock, and starts on boot after one manual launch | F-KSK-09 | P2.1 |
+| Diagnostic state reported to HA while connected: battery level, charging, network type, Wi-Fi signal strength, app version | F-HA-05, F-HA-09 | P2.1 |
+| A credential revoked in HA returns the tablet to its pairing screen | independent design (ADR 0001 item 2) | P2.1 |

@@ -85,8 +85,12 @@ class TestServer:
         accepted_capabilities: set[str] | None = None,
         settings_revision: int = 0,
         poll_interval: int = int(CLAIM_POLL_INTERVAL),
+        host: str = "127.0.0.1",
+        port: int = 0,
     ) -> None:
         self.poll_interval = poll_interval
+        self.host = host
+        self.port = port
         self.codec = codec or Codec()
         self.accepted = accepted_capabilities or V1_CAPABILITIES
         self.settings_revision = settings_revision
@@ -102,16 +106,21 @@ class TestServer:
         app.router.add_get("/api/websocket", self._websocket)
         app.router.add_post("/api/tabula/pair", self._pair)
         app.router.add_post("/api/tabula/pair/claim", self._claim)
+        # Test hooks (not part of TLP): what the Python tests and the Android
+        # JVM integration test drive the server with over HTTP.
+        app.router.add_post("/test/confirm", self._test_confirm)
+        app.router.add_post("/test/command", self._test_command)
+        app.router.add_get("/test/report", self._test_report)
         self._runner = web.AppRunner(app)
         self.url = ""
 
     async def __aenter__(self) -> TestServer:
         await self._runner.setup()
-        site = web.TCPSite(self._runner, "127.0.0.1", 0)
+        site = web.TCPSite(self._runner, self.host, self.port)
         await site.start()
         # aiohttp has no public accessor for the port bound to 0; test-only use of a private.
         port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
-        self.url = f"http://127.0.0.1:{port}"
+        self.url = f"http://{self.host}:{port}"
         return self
 
     async def __aexit__(self, *exc: object) -> None:
@@ -393,3 +402,53 @@ class TestServer:
         """Fail if the device sent any frame the schema rejects."""
         if self.problems:
             raise FrameError(None, self.problems)
+
+    # --- test hooks ---------------------------------------------------------
+    # Not part of TLP: an HTTP way to do what the in-process tests do directly,
+    # so an external client (the Android JVM integration test) can confirm a
+    # pairing, send a command and read the server's view.
+
+    async def _test_confirm(self, request: web.Request) -> web.Response:
+        body = await self._body(request)
+        if body is None or "device_id" not in body or "code" not in body:
+            return web.json_response({"error": "invalid_request"}, status=400)
+        device_id, code = str(body["device_id"]), str(body["code"])
+        if device_id not in self.pending:
+            return web.json_response({"error": "no_pending"}, status=404)
+        return web.json_response({"confirmed": self.confirm(device_id, code)})
+
+    async def _test_command(self, request: web.Request) -> web.Response:
+        body = await self._body(request)
+        if (
+            body is None
+            or "device_id" not in body
+            or "command" not in body
+            or not isinstance(body.get("args"), dict)
+        ):
+            return web.json_response({"error": "invalid_request"}, status=400)
+        try:
+            frame = await self.send_command(
+                str(body["device_id"]), str(body["command"]), body["args"], timeout=10.0
+            )
+        except TimeoutError:
+            return web.json_response({"error": "timeout"}, status=504)
+        except (KeyError, AssertionError):
+            return web.json_response({"error": "not_connected"}, status=409)
+        return web.json_response({"result": frame})
+
+    async def _test_report(self, request: web.Request) -> web.Response:
+        return web.json_response(
+            {
+                "problems": list(self.problems),
+                "devices": {
+                    device_id: {
+                        "connections": record.connections,
+                        "registered": record.current is not None,
+                        "state": record.state,
+                        "capabilities": record.capabilities,
+                    }
+                    for device_id, record in self.devices.items()
+                },
+                "received_frames": len(self.received),
+            }
+        )
