@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from mockdevice.client import TLPClient
+from mockdevice.client import Backoff, TLPClient
 from mockdevice.codec import Codec
 from mockdevice.device import Behavior, MockDevice
 from mockdevice.pairing import CredentialRevoked, PairingError, claim, request_pairing
 from mockdevice.store import DeviceStore
+from mockdevice.testserver import TestServer
 
 codec = Codec()
 
@@ -195,3 +196,46 @@ async def test_unsupported_protocol_pair(server, http):
     ) as resp:
         assert resp.status == 400
         assert (await resp.json())["error"] == "unsupported_protocol"
+
+
+class RecordingBackoff(Backoff):
+    def __init__(self) -> None:
+        super().__init__(base=0.01, cap=0.02)
+        self.stable: list[float] = []
+
+    def connection_ended(self, stable_for: float) -> None:
+        self.stable.append(stable_for)
+        super().connection_ended(stable_for)
+
+
+class SlowRegisterServer(TestServer):
+    """Takes REGISTER_DELAY to answer tabula/register."""
+
+    REGISTER_DELAY = 0.3
+
+    async def _register(self, session, frame):
+        await asyncio.sleep(self.REGISTER_DELAY)
+        return await super()._register(session, frame)
+
+
+async def test_backoff_reset_window_counts_from_registration(tmp_path, http):
+    async with SlowRegisterServer() as server:
+        store = DeviceStore.load(tmp_path / "d.json")
+        store.refresh_token = server.add_device(store.device_id).refresh_token
+        backoff = RecordingBackoff()
+        client = TLPClient(server.url, store, MockDevice(base_url=server.url), backoff=backoff)
+        task = asyncio.create_task(client.run(http))
+        try:
+            record = await server.wait_registered(store.device_id)
+            await asyncio.sleep(0.1)
+            # Stale access token: the next attempt fails at auth, before registering.
+            server.access.clear()
+            await record.current.ws.close()
+            await server.wait_registered(store.device_id, connections=2)
+        finally:
+            client.stop()
+            await asyncio.wait_for(task, 5)
+    # First connection: stable time excludes the slow register, so it is under the delay.
+    assert 0.1 <= backoff.stable[0] < SlowRegisterServer.REGISTER_DELAY
+    # The attempt that never registered counts as zero stable time.
+    assert backoff.stable[1] == 0.0

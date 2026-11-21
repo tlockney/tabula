@@ -194,7 +194,9 @@ class TLPClient:
             if self._stop.is_set():
                 break
             # The reset window counts from successful registration (ADR 0002).
-            stable = time.monotonic() - self._registered_at if self._registered_at else 0.0
+            stable = (
+                time.monotonic() - self._registered_at if self._registered_at is not None else 0.0
+            )
             self.backoff.connection_ended(stable)
             delay = self.backoff.next_delay()
             _LOGGER.info("reconnecting in %.1f s", delay)
