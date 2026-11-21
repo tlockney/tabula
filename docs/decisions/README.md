@@ -17,3 +17,4 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0009](0009-entity-model-p1.md) | Phase 1 entity model choices (P1.3) | accepted |
 | [0010](0010-commands-and-services-p1.md) | Commands and services (P1.4) | accepted |
 | [0012](0012-frontend-background-disconnect.md) | The frontend's background-disconnect behavior (P2.2) | accepted |
+| [0011](0011-screen-control.md) | Screen control on the device (P2.3); amends the last sentence of ADR 0010 item 5 | accepted |

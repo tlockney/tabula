@@ -378,13 +378,25 @@ async def async_set_setting(
     offline tablet is reconciled at its next registration. ``settings_key`` is
     the schema's flat field key (SettingsField.key, unique by construction).
     """
-    fields = hub.settings.schema.fields()
-    leaf = next((f for f in fields if f.key == settings_key), None)
-    if leaf is None:
-        raise SettingsError([f"unknown settings key: {settings_key}"])
+    return await async_set_settings(hub, device_id, {settings_key: value})
+
+
+async def async_set_settings(
+    hub: TabulaHub, device_id: str, values: dict[str, Any]
+) -> DeviceSettings:
+    """Write several settings leaves as one revision (see async_set_setting).
+
+    One save and one push, so a device never sees half of a change that
+    belongs together (the manual brightness level and adaptive off, ADR 0011).
+    """
+    fields = {f.key: f for f in hub.settings.schema.fields()}
+    unknown = [key for key in values if key not in fields]
+    if unknown:
+        raise SettingsError([f"unknown settings key: {key}" for key in unknown])
     stored = hub.settings.get(device_id)
     document = stored.settings if stored is not None else hub.settings.schema.defaults()
-    set_path(document, leaf.path, value)
+    for key, value in values.items():
+        set_path(document, fields[key].path, value)
     saved = await hub.settings.async_save(device_id, document)
     if (record := hub.devices.get(device_id)) is not None:
         schedule_settings_push(hub, record)

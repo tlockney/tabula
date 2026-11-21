@@ -6,23 +6,26 @@ import kotlinx.serialization.json.put
 import net.lockney.tabula.core.settings.SettingsCodec
 import net.lockney.tabula.core.tlp.Commands
 import net.lockney.tabula.core.tlp.ErrorCode
+import net.lockney.tabula.core.tlp.ScreenArgs
 import net.lockney.tabula.core.tlp.SetSettingsArgs
 import net.lockney.tabula.core.tlp.Tlp
 import net.lockney.tabula.ha.CommandHandler
 import net.lockney.tabula.ha.DashboardLinks
 
 /**
- * The commands a P2.2 device can run: the always-available commands
- * (PROTOCOL 4.5) plus navigate, which the `navigation` capability covers.
- * set_settings applies HA's document (plan 5.6), restart_app asks the service
- * to restart the app process, reload and clear_cache drive the dashboard
- * WebView through the [DashboardBus] (the command fails when no dashboard is
- * showing), and navigate loads an HA frontend path the origin check allows.
+ * The commands a P2.2 device runs (PROTOCOL 4.5): set_settings applies
+ * HA's document (plan 5.6) and hands it to screen control, screen (P2.3)
+ * goes to [screen] when the app declared screen control, restart_app asks
+ * the service to restart the app process, reload and clear_cache drive the
+ * dashboard WebView through the [DashboardBus] (the command fails when no
+ * dashboard is showing), and navigate loads an HA frontend path the origin
+ * check allows.
  */
 class TabulaCommands(
     private val store: TabulaStore,
     private val onRestartApp: () -> Unit,
-    private val dashboard: DashboardBus,
+    private val dashboard: DashboardBus = DashboardBus(),
+    private val screen: ScreenControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
@@ -37,6 +40,10 @@ class TabulaCommands(
             onRestartApp()
             CommandHandler.Reply.Ok()
         }
+        Commands.SCREEN -> screen?.let { control ->
+            val parsed = Tlp.json.decodeFromJsonElement(ScreenArgs.serializer(), args)
+            control.command(parsed.on, parsed.brightness)
+        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
         Commands.RELOAD -> dashboardAction("reload the dashboard") { dashboard.reload() }
         Commands.CLEAR_CACHE -> dashboardAction("clear the cache") { dashboard.clearCache() }
         Commands.NAVIGATE -> navigate(args)
@@ -85,6 +92,7 @@ class TabulaCommands(
         store.settings = settings
         store.settingsRevision = parsed.revision
         connectionRevision = parsed.revision
+        screen?.applySettings(settings)
         return CommandHandler.Reply.Ok(buildJsonObject { put("revision", parsed.revision) })
     }
 }

@@ -38,8 +38,8 @@ step "battery-optimization exemption (keeps the connection alive, F-KSK-09)"
 adb shell dumpsys deviceidle whitelist +"$pkg"
 
 step "device admin (panel power-off, P2.3)"
-# The admin receiver component arrives with P2.3; the error output is expected
-# until then and the step is not a gate for P2.1.
+# The admin receiver (force-lock only) arrived with P2.3; on older builds the
+# error output is expected. Without it the panel cannot be switched off.
 adb shell dpm set-active-admin "$pkg/.ScreenAdminReceiver" || true
 
 step "verify"

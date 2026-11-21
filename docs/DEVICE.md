@@ -39,7 +39,7 @@ The script installs the APK and applies the ADB grants (plan section 3):
 | `pm grant … WRITE_SETTINGS` + `appops set … WRITE_SETTINGS allow` | lets the app set window brightness (screen control, P2.3) | appops-backed permission, scripted form |
 | `appops set … SYSTEM_ALERT_WINDOW allow` | overlay drawing | self-relaunch after a crash (Phase 4) |
 | `dumpsys deviceidle whitelist +net.lockney.tabula` | battery-optimization exemption | keeps the HA connection alive with the screen off (F-KSK-09) |
-| `dpm set-active-admin …` | device administration | panel power-off needs it (P2.3); the admin receiver component does not exist until then, so the step prints an expected failure and is not a gate for P2.1 |
+| `dpm set-active-admin …` | device administration (force-lock only) | panel power-off (P2.3, F-SCR-14). Builds before P2.3 have no admin receiver, so the step prints an expected failure there. Without it, turning the screen light off is refused and the panel stays on |
 
 Finish by hand:
 
@@ -86,6 +86,34 @@ subcommand is OEM- and version-dependent (it may not exist on Fire OS 7's
 Android 9), so the script detects a missing subcommand and falls back to
 `svc wifi disable`/`enable`, which severs the HA link the same way. The
 output names which path ran.
+
+## Hardware check (P2.3, screen control)
+
+Install a P2.3 build, run `provision.sh` again (it grants WRITE_SETTINGS and
+activates the device admin), then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_LIGHT=light.<tablet>_screen TABULA_ADAPTIVE=switch.<tablet>_adaptive_brightness \
+ANDROID_SERIAL=<serial> tools/device/check_p23.sh
+```
+
+The entity ids are on the tablet's device page in HA. The script checks:
+
+1. WRITE_SETTINGS, the device admin and the light sensor;
+2. `light.turn_on` at 20 % and 80 % sets the system backlight to the matching
+   0-255 level;
+3. `light.turn_off` puts the device to sleep and `light.turn_on` wakes it;
+4. with adaptive brightness on and the network down, the backlight follows
+   the light sensor. The script asks you to cover the sensor, then shine a
+   light on it;
+5. after reconnecting, `light.turn_on` at 50 % sets the level and turns the
+   adaptive switch off in HA;
+6. the screen log.
+
+Without WRITE_SETTINGS the app dims only its own window, so step 2 fails on
+purpose. Without the device admin, turning the light off is refused with an
+error in HA, and the panel stays on.
 
 ### Echo Show 8 (2nd gen)
 

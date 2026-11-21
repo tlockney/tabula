@@ -61,8 +61,14 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         setContentView(root)
+        ScreenWindow.attach(this, scope)
         observe()
         TabulaService.start(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ScreenWindow.onResume(this)
     }
 
     override fun onDestroy() {

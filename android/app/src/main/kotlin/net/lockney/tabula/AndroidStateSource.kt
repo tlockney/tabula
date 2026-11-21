@@ -13,6 +13,7 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import net.lockney.tabula.core.tlp.NetworkType
 import net.lockney.tabula.core.tlp.StateDelta
 import net.lockney.tabula.ha.StateSource
+import net.lockney.tabula.ha.mergeState
 
 /**
  * The device's sensors as TLP state (packets P2.1 and P2.2): battery level,
@@ -21,11 +22,15 @@ import net.lockney.tabula.ha.StateSource
  * sticky broadcast, network type from the system's default network, page
  * changes from the [DashboardBus], and every change goes out as a delta on
  * an unlimited channel (PROTOCOL 4.4). [close] unregisters the listeners.
+ *
+ * [extra] adds state owned elsewhere (screen control, P2.3) to the full
+ * picture sent at registration; its changes arrive through [publish].
  */
 class AndroidStateSource(
     context: Context,
     private val appVersion: String,
     private val dashboard: DashboardBus,
+    private val extra: () -> StateDelta = { StateDelta() },
 ) : StateSource {
     private val appContext = context.applicationContext
     private val batteryManager = appContext.getSystemService(BatteryManager::class.java)
@@ -62,7 +67,7 @@ class AndroidStateSource(
             charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL
         }
-        return StateDelta(
+        val own = StateDelta(
             batteryLevel = level,
             charging = charging,
             network = currentNetwork(),
@@ -70,6 +75,7 @@ class AndroidStateSource(
             currentPage = dashboard.currentPage(),
             appVersion = appVersion,
         )
+        return mergeState(extra(), own)
     }
 
     override val changes: ReceiveChannel<StateDelta> = channel
@@ -91,9 +97,12 @@ class AndroidStateSource(
         return if (rssi <= -127 || rssi > 0) null else rssi.coerceIn(-127, 0)
     }
 
-    private fun push(delta: StateDelta) {
+    /** Send a change; thread-safe (the channel is unlimited). */
+    fun publish(delta: StateDelta) {
         if (delta.isNotEmpty) channel.trySend(delta)
     }
+
+    private fun push(delta: StateDelta) = publish(delta)
 
     private inner class BatteryReceiver : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {

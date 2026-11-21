@@ -1,6 +1,6 @@
 # 0010: Commands and services (P1.4)
 
-Status: accepted
+Status: accepted (item 5, last sentence, amended by 0011)
 Date: 2026-11-21
 Packet: P1.4
 

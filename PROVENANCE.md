@@ -85,3 +85,12 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | The reload and clear-cache buttons in HA drive the dashboard WebView, failing with an error when no dashboard is showing; tabula.navigate opens an HA frontend path in the WebView, refusing paths that would leave the HA origin | F-HA-08, F-NAV-01, PROTOCOL.md 4.5 | P2.2 |
 | The current-page sensor follows the page the WebView has finished loading, as a path without query string or fragment | F-NAV-02, PROTOCOL.md 4.4 | P2.2 |
 | The dashboard survives the screen turning off and on without reloading; the frontend itself suspends its socket after five minutes hidden and reconnects on return without a reload | F-DSH-01, ADR 0012 | P2.2 |
+| The tablet writes the system backlight and switches system auto-brightness to manual; without that permission it dims only its own window | F-SCR-03 | P2.3 |
+| HA's screen light sets the panel level and switches the panel off (device admin lock) and on (wake) | F-SCR-04, F-SCR-14 | P2.3 |
+| Without the device admin, switching the panel off is refused with an error and the panel stays on | F-SCR-14 | P2.3 |
+| The keep-screen-on setting stops the system display timeout while the dashboard window shows | F-SCR-01 | P2.3 |
+| Adaptive brightness follows the tablet's light sensor through a five-point curve on a logarithmic light axis, smooth and monotone, and keeps working while HA is unreachable | F-SCR-05, F-SCR-06; curve points in ADR 0002 | P2.3 |
+| Adaptive changes apply only past a change threshold and a minimum interval, and fade instead of jumping; a held reading is rechecked after the interval | F-SCR-08; constants in ADR 0002 | P2.3 |
+| A fresh install leaves the system brightness alone until HA has sent settings | F-SCR-02 (default chosen in ADR 0011) | P2.3 |
+| A manual level from the screen light is also written to HA's stored settings (brightness and adaptive off), so later settings pushes keep adaptive off | independent design (ADR 0011) | P2.3 |
+| A swipe-only lock screen is cleared when the panel wakes; a secured one stays | F-SCR-13 (unsecured case only) | P2.3 |
