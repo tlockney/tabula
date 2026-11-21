@@ -18,6 +18,18 @@ from mockdevice.pairing import CredentialRevoked
 STATE_DELTA = {"brightness": 42}
 
 
+@pytest.fixture
+def expected_lingering_timers(request: pytest.FixtureRequest) -> bool:
+    """HA 2026.10+ (aiohttp 3.14) can leave the websocket heartbeat timer
+    scheduled when auth revocation closes a live connection: aiohttp 3.14
+    stopped cancelling prior heartbeat handles to cut TimerHandle churn, and
+    the harness teardown predates an exemption for it. The socket belongs to
+    HA's websocket_api - tabula only calls the auth API - so for this one
+    test the harness downgrades the leftover timer to a warning. Every other
+    test keeps the strict check (ADR 0001 item 8)."""
+    return request.node.name == "test_delete_device_revokes_user_and_token"
+
+
 async def revoke_and_expect_dead(hass_setup, server, session, refresh_token: str) -> None:
     """A revoked credential no longer refreshes: CredentialRevoked."""
     with pytest.raises(CredentialRevoked):

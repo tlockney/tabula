@@ -158,6 +158,11 @@ async def test_upload_requires_jpeg_content_type(hass_setup, server, hub, sessio
         assert resp.status == 400
         assert (await resp.json())["error"] == "invalid_request"
 
+    # A rejected upload leaves the command pending (PROTOCOL 5); settle it so
+    # this test leaves no task behind on strict teardown harnesses.
+    pending.settle_ok(hub_runtime, registered.session)
+    await pending.task
+
     # The media type is matched with parameters (charset etc.) ignored, not as
     # an exact header string (review).
     pending = await registered.screenshot(hub_runtime)
@@ -172,6 +177,8 @@ async def test_upload_requires_jpeg_content_type(hass_setup, server, hub, sessio
     ) as resp:
         assert resp.status == 200
         assert (await resp.json())["status"] == "stored"
+    pending.settle_ok(hub_runtime, registered.session)
+    await pending.task
 
 
 async def test_upload_refuses_more_than_the_cap(hass_setup, server, hub, session, paired):
@@ -191,6 +198,11 @@ async def test_upload_refuses_more_than_the_cap(hass_setup, server, hub, session
     ) as resp:
         assert resp.status == 413
         assert (await resp.json())["error"] == "too_large"
+
+    # A rejected upload leaves the command pending (PROTOCOL 5); settle it so
+    # this test leaves no task behind on strict teardown harnesses.
+    pending.settle_ok(hub_runtime, registered.session)
+    await pending.task
 
 
 async def test_upload_stores_and_answers(hass_setup, server, hub, session, paired):

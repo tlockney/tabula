@@ -10,14 +10,40 @@ nothing fails silently (F-HA-14).
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.target import SelectedEntities
+
+# Target extraction moved across HA releases (supported floor 2025.1.0,
+# ADR 0001 item 8): helpers.service.async_extract_referenced_entity_ids took
+# the ServiceCall itself from the start; helpers.target exists from 2025.8 but
+# only gains TargetSelection in 2026.1, from where the helpers.service wrapper
+# is deprecated (a log line per call) and gone by 2026.10. Prefer helpers.target
+# wherever TargetSelection exists; fall back to helpers.service below it.
+try:
+    from homeassistant.helpers.target import (
+        TargetSelection,
+    )
+    from homeassistant.helpers.target import (
+        async_extract_referenced_entity_ids as _extract_target_ids,
+    )
+except ImportError:
+    from homeassistant.helpers.service import (
+        async_extract_referenced_entity_ids as _referenced_entity_ids,
+    )
+else:
+
+    def _referenced_entity_ids(hass: HomeAssistant, call: ServiceCall) -> SelectedEntities:
+        """Referenced entities of a service call, the HA 2026.1+ way."""
+        return _extract_target_ids(hass, TargetSelection(call.data))
+
 
 from . import DeviceRecord, TabulaHub
 from .const import DOMAIN
@@ -63,9 +89,7 @@ TARGET_KEYS = set(cv.ENTITY_SERVICE_FIELDS)
 
 def target_records(hass: HomeAssistant, hub: TabulaHub, call: ServiceCall) -> list[DeviceRecord]:
     """The paired tablets a service call targets; raises when it names none."""
-    # helpers.target is the stable home of this API: helpers.service's wrapper
-    # was removed in later HA releases (it is gone in 2026.11).
-    selected = async_extract_referenced_entity_ids(hass, TargetSelection(call.data))
+    selected = _referenced_entity_ids(hass, call)
     ha_devices = set(selected.referenced_devices)
     registry = er.async_get(hass)
     for entity_id in selected.referenced | selected.indirectly_referenced:

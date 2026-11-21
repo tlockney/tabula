@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 
 import aiohttp
@@ -11,6 +12,26 @@ from custom_components.tabula.const import DOMAIN, HUB_UNIQUE_ID
 from helpers import Paired, pair_device, uid
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+# Opening any aiohttp ClientSession creates an async DNS resolver; with aiodns
+# (a homeassistant dependency) that is a pycares channel, which starts a
+# daemon thread named "_run_safe_shutdown_loop" that lives for the rest of the
+# process. The phacc pin (0.13.316) exempts exactly that thread from its
+# verify_cleanup teardown; the floor harness (phacc 0.13.201, HA 2025.1)
+# predates the exemption, so there the first test to open a client session
+# would fail teardown for a thread that exists on every harness (ADR 0001
+# item 8). Starting it once here, before any test's thread snapshot, keeps
+# the teardown assertion meaningful on every leg. The resolver is kept
+# referenced on purpose: it owns the thread.
+_PRESERVED_RESOLVER: aiohttp.resolver.AsyncResolver | None = None
+
+
+async def _start_aiohttp_resolver_thread() -> None:
+    global _PRESERVED_RESOLVER
+    _PRESERVED_RESOLVER = aiohttp.resolver.AsyncResolver()
+
+
+asyncio.run(_start_aiohttp_resolver_thread())
 
 
 @pytest.fixture(name="hass_setup")
