@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TabulaHub
 from .entity import TabulaEntity, TabulaEntityDescription, setup_platform
+from .settings import async_set_setting
 
 SCREENSAVER_MODE = TabulaEntityDescription(
     key="screensaver_mode",
@@ -31,7 +32,7 @@ class TabulaScreensaverMode(TabulaEntity, SelectEntity):
         return self.device_state.get("screensaver_mode")
 
     async def async_select_option(self, option: str) -> None:
-        await self.async_command("set_settings", {"screensaver_mode": option})
+        await async_set_setting(self.hub, self.device_id, "screensaver_mode", option)
 
 
 async def async_setup_entry(

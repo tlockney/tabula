@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tabula.lockney.net/schema/settings.schema.json",
+  "title": "Tabula device settings (v1)",
+  "description": "Single source of truth for per-device settings. HA is authoritative (plan 5.6): the integration validates and stores settings, pushes them with set_settings (docs/PROTOCOL.md 4.5) and the device caches them. This file covers only what Phases 1-2 use: identity, connection, screen, screensaver, notifications and audio. Every property carries a role tag (x-tabula-role); profiles may manage only 'shared' keys (F-MGT-03, F-MGT-04). No v1 property carries the 'hardware' role — codegen must not assume every role in x-tabula-roles has members. Every leaf property names its behavior in x-tabula-feature (a docs/FEATURES.md item ID, or 'independent design' with the ADR). Defaults come only from docs/decisions/0002-constants.md. A key HA does not send keeps the device default (PROTOCOL 4.5); settings.schema.json versions independently of the protocol (schema_version in set_settings).",
+  "x-tabula-schema-version": 1,
+  "x-tabula-roles": [
+    "identity",
+    "connection",
+    "hardware",
+    "shared"
+  ],
+  "type": "object",
+  "properties": {
+    "identity": {
+      "type": "object",
+      "description": "Who the device is. Never shared by profiles (F-MGT-03).",
+      "x-tabula-role": "identity",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "x-tabula-role": "identity",
+          "x-tabula-feature": "F-MGT-03",
+          "description": "Display name of the device in HA. Set at pairing or from the settings editor; unique per device. Length bound per ADR 0002 (identifiers and labels). No default: an unset name falls back to the model or device ID."
+        }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "description": "How the device reaches HA. The only keys the recovery paths may change (F-MGT-11); never shared by profiles.",
+      "x-tabula-role": "connection",
+      "additionalProperties": false,
+      "properties": {
+        "ha_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://[^/@\\s?#]+(/[^\\s?#]*)?$",
+          "x-tabula-role": "connection",
+          "x-tabula-feature": "F-MGT-11",
+          "description": "Base URL of the HA server: http or https scheme, host, optional port and optional path only — no userinfo, query or fragment. Credentials in the URL would be stored, cached and exported with settings, and a query or fragment breaks resolving relative navigate/play_media paths (PROTOCOL 4.5). No default: the device keeps the address it paired with."
+        }
+      }
+    },
+    "screen": {
+      "type": "object",
+      "description": "Panel brightness and power behavior (FEATURES F-SCR). Brightness levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04).",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "brightness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 60,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SCR-04",
+          "description": "Stored base brightness, percent, applied by the screen light entity (F-SCR-04) and the screen command. Default per ADR 0002."
+        },
+        "adaptive_brightness": {
+          "type": "boolean",
+          "default": false,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SCR-05",
+          "description": "Brightness follows room light through a curve (F-SCR-05). Off until the curve is tuned on real hardware; default per ADR 0002."
+        },
+        "keep_screen_on": {
+          "type": "boolean",
+          "default": true,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SCR-01",
+          "description": "Stop the OS display timeout from turning the panel off while the app is in the foreground (F-SCR-01); the screensaver handles idling. Default per ADR 0002."
+        }
+      }
+    },
+    "screensaver": {
+      "type": "object",
+      "description": "Idle screensaver (FEATURES F-SSV).",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-01",
+          "description": "Master switch for the idle screensaver (F-SSV-01). Default per ADR 0002."
+        },
+        "idle_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "default": 300,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-01",
+          "description": "Seconds without interaction before the screensaver starts (F-SSV-01). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002."
+        },
+        "mode": {
+          "enum": [
+            "clock",
+            "weather",
+            "photos",
+            "website",
+            "dashboard",
+            "calendar",
+            "dim",
+            "black"
+          ],
+          "default": "clock",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-05",
+          "description": "The screensaver mode used next time it starts (F-SSV-05). Values match the screensaver_mode state key (PROTOCOL 4.4). Default per ADR 0002."
+        },
+        "brightness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 20,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-17",
+          "description": "Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Default per ADR 0002."
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Defaults for on-screen notification cards (FEATURES F-NTF). Per-card fields override these (F-NTF-01).",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "default_duration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600,
+          "default": 10,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-05",
+          "description": "Card lifetime in seconds when the notify command sends no duration; 0 means until dismissed. Bounds match the notify command's duration (ADR 0002); default per ADR 0002."
+        },
+        "default_level": {
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "error"
+          ],
+          "default": "info",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-02",
+          "description": "Severity used when a card's level is missing or unknown (F-NTF-02). Values match the notify command's level (PROTOCOL 4.5). Default per ADR 0002."
+        },
+        "chime_by_level": {
+          "type": "object",
+          "description": "Whether a card chimes, per severity (F-NTF-09): sound only for what needs attention. Defaults per ADR 0002: chime for warning and error, silent otherwise.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "info": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            },
+            "success": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            },
+            "warning": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            },
+            "error": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            }
+          }
+        },
+        "max_visible": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-07",
+          "description": "Cards shown at once; overflow evicts the oldest (F-NTF-07). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002."
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "description": "Volume levels (FEATURES F-TTS). Volume levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04).",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "media_volume": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 50,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-TTS-07",
+          "description": "Media channel volume, percent; the level the HA media_player controls (F-TTS-07). Default per ADR 0002."
+        },
+        "announce_volume_boost": {
+          "enum": [
+            "none"
+          ],
+          "default": "none",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "independent design (ADR 0002)",
+          "description": "Announcements play at the current volume; no hidden volume jumps. 'none' is the only v1 value (ADR 0002); a boost level, if ever designed, is added with its own ADR and bumps nothing else."
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

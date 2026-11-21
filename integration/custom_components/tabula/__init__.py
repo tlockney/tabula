@@ -44,6 +44,7 @@ from .pairing import (
     PendingPairings,
     RateLimiter,
 )
+from .settings import SettingsStore
 from .tlp import TLPValidator
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,6 +91,9 @@ class DeviceSession:
     registered: bool = False
     superseded: bool = False
     subscription_id: int | None = None
+    # The settings revision the device reported at registration (PROTOCOL.md
+    # 4.2); compared against HA's stored revision when the subscription opens.
+    reported_settings_revision: int | None = None
 
 
 @dataclass
@@ -106,6 +110,7 @@ class DeviceRecord:
     os_version: str | None = None
     app_version: str | None = None
     protocol_version: int | None = None
+    schema_version: int | None = None
     capabilities: list[str] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
     events: deque = field(default_factory=lambda: deque(maxlen=50))
@@ -124,6 +129,7 @@ class DeviceRecord:
         self.os_version = frame.get("os_version")
         self.app_version = frame.get("app_version")
         self.protocol_version = frame.get("protocol_version")
+        self.schema_version = frame.get("schema_version")
         self.state = dict(frame["state"])
         self.capabilities = [c for c in frame["capabilities"] if c in known]
 
@@ -150,6 +156,8 @@ class TabulaHub:
         self.tlp = TLPValidator()
         self.devices: dict[str, DeviceRecord] = {}
         self.by_user: dict[str, str] = {}
+        # Per-device settings documents and revisions (settings.py, plan 5.6).
+        self.settings = SettingsStore(hass)
         # Strong refs, keyed by the connection object; entries are removed when the
         # subscription's cleanup runs (socket close) and when a newer registration
         # replaces an unsubscribed session. ActiveConnection has __slots__ and no
@@ -246,6 +254,7 @@ class TabulaHub:
         """Tokens first, then the user (ADR 0001 item 3); removing a token closes the
         device's live WebSocket (HA registers a revoke callback per connection)."""
         await self._revoke_user(record.user_id)
+        await self.settings.async_remove(record.device_id)
         self.devices.pop(record.device_id, None)
         self.by_user.pop(record.user_id, None)
         ir.async_delete_issue(
@@ -386,6 +395,7 @@ class TabulaHub:
             record.current.superseded = True
         record.current = session
         session.registered = True
+        session.reported_settings_revision = frame["settings_revision"]
         # Superseded sessions stay in place: every frame they send answers
         # "superseded" until the socket closes (PROTOCOL.md 4.9). The close
         # itself runs the cleanup registered under the register's msg id, so
@@ -407,7 +417,7 @@ class TabulaHub:
         result = {
             "ha_device_id": record.ha_device_id,
             "protocol_version": PROTOCOL_VERSION,
-            "settings_revision": 0,  # HA has no settings store until P1.5
+            "settings_revision": self.settings.revision(record.device_id),
             "server_time": _utc_now(),
             "capabilities": record.capabilities,
         }
@@ -416,6 +426,21 @@ class TabulaHub:
             {"id": frame["id"], "type": "result", "success": True, "result": result},
         )
         return result
+
+    @callback
+    def apply_identity(self, record: DeviceRecord) -> None:
+        """identity.name in the stored settings is the device's display name
+        (F-MGT-03, set at pairing or from the settings editor)."""
+        stored = self.settings.get(record.device_id)
+        name = (stored.settings.get("identity") or {}).get("name") if stored else None
+        if not name or name == record.name:
+            return
+        record.name = name
+        registry = dr.async_get(self.hass)
+        entry = registry.async_get(record.ha_device_id)
+        if entry is not None and entry.name != name:
+            registry.async_update_device(entry.id, name=name)
+        self._persist()
 
     @callback
     def _update_device_registry(self, record: DeviceRecord) -> None:
@@ -514,6 +539,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub = TabulaHub(hass, entry)
     hass.data[DOMAIN] = hub
     hub.load_records()
+    await hub.settings.async_load()
     await hub.sweep_orphans()
     hub.listen_device_registry()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

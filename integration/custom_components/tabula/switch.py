@@ -13,13 +13,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TabulaHub
 from .entity import TabulaEntity, TabulaEntityDescription, setup_platform
+from .settings import async_set_setting
 
 
 @dataclass(frozen=True, kw_only=True)
 class TabulaSwitchDescription(TabulaEntityDescription):
-    """``state_key`` holds the switch value."""
+    """``state_key`` holds the switch value; ``settings_key`` routes writes."""
 
     state_key: str
+    settings_key: str | None = None
 
 
 SWITCHES = (
@@ -37,6 +39,7 @@ SWITCHES = (
         capabilities=frozenset({"screen"}),
         state_keys=frozenset({"keep_screen_on"}),
         state_key="keep_screen_on",
+        settings_key="screen_keep_screen_on",
     ),
     TabulaSwitchDescription(
         key="adaptive_brightness",
@@ -45,6 +48,7 @@ SWITCHES = (
         capabilities=frozenset({"adaptive_brightness"}),
         state_keys=frozenset({"adaptive_brightness"}),
         state_key="adaptive_brightness",
+        settings_key="screen_adaptive_brightness",
     ),
 )
 
@@ -67,8 +71,13 @@ class TabulaSwitch(TabulaEntity, SwitchEntity):
         if self.entity_description.key == "screensaver":
             await self.async_command("screensaver", {"active": value})
         else:
-            # keep_screen_on and adaptive_brightness are settings (plan 5.6).
-            await self.async_command("set_settings", {self.entity_description.state_key: value})
+            # keep_screen_on and adaptive_brightness are settings (plan 5.6):
+            # the write goes through the HA-owned store, which bumps the
+            # revision and pushes; a command would bypass HA's copy.
+            assert self.entity_description.settings_key is not None
+            await async_set_setting(
+                self.hub, self.device_id, self.entity_description.settings_key, value
+            )
 
 
 async def async_setup_entry(

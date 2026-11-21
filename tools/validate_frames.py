@@ -25,9 +25,11 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "tlp-v1.schema.json"
 FIXTURES = ROOT / "schema" / "fixtures" / "tlp" / "v1"
-# The integration ships its own copy of the schema and validates every frame
-# against it (integration/custom_components/tabula/tlp.py).
+# The integration ships its own copy of each schema and validates every frame
+# and settings document against them (integration/custom_components/tabula/).
 BUNDLED = ROOT / "integration" / "custom_components" / "tabula" / "tlp-v1.schema.json"
+SETTINGS_SCHEMA = ROOT / "schema" / "settings.schema.json"
+SETTINGS_BUNDLED = ROOT / "integration" / "custom_components" / "tabula" / "settings.schema.json"
 
 
 SHARED_DEFS = {"device_id", "command_id", "capability", "error_code", "error", "state", "log_line"}
@@ -122,12 +124,19 @@ def validate(schema: dict[str, Any], fixtures: Path = FIXTURES) -> tuple[list[st
 
 
 def check_bundled_copy() -> list[str]:
-    """The integration's bundled schema must match the repo schema byte for byte."""
-    if not BUNDLED.is_file():
-        return [f"{BUNDLED.relative_to(ROOT)} is missing (copy it from schema/)"]
-    if BUNDLED.read_bytes() != SCHEMA.read_bytes():
-        return [f"{BUNDLED.relative_to(ROOT)} differs from {SCHEMA.relative_to(ROOT)}; re-copy it"]
-    return []
+    """Bundled schemas must match the repo schemas byte for byte."""
+    errors: list[str] = []
+    for repo, bundled in (
+        (SCHEMA, BUNDLED),
+        (SETTINGS_SCHEMA, SETTINGS_BUNDLED),
+    ):
+        if not bundled.is_file():
+            errors.append(f"{bundled.relative_to(ROOT)} is missing (copy it from schema/)")
+        elif bundled.read_bytes() != repo.read_bytes():
+            errors.append(
+                f"{bundled.relative_to(ROOT)} differs from {repo.relative_to(ROOT)}; re-copy it"
+            )
+    return errors
 
 
 def main() -> int:
