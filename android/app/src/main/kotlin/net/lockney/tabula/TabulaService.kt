@@ -21,7 +21,6 @@ import net.lockney.tabula.ha.CredentialRevoked
 import net.lockney.tabula.ha.OkHttpExchange
 import net.lockney.tabula.ha.OkHttpWsTransportFactory
 import net.lockney.tabula.ha.PairingClient
-import net.lockney.tabula.ha.TokenRefresher
 import net.lockney.tabula.ha.TlpClient
 
 /**
@@ -162,6 +161,11 @@ class TabulaService : Service() {
                 TabulaStatus.phase.value = Phase.UNPAIRED
                 TabulaStatus.pairing.value = null
             } catch (e: Exception) {
+                // A restart cancels the running pairing job, and that surfaces
+                // here as CancellationException; rethrow it (the block below is
+                // for environment failures) or the restart leaves a stale
+                // pairing error behind.
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 // Anything else escaping pair() is an environment failure or a bug;
                 // it must surface as a pairing error, never an uncaught exception
                 // in a coroutine that kills the app process.
@@ -179,7 +183,12 @@ class TabulaService : Service() {
         val refreshToken = store.refreshToken ?: return startPairing()
         job?.cancel()
         job = scope.launch {
-            val state = AndroidStateSource(applicationContext, versionName(), extra = screen::current)
+            val state = AndroidStateSource(
+                applicationContext,
+                versionName(),
+                (application as TabulaApp).dashboard,
+                extra = screen::current,
+            )
             screen.listener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
@@ -194,9 +203,14 @@ class TabulaService : Service() {
                     settingsRevision = { store.settingsRevision },
                     refreshToken = { refreshToken },
                     state = state,
-                    commands = TabulaCommands(store, onRestartApp = ::restartApp, screen = screen),
+                    commands = TabulaCommands(
+                        store,
+                        onRestartApp = ::restartApp,
+                        dashboard = (application as TabulaApp).dashboard,
+                        screen = screen,
+                    ),
                 ),
-                TokenRefresher(OkHttpExchange()),
+                (application as TabulaApp).tokens,
                 OkHttpWsTransportFactory(),
             )
             val events = object : TlpClient.Events {
@@ -250,11 +264,13 @@ class TabulaService : Service() {
 
     /**
      * The capabilities this device declares (PROTOCOL 4.2): battery (P2.1),
-     * screen and brightness (P2.3), and adaptive_brightness only when the
-     * tablet has a light sensor.
+     * navigation (P2.2, the dashboard WebView follows a navigate command and
+     * reports the current page), screen and brightness (P2.3), and
+     * adaptive_brightness only when the tablet has a light sensor.
      */
     private fun capabilities(): List<String> = buildList {
         add("battery")
+        add("navigation")
         add("screen")
         add("brightness")
         if (lightSensor.available) add("adaptive_brightness")
