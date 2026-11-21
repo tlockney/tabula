@@ -18,7 +18,7 @@ private val ConnectionHaUrlPattern: Regex = Regex("^https?://[^/@\\s?#]+(/[^\\s?
 
 /** Schema enum for screensaver.mode. */
 @Serializable
-enum class Mode {
+enum class ScreensaverMode {
     @SerialName("clock") Clock,
     @SerialName("weather") Weather,
     @SerialName("photos") Photos,
@@ -31,7 +31,7 @@ enum class Mode {
 
 /** Schema enum for notifications.default_level. */
 @Serializable
-enum class DefaultLevel {
+enum class NotificationsDefaultLevel {
     @SerialName("info") Info,
     @SerialName("success") Success,
     @SerialName("warning") Warning,
@@ -40,7 +40,7 @@ enum class DefaultLevel {
 
 /** Schema enum for audio.announce_volume_boost. */
 @Serializable
-enum class AnnounceVolumeBoost {
+enum class AudioAnnounceVolumeBoost {
     @SerialName("none") None,
 }
 
@@ -51,7 +51,7 @@ data class Identity(
     val name: String? = null
 ) {
     init {
-        name?.let { require(it.length in 1..64) { "identity.name must be 1-64 characters" } }
+        name?.let { require(it.codePointCount(0, it.length) in 1..64) { "identity.name must be 1-64 characters" } }
     }
 }
 
@@ -89,7 +89,7 @@ data class Screensaver(
     /** Seconds without interaction before the screensaver starts (F-SSV-01). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002. */
     @SerialName("idle_timeout") val idleTimeout: Int = 300,
     /** The screensaver mode used next time it starts (F-SSV-05). Values match the screensaver_mode state key (PROTOCOL 4.4). Default per ADR 0002. */
-    val mode: Mode = Mode.Clock,
+    val mode: ScreensaverMode = ScreensaverMode.Clock,
     /** Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Default per ADR 0002. */
     val brightness: Int = 20
 ) {
@@ -114,7 +114,7 @@ data class Notifications(
     /** Card lifetime in seconds when the notify command sends no duration; 0 means until dismissed. Bounds match the notify command's duration (ADR 0002); default per ADR 0002. */
     @SerialName("default_duration") val defaultDuration: Int = 10,
     /** Severity used when a card's level is missing or unknown (F-NTF-02). Values match the notify command's level (PROTOCOL 4.5). Default per ADR 0002. */
-    @SerialName("default_level") val defaultLevel: DefaultLevel = DefaultLevel.Info,
+    @SerialName("default_level") val defaultLevel: NotificationsDefaultLevel = NotificationsDefaultLevel.Info,
     /** Whether a card chimes, per severity (F-NTF-09): sound only for what needs attention. Defaults per ADR 0002: chime for warning and error, silent otherwise. */
     @SerialName("chime_by_level") val chimeByLevel: ChimeByLevel = ChimeByLevel(),
     /** Cards shown at once; overflow evicts the oldest (F-NTF-07). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002. */
@@ -132,7 +132,7 @@ data class Audio(
     /** Media channel volume, percent; the level the HA media_player controls (F-TTS-07). Default per ADR 0002. */
     @SerialName("media_volume") val mediaVolume: Int = 50,
     /** Announcements play at the current volume; no hidden volume jumps. 'none' is the only v1 value (ADR 0002); a boost level, if ever designed, is added with its own ADR and bumps nothing else. */
-    @SerialName("announce_volume_boost") val announceVolumeBoost: AnnounceVolumeBoost = AnnounceVolumeBoost.None
+    @SerialName("announce_volume_boost") val announceVolumeBoost: AudioAnnounceVolumeBoost = AudioAnnounceVolumeBoost.None
 ) {
     init {
         require(mediaVolume in 0..100) { "audio.media_volume must be 0..100" }

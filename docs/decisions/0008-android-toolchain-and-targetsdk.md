@@ -8,14 +8,14 @@ Packet: P2.0
 
 P2.0 creates the Android Gradle project and must set minSdk, targetSdk and a reproducible toolchain. AGENTS.md rule 7 requires tools to come from package registries with pinned versions, and `docs/DEVELOPMENT.md` promises that any machine can build after `make setup` — but a Python-only machine still has to pass `make check`, so the Android steps must degrade gracefully. The packet also asks this ADR to record the Gradle wrapper distribution and the CI toolchain sources.
 
-The v1 devices (plan section 3) are Fire HD 10 Plus on Fire OS 7 / Android 9 (API 28); the later PF1007L targets are low-spec Android, and minSdk 24 (Android 7) was already set by ADR [0001](0001-ha-platform.md) so those frames stay reachable.
+The v1 devices (plan section 3) are Fire HD 10 Plus on Fire OS 7 / Android 9 (API 28); the later PF1007L targets are low-spec Android, and the plan's "Baselines" line sets minSdk 24 (Android 7) so those frames stay reachable.
 
 ## Decision
 
 ### SDK levels
 
-- **minSdk 24** — per ADR 0001 (Android 7, the PF1007L floor).
-- **compileSdk 34, targetSdk 34** — API 34 is the platform the Office Kiosk's toolchain targets and is the newest level that both Fire OS 7 practice and the pinned AGP support comfortably. Tabula is sideloaded over ADB, so Play's targetSdk policy is not a constraint; targetSdk only fixes platform behavior changes. Revisit per phase, with a new ADR, when a feature needs a newer level.
+- **minSdk 24** — plan section 3, "Baselines" (Android 7, the PF1007L floor).
+- **compileSdk 34, targetSdk 34** — Tabula is sideloaded over ADB, so Play's targetSdk policy does not apply; targetSdk only selects platform behavior changes. 34 matches the pinned SDK components (platform android-34, build-tools 34.0.0), is well inside the range the pinned AGP supports, and no v1 feature needs a newer level. Revisit per phase, with a new ADR, when a feature needs one.
 - Java/Kotlin target: **17** for the Gradle build and bytecode.
 
 The codec module is **plain Kotlin JVM, no Android framework dependencies** (packet requirement): `:core` tests on any JDK against `schema/fixtures/`, and the app module (`:app`) consumes it as a library. P2.1 must enable `coreLibraryDesugaring` in the app module, because the codec uses `java.time` and minSdk 24 predates it.

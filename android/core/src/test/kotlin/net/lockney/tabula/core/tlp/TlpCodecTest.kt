@@ -91,6 +91,33 @@ class TlpCodecTest {
     }
 
     @Test
+    fun `register_result with a numeric UTC offset decodes`() {
+        // HA's Python side emits isoformat() timestamps, which use +00:00, not
+        // Z. OffsetDateTime.parse accepts both; Instant.parse would reject
+        // numeric offsets on the desugared API 28 runtime.
+        val text = """
+            {"id":1,"type":"result","success":true,"result":{
+              "ha_device_id":"9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50",
+              "protocol_version":1,"settings_revision":3,
+              "server_time":"2026-11-21T14:03:12+00:00",
+              "capabilities":["screen"]}}
+        """.trimIndent()
+        val frame = Tlp.decodeFrame("register_result", text) as RegisterResultFrame
+        assertEquals("2026-11-21T14:03:12+00:00", frame.result.serverTime)
+    }
+
+    @Test
+    fun `length bounds count code points, not UTF-16 units`() {
+        // Schema minLength/maxLength count code points; one emoji is two
+        // UTF-16 units but one code point (tag max is 64).
+        val tag64 = "a".repeat(63) + "😀" // 64 code points, 65 UTF-16 units
+        NotifyArgs(message = "x", tag = tag64)
+        assertFailsWith<IllegalArgumentException> {
+            NotifyArgs(message = "x", tag = "a".repeat(64) + "😀")
+        }
+    }
+
+    @Test
     fun `command result invariants hold`() {
         val ack = CommandResultFrame.ack(7, "c-0002-screen")
         val nack = CommandResultFrame.nack(7, "c-0002-screen", TlpError(ErrorCode.FAILED, "boom"))

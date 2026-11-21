@@ -2,8 +2,8 @@
 // and UI; until then it only wires the core module into an Android build so
 // `./gradlew test` exercises the Android toolchain in CI.
 //
-// minSdk per ADR 0001 (Android 7 covers the later PF1007L targets); targetSdk
-// and compileSdk per ADR 0008.
+// minSdk 24 per plan section 3, "Baselines" (Android 7 keeps the later
+// PF1007L targets reachable); targetSdk and compileSdk per ADR 0008.
 
 plugins {
     alias(libs.plugins.android.application)

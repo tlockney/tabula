@@ -34,14 +34,26 @@ class SettingsFixturesTest {
         assertEquals(true, s.screen.adaptiveBrightness)
         assertEquals(false, s.screen.keepScreenOn)
         assertEquals(120, s.screensaver.idleTimeout)
-        assertEquals(Mode.Weather, s.screensaver.mode)
+        assertEquals(ScreensaverMode.Weather, s.screensaver.mode)
         assertEquals(35, s.screensaver.brightness)
         assertEquals(0, s.notifications.defaultDuration)
-        assertEquals(DefaultLevel.Warning, s.notifications.defaultLevel)
+        assertEquals(NotificationsDefaultLevel.Warning, s.notifications.defaultLevel)
         assertEquals(true, s.notifications.chimeByLevel.success)
         assertEquals(2, s.notifications.maxVisible)
         assertEquals(80, s.audio.mediaVolume)
-        assertEquals(AnnounceVolumeBoost.None, s.audio.announceVolumeBoost)
+        assertEquals(AudioAnnounceVolumeBoost.None, s.audio.announceVolumeBoost)
+    }
+
+    @Test
+    fun `length bounds count code points, not UTF-16 units`() {
+        // One emoji is two UTF-16 units but one code point; the schema's
+        // minLength/maxLength count code points, as must the generated check.
+        val name = "😀".repeat(64) // 64 code points, 128 UTF-16 units
+        val settings = SettingsCodec.decode("""{"identity":{"name":"$name"}}""")
+        assertEquals(name, settings.identity.name)
+        assertFailsWith<Exception> {
+            SettingsCodec.decode("""{"identity":{"name":"${"😀".repeat(65)}"}}""")
+        }
     }
 
     @Test

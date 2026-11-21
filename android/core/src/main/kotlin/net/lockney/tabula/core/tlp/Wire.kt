@@ -1,6 +1,6 @@
 package net.lockney.tabula.core.tlp
 
-import java.time.Instant
+import java.time.OffsetDateTime
 
 /**
  * Wire-name patterns and bounds from schema/tlp-v1.schema.json (bounds chosen
@@ -35,7 +35,9 @@ internal object Wire {
     }
 
     fun requireLength(path: String, value: String, min: Int, max: Int) {
-        require(value.length in min..max) { "$path must be $min-$max characters, is ${value.length}" }
+        // JSON Schema lengths count code points; String.length counts UTF-16 units.
+        val codePoints = value.codePointCount(0, value.length)
+        require(codePoints in min..max) { "$path must be $min-$max characters, is $codePoints" }
     }
 
     fun requireRange(path: String, value: Int, min: Int, max: Int) {
@@ -54,10 +56,16 @@ internal object Wire {
         require(pattern.matches(value)) { "$path does not match ${pattern.pattern}: $value" }
     }
 
-    /** RFC 3339 date-time check (format "date-time" in the schema). */
+    /**
+     * RFC 3339 date-time check (format "date-time" in the schema). Parsed with
+     * OffsetDateTime, not Instant: HA sends numeric offsets like +00:00, which
+     * Instant.parse accepts only from JDK 12 / API 34 — the desugared API 28
+     * runtime rejects them. OffsetDateTime.parse takes both Z and numeric
+     * offsets from JDK 8.
+     */
     fun requireDateTime(path: String, value: String) {
-        require(runCatching { Instant.parse(value) }.isSuccess) { "$path must be an RFC 3339 date-time: $value" }
+        require(runCatching { OffsetDateTime.parse(value) }.isSuccess) {
+            "$path must be an RFC 3339 date-time: $value"
+        }
     }
-
-    fun isDateTime(value: String): Boolean = runCatching { Instant.parse(value) }.isSuccess
 }

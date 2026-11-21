@@ -50,8 +50,14 @@ if [[ -n "$sdk" ]]; then
             fail "SDK components missing and no JDK to run sdkmanager; run again with a JDK installed"
         else
             echo "setup-android: installing platform $android_platform and build-tools $android_build_tools"
-            yes | "$manager" "platforms;$android_platform" "build-tools;$android_build_tools" >/dev/null
-            echo "setup-android: components installed"
+            # yes(1) gets SIGPIPE when sdkmanager exits; under pipefail that is
+            # exit 141, so do not let it fail this script.
+            yes | "$manager" "platforms;$android_platform" "build-tools;$android_build_tools" >/dev/null || true
+            if sdk_components_present "$sdk"; then
+                echo "setup-android: components installed"
+            else
+                fail "platform $android_platform / build-tools $android_build_tools still missing after sdkmanager"
+            fi
         fi
     fi
 else

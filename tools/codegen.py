@@ -132,7 +132,9 @@ class Codegen:
                 raise ValueError(f"{path}: enum property needs a default")
             if default not in values:
                 raise ValueError(f"{path}: default {default!r} not in enum values")
-            cls = self.unique(kotlin_name(name, upper=True), "enum class")
+            # Named by its full path (group + property) so the generated enums
+            # stay specific: ScreensaverMode, NotificationsDefaultLevel, ...
+            cls = self.unique(kotlin_name(path, upper=True), "enum class")
             cases = ",\n".join(
                 f"    @SerialName({kotlin_string(v)}) {kotlin_name(v, upper=True)}" for v in values
             )
@@ -165,8 +167,9 @@ class Codegen:
                 lo = 0 if minimum is None else minimum
                 hi = "Int.MAX_VALUE" if maximum is None else maximum
                 if minimum is not None or maximum is not None:
+                    # JSON Schema lengths count code points, so must the check.
                     checks.append(
-                        f"require(%V%.length in {lo}..{hi}) "
+                        f"require(%V%.codePointCount(0, %V%.length) in {lo}..{hi}) "
                         f'{{ "{path} must be {lo}-{hi} characters" }}'
                     )
                 if "pattern" in prop:
