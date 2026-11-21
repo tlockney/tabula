@@ -448,14 +448,17 @@ The row (and the HA-backed widgets) subscribe only to their own entities over th
 
 ### F-PRS-01 One presence rule, several sources
 The tablet keeps a single answer to "is someone here now", and every source the user turns on feeds it: an HA binary sensor (F-SSV-24) and, on hardware with a usable front camera, the camera's own detectors. Each source has its own switch, and with more than one on the rule is satisfied while any of them reports presence. Turning the camera off leaves the HA source working, and the reverse. What presence does is the same whichever source produced it (F-PRS-03).
+- A camera detection is not a single instant. Each one holds its source on for a short window after the trigger was last seen (constant: architect picks), so that one brief movement cannot keep a sensor on for as long as the camera remembers it. Everything downstream reads that held state and nothing finer: the idle countdown restarts when the window ends (F-PRS-03), postpone keeps working for as long as it holds (F-PRS-05), and the sensor and events follow it (F-PRS-09, F-EVT-08). An HA source keeps whatever timing its own entity has (F-SSV-24).
 HA: the sources are device settings; the combined answer is the presence binary sensor (F-PRS-09).
-Open: whether two sources should combine as above, or whether one should take over from the other while it reports presence.
+Open: whether the window is one setting for the camera or one per detector, and what its default is.
 
 ### F-PRS-02 Camera detectors
 Two detectors can be enabled separately, and either can feed the rule.
-- Motion: reacts to change in the picture, so it works in a dark room. A whole-frame lighting change (a lamp switched on, a screen flashing) is discarded, and detection pauses briefly around the app's own transitions so its animations cannot wake it.
+- Motion: reacts to change in the picture, so it works in a dark room. A whole-frame change, such as an exposure shift or a large colour wash across the screen, is discarded, and detection pauses briefly around the app's own transitions so its animations cannot wake it.
 - Face: reacts only when a person is turned towards the tablet, so someone crossing behind it leaves the screensaver alone. It needs light and cannot work in the dark.
-- Precedence: with both enabled, motion wins. The face detector is consulted only where motion evidence already exists, which keeps an empty room free of extra work.
+- Precedence: with both enabled, motion wins as the trigger. The cheap change detection is also the gate for the face model: it runs whether or not motion is switched on as a presence trigger, and the face model is asked only where it sees change, where a face was seen recently, or just after the camera opens. An empty room therefore costs no face work.
+- Effect on a person who holds still: while a face is being tracked, the gate keeps the face model running for a short while without new movement (the same window as F-PRS-01), so someone reading the screen does not drop out between frames. Past that, a person who neither moves nor changes expression stops being reported even if they are still looking at the tablet.
+Open: whether that stillness limit is acceptable or whether the face model should be re-asked on a slow timer while the screensaver is up; a timer costs power for a case the hold window already covers.
 - Sensitivity: each detector has its own setting (range: constant, architect picks). For faces it moves the distance at which someone is recognised; for motion it moves how much change counts.
 Open: whether the face setting is one distance control or two (near and far behaviour), and what each default should be.
 
@@ -482,7 +485,8 @@ Open: whether the camera can keep watching while another app covers the screen o
 - No identification: the face detector answers "a person is looking at the tablet", not "which person", and keeps nothing between frames.
 - Off by default, and turning the master switch off removes the feature from the device's behaviour entirely.
 - The user is told when the camera runs. HA shows it (F-PRS-09), and the tablet shows a sign on screen while it is watching (independent design; the owner asked for presence, not for a hidden camera).
-Open: what that on-screen sign looks like, where it sits, and whether it stays up for the whole camera session or only while a detection is being resolved; a small live preview of what the detector sees would serve both this and the aiming problem.
+Open: what that on-screen sign looks like, where it sits, and whether it stays up for the whole camera session or only while a detection is being resolved.
+Open: whether a brief live view of the frames the detector analysed appears after a face wake, as an aiming and sensitivity aid. It is a separate question from the sign and is deferred for now (see the deferred list); resolving the sign without it must not silently drop the aid.
 
 ### F-PRS-08 Enabling, consent and permissions
 - The master switch cannot be turned on from HA alone: it needs a person at the tablet, or an ADB grant (independent design, plan section 7.6).
@@ -492,7 +496,7 @@ HA: the master switch and its state; the grant itself can only happen on the tab
 Open: whether a grant made over ADB is reflected back to HA as the switch coming on.
 
 ### F-PRS-09 What HA sees
-- Presence (binary_sensor): on while any source reports someone there; unknown when every source is off or unavailable, never a stale off.
+- Presence (binary_sensor): on while any source reports someone there, using the hold window of F-PRS-01 for camera sources; unknown when every source is off or unavailable, never a stale off.
 - Camera active (binary_sensor): on while the camera is running. This is the privacy indicator the plan asks for.
 - Controls: the camera master switch, a switch per detector, the HA source's own picker (F-SSV-24), and sensitivity (candidates; the plan leaves the entity list to the architect).
 - Entities appear wherever the tablet could supply them, whatever the camera switch says (F-HA-02). On a tablet without a usable camera, the camera entities and detector switches are absent, and the presence sensor follows the remaining sources.
@@ -1730,5 +1734,6 @@ One-line hooks only. Each is out of scope until a later packet brings it in.
 - Night-sky / astronomy screensaver: dropped for v1.
 - Immich photo source: dropped (possible future plugin).
 - Camera-stream screensaver: deferred.
+- Live preview of the frames the detector analysed, shown briefly after a face wake as an aiming aid: deferred (see F-PRS-07).
 - Proximity and hardware person-sensor wake: deferred.
 - Voice wake-word dismissal and voice-timer pills: parked with voice.
