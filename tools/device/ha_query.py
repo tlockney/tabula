@@ -2,10 +2,11 @@
 
 Hardware checks (docs/DEVICE.md) use this to see what HA knows about paired
 tablets. The token must belong to an ADMIN user (HA's owner, typically), because
-`config/device_registry/list` is an admin-only WebSocket command. Run through
-the repo's uv environment:
+`config/device_registry/list` is an admin-only WebSocket command. Give it with
+--token or the TABULA_HA_TOKEN environment variable (preferred: an argument is
+visible in `ps` for the call's lifetime). Run through the repo's uv environment:
 
-    uv run python tools/device/ha_query.py --ha http://ha:8123 --token <admin-token> [device_id]
+    uv run python tools/device/ha_query.py --ha http://ha:8123 [device_id]
 
 Prints every device registry entry for the tabula integration and the current
 state of its entities. Exits non-zero if any HA command fails, so a caller can
@@ -21,10 +22,26 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from typing import Any
 
 import aiohttp
+
+
+def _token_from(args: argparse.Namespace) -> str:
+    """The --token argument, or the TABULA_HA_TOKEN environment variable."""
+    if args.token:
+        return args.token
+    token = os.environ.get("TABULA_HA_TOKEN")
+    if not token:
+        print(
+            "no token: pass --token or set TABULA_HA_TOKEN to a long-lived "
+            "access token from an admin user",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return token
 
 
 async def run(ha_url: str, token: str, device_id: str | None) -> int:
@@ -155,9 +172,10 @@ def main() -> int:
     parser.add_argument("--ha", required=True, help="Home Assistant base URL")
     parser.add_argument(
         "--token",
-        required=True,
+        default=None,
         help="long-lived access token from an admin user (the owner's; "
-        "the device-registry list command is admin-only)",
+        "the device-registry list command is admin-only); defaults to "
+        "the TABULA_HA_TOKEN environment variable",
     )
     parser.add_argument("device_id", nargs="?", help="match only this tabula device id")
     parser.add_argument(
@@ -167,12 +185,13 @@ def main() -> int:
         "frontend path (e.g. /profile) instead of listing the registry",
     )
     args = parser.parse_args()
+    token = _token_from(args)
     if args.navigate:
         if not args.device_id:
             print("--navigate needs the tablet's device_id", file=sys.stderr)
             return 1
-        return asyncio.run(navigate(args.ha, args.token, args.device_id, args.navigate))
-    return asyncio.run(run(args.ha, args.token, args.device_id))
+        return asyncio.run(navigate(args.ha, token, args.device_id, args.navigate))
+    return asyncio.run(run(args.ha, token, args.device_id))
 
 
 if __name__ == "__main__":

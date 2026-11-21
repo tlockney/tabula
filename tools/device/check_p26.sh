@@ -83,8 +83,9 @@ ha_state() { # ha_state <entity_id> -> prints the state
 }
 ha_available() { [[ "$(ha_state "$1")" != unavailable && "$(ha_state "$1")" != unknown ]]; }
 system_level() { adb shell settings get system screen_brightness | tr -d '\r'; }
-# percent -> the 0-255 system scale, as ScreenController.toSystemLevel computes it
-expected_level() { python3 -c "import sys; p=int(sys.argv[1]); print(max(1, round(p*255/100)))" "$1"; }
+# percent -> the 0-255 system scale, as ScreenController.toSystemLevel
+# computes it: half-up, not Python's banker's round (review 2, nit 2)
+expected_level() { python3 -c "import sys; p=int(sys.argv[1]); print(max(1, int(p*255/100 + 0.5)))" "$1"; }
 wait_for() { # wait_for <description> <timeout s> <command...>
     local what="$1" timeout="$2"; shift 2
     local waited=0
@@ -159,12 +160,20 @@ network() { # network <down|up> on the tablet itself (check_p21.sh's fallback)
     if [[ "$1" == down ]]; then
         require_usb_adb # Wi-Fi adb would be cut with the tablet (must-fix 3)
         net_down_by_us=1
-        adb shell cmd connectivity airplane-mode enable 2>/dev/null \
-            && echo "-- airplane mode on" || { adb shell svc wifi disable; echo "-- wifi disabled"; }
+        if adb shell cmd connectivity airplane-mode enable 2>/dev/null; then
+            echo "-- airplane mode on"
+        else
+            adb shell svc wifi disable
+            echo "-- wifi disabled"
+        fi
     else
         net_down_by_us=0
-        adb shell cmd connectivity airplane-mode disable 2>/dev/null \
-            && echo "-- airplane mode off" || { adb shell svc wifi enable; echo "-- wifi enabled"; }
+        if adb shell cmd connectivity airplane-mode disable 2>/dev/null; then
+            echo "-- airplane mode off"
+        else
+            adb shell svc wifi enable
+            echo "-- wifi enabled"
+        fi
     fi
 }
 
@@ -277,6 +286,9 @@ trap 'restore; exit 143' TERM
 step "1. boot check (Phase 2 exit: the service starts on boot)"
 if [[ "${TABULA_SKIP_REBOOT:-0}" == "1" ]]; then
     echo "-- TABULA_SKIP_REBOOT=1: skipping the reboot; Tabula must already be running"
+    # no fresh boot lines to preserve, so clear the buffer: the log waits in
+    # step 2 must not match the previous run's lines (review 2, blocker 2)
+    adb shell logcat -c
 else
     adb reboot
     echo "-- rebooting the tablet"
@@ -287,7 +299,10 @@ else
     echo "-- service pid on boot: $(adb shell pidof "$pkg" | tr -d '\r')"
     read -r -p "Unlock the tablet if it asks, then press Enter (Tabula is launched next) " _
     adb shell am start -n "$pkg/.MainActivity"
-    adb shell logcat -c
+    # no logcat clear here: the buffer is fresh after the reboot, and the
+    # boot-time registration and phase lines are the evidence step 2 waits
+    # for - the app registers once, at boot, and does not log it again
+    # when the activity starts (review 2, blocker 2)
     wait_for_log "dashboard: loaded" 90
     ask "After the reboot: does Tabula show the dashboard with the pairing intact (no pairing screen)?"
 fi
@@ -297,8 +312,15 @@ pid_before="$(adb shell pidof "$pkg" | tr -d '\r')"
 step "2. online baseline"
 adb devices -l
 echo "-- device_id: $(device_id)"
-wait_for_log "registered with HA device" 120
-wait_for_log "phase: CONNECTED" 30
+if [[ "${TABULA_SKIP_REBOOT:-0}" != "1" ]]; then
+    # the registration and phase lines are fresh from the boot (the buffer
+    # was never cleared); wait for them, plus live HA-side evidence below
+    wait_for_log "registered with HA device" 120
+    wait_for_log "phase: CONNECTED" 30
+fi
+# live evidence either way, and the only log-free gate in a skip rerun: the
+# tablet's entities are available in HA right now
+wait_for "the screensaver switch to be available in HA" 120 ha_available "$TABULA_SCREENSAVER"
 # Step 2 changes the stored screen settings (a manual level writes
 # screen.brightness and adaptive off, ADR 0011); remember the originals so
 # the exit trap can put them back (PR review, should-fix).
@@ -344,6 +366,9 @@ echo "-- reconnect attempts while HA is down (timestamps show the backoff):"
 service_log | grep -F "connection lost; reconnecting with backoff" || true
 attempts="$(service_log_lines "connection lost; reconnecting with backoff")"
 (( attempts >= 3 )) || fail "only $attempts reconnect attempts in 90s: the app is not re-dialing"
+# the upper bound proves the spacing: equal jitter capped at BACKOFF_MAX 60s
+# (ADR 0002) yields about 7-8 attempts in 90s; a tight loop would log dozens
+(( attempts <= 10 )) || fail "$attempts reconnect attempts in 90s: the backoff is not spacing them"
 echo "-- $attempts attempts in 90s, spacing apart"
 crashes="$(adb shell logcat -d -b crash | grep -c "$pkg" || true)"
 (( crashes == 0 )) || fail "$crashes crash-buffer lines mention $pkg"
@@ -367,7 +392,17 @@ ask "With HA down: does the tablet show a clock with the current time and today'
 step "5. the cached dashboard survives the outage (F-DSH-04)"
 tap_centre
 sleep 3
-echo "-- system brightness after the tap: $(system_level) (back from $saver_level)"
+level_after="$(system_level)"
+if [[ -n "${TABULA_ADAPTIVE:-}" ]]; then
+    # adaptive brightness restores the room-decided level, which can
+    # legitimately equal the screensaver level in a dim room; the ask
+    # below is the gate in that case
+    echo "-- system brightness after the tap: $level_after (adaptive decides it; was $saver_level)"
+else
+    [[ "$level_after" != "$saver_level" ]] \
+        || fail "the backlight stayed at the screensaver level ($saver_level) after the tap"
+    echo "-- system brightness after the tap: $level_after (left the screensaver level $saver_level)"
+fi
 ask "Is the dashboard back - the same page as before, served from the WebView's own cache?"
 loaded_now="$(adb shell logcat -d -s "$dash_tag:I" "$dash_tag:W" | grep -cF 'dashboard: loaded' || true)"
 (( loaded_now <= loaded_before )) \
@@ -411,9 +446,10 @@ echo "   HA light: $(ha_state "$TABULA_LIGHT")"
 level_now="$(system_level)"
 echo "-- system brightness now: $level_now"
 echo "-- HA's registry and entity states after recovery:"
+# the token travels in the environment (already exported), not argv (review 2, nit 4)
 UV_CONFIG_FILE="$here/../uv.toml" \
     uv run --directory "$here/.." python tools/device/ha_query.py \
-    --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$(device_id)"
+    --ha "$TABULA_HA_URL" "$(device_id)"
 loaded_now="$(adb shell logcat -d -s "$dash_tag:I" "$dash_tag:W" | grep -cF 'dashboard: loaded' || true)"
 (( loaded_now <= loaded_before )) \
     || fail "the dashboard reloaded during recovery ($loaded_before -> $loaded_now loads)"
