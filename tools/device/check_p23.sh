@@ -106,9 +106,13 @@ done
 step "3. panel off and on"
 ha_call light turn_off "{\"entity_id\": \"$TABULA_LIGHT\"}"
 wait_for "the panel to go off" 10 panel_off
+# screen_on reaches HA through the state frame shortly after the panel
+# sleeps; reading HA at the same instant raced it (issue #94)
+wait_for "HA's light to read off" 10 ha_state_is "$TABULA_LIGHT" off
 echo "-- wakefulness: $(wakefulness); HA light: $(ha_state "$TABULA_LIGHT")"
 ha_call light turn_on "{\"entity_id\": \"$TABULA_LIGHT\"}"
 wait_for "the panel to come back" 10 panel_on
+wait_for "HA's light to read on" 10 ha_state_is "$TABULA_LIGHT" on
 echo "-- wakefulness: $(wakefulness); HA light: $(ha_state "$TABULA_LIGHT")"
 adb shell dumpsys window | grep -m1 -E "mDreamingLockscreen|isKeyguardShowing|mShowingLockscreen" || true
 
