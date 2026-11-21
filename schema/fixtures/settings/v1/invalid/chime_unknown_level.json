@@ -1,0 +1,7 @@
+{
+  "notifications": {
+    "chime_by_level": {
+      "debug": true
+    }
+  }
+}

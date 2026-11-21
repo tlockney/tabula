@@ -1,0 +1,5 @@
+{
+  "connection": {
+    "ha_url": "ftp://example.com:8123"
+  }
+}

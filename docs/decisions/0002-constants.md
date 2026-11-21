@@ -96,12 +96,21 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 | Screen brightness (manual) | 60 % | Comfortable indoors on the HD 10 Plus; the user adjusts. |
 | Adaptive brightness | false | Off until the curve (P2.3) is tuned on real hardware. |
 | Keep screen on | true | A wall dashboard should not follow the phone-style screen timeout; the screensaver handles idling. |
-| Notification duration | 10 s | Enough to read two lines from across a room. |
+| Notification duration | 10 s | Enough to read two lines from across a room; 0 means until dismissed (F-NTF-05). |
 | Notification chime | true for `warning` and `error`, false otherwise | Sound for what needs attention only. |
 | Notification level when missing or unknown | `info` | FEATURES F-NTF-02 fallback; the neutral level. |
 | Notifications shown at once | 3 | More would cover the dashboard; older ones collapse. |
 | Media volume | 50 % | Middle of the range; TTS is audible without startling. |
 | Announce volume boost | none | `announce` plays at the current volume; no hidden volume jumps. |
+
+### Settings bounds in the settings schema
+
+These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen here, so P2.0's generated Kotlin can use `Int` everywhere:
+
+| Field | Bound | Reasoning |
+| --- | --- | --- |
+| `screensaver.idle_timeout` | 1–86400 s | A non-zero floor: 0 would mean "start instantly", not "never" (a disabled screensaver already expresses never). A day is the longest sensible idle wait; longer than that is "leave it on", and 86400 sits far inside a Kotlin `Int`. |
+| `notifications.max_visible` | 1–10 | A non-zero floor: a cap of 0 would hide every card. Ten full-width cards already cover a phone-height panel, so more would bury the dashboard rather than show anything. |
 
 ## Consequences
 
