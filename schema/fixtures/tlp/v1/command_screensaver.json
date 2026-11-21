@@ -6,7 +6,7 @@
     "command": "screensaver",
     "args": {
       "active": true,
-      "mode": "black"
+      "mode": "dim"
     }
   }
 }

@@ -97,7 +97,8 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 | Adaptive brightness | false | Off until the curve (P2.3) is tuned on real hardware. |
 | Keep screen on | true | A wall dashboard should not follow the phone-style screen timeout; the screensaver handles idling. |
 | Notification duration | 10 s | Enough to read two lines from across a room. |
-| Notification chime | true for `warning` and `alert`, false otherwise | Sound for what needs attention only. |
+| Notification chime | true for `warning` and `error`, false otherwise | Sound for what needs attention only. |
+| Notification level when missing or unknown | `info` | FEATURES F-NTF-02 fallback; the neutral level. |
 | Notifications shown at once | 3 | More would cover the dashboard; older ones collapse. |
 | Media volume | 50 % | Middle of the range; TTS is audible without startling. |
 | Announce volume boost | none | `announce` plays at the current volume; no hidden volume jumps. |

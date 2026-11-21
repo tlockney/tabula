@@ -1,0 +1,12 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0007-media-seek",
+    "command": "media_control",
+    "args": {
+      "action": "seek",
+      "position": 42.5
+    }
+  }
+}

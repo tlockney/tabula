@@ -116,6 +116,12 @@
         "screensaver_mode": {
           "enum": [
             "clock",
+            "weather",
+            "photos",
+            "website",
+            "dashboard",
+            "calendar",
+            "dim",
             "black"
           ]
         },
@@ -516,6 +522,12 @@
                   "mode": {
                     "enum": [
                       "clock",
+                      "weather",
+                      "photos",
+                      "website",
+                      "dashboard",
+                      "calendar",
+                      "dim",
                       "black"
                     ]
                   },
@@ -552,6 +564,12 @@
                   "mode": {
                     "enum": [
                       "clock",
+                      "weather",
+                      "photos",
+                      "website",
+                      "dashboard",
+                      "calendar",
+                      "dim",
                       "black"
                     ]
                   },
@@ -971,7 +989,7 @@
                     "info",
                     "success",
                     "warning",
-                    "alert"
+                    "error"
                   ]
                 },
                 "duration": {
@@ -1106,9 +1124,12 @@
               "properties": {
                 "action": {
                   "enum": [
-                    "stop",
                     "pause",
                     "resume",
+                    "stop",
+                    "seek",
+                    "next",
+                    "previous",
                     "set_volume",
                     "mute",
                     "unmute"
@@ -1118,24 +1139,47 @@
                   "type": "integer",
                   "minimum": 0,
                   "maximum": 100
+                },
+                "position": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Seconds from the start, for seek."
                 }
               },
               "required": [
                 "action"
               ],
               "additionalProperties": false,
-              "if": {
-                "properties": {
-                  "action": {
-                    "const": "set_volume"
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "set_volume"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "volume"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "seek"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "position"
+                    ]
                   }
                 }
-              },
-              "then": {
-                "required": [
-                  "volume"
-                ]
-              }
+              ]
             }
           },
           "required": [
@@ -1152,7 +1196,7 @@
         "event"
       ],
       "additionalProperties": false,
-      "description": "Control audio playback and volume."
+      "description": "Control audio playback and volume. next and previous need a queue; seek needs a seekable stream (else failed)."
     },
     "command_screensaver": {
       "type": "object",
@@ -1182,6 +1226,12 @@
                 "mode": {
                   "enum": [
                     "clock",
+                    "weather",
+                    "photos",
+                    "website",
+                    "dashboard",
+                    "calendar",
+                    "dim",
                     "black"
                   ]
                 }

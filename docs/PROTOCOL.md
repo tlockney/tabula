@@ -105,7 +105,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `adaptive_brightness` | bool | Light-sensor curve owns brightness (plan 5.5) |
 | `keep_screen_on` | bool | Screen stays on while no screensaver |
 | `screensaver_active` | bool | |
-| `screensaver_mode` | `clock` \| `black` | Mode used next time it starts |
+| `screensaver_mode` | `clock` \| `weather` \| `photos` \| `website` \| `dashboard` \| `calendar` \| `dim` \| `black` | Mode used next time it starts (FEATURES F-SSV-05) |
 | `screensaver_brightness` | 0–100 | |
 | `next_screensaver` | date-time \| null | When the idle timer fires; null while active or disabled |
 | `battery_level` | 0–100 | |
@@ -128,9 +128,9 @@ Every command event has `command_id` (unique per device for the integration's li
 | --- | --- | --- |
 | `set_settings` (`command_set_settings`) | `revision`, `schema_version`, `settings` (full document, validated against the settings schema, P0.5) | always |
 | `screen` (`command_screen`) | `on`, `brightness` (at least one) | `screen` / `brightness` |
-| `notify` (`command_notify`) | `message`; optional `title`, `level`, `duration` (s, 0 = until dismissed), `icon` (`mdi:…`), `chime`, `tag` (same tag replaces) | `notifications` |
+| `notify` (`command_notify`) | `message`; optional `title`, `level` (`info`, `success`, `warning`, `error`; FEATURES F-NTF-02), `duration` (s, 0 = until dismissed), `icon` (`mdi:…`), `chime`, `tag` (same tag replaces) | `notifications` |
 | `play_media` (`command_play_media`) | `url` (absolute http(s) without userinfo, or a `/` path resolved against the device's HA base URL), `media_type`, `announce`, optional `volume`. The device never attaches its HA token when fetching it (ADR 0001 item 5). | `audio` |
-| `media_control` (`command_media_control`) | `action`: stop, pause, resume, set_volume (needs `volume`), mute, unmute | `audio` |
+| `media_control` (`command_media_control`) | `action`: pause, resume, stop, seek (needs `position`, seconds), next, previous, set_volume (needs `volume`), mute, unmute. `seek` on a stream that cannot seek, and `next`/`previous` without a queue, get `failed` (FEATURES F-MED-01) | `audio` |
 | `screensaver` (`command_screensaver`) | `active`, optional `mode` | `screensaver` |
 | `navigate` (`command_navigate`) | `path` starting with a single `/`. The device resolves it against its HA base URL and refuses (`invalid_args`) if the result leaves that origin (ADR 0001 item 3) | `navigation` |
 | `reload`, `restart_app`, `clear_cache` | `{}` | always |
@@ -169,7 +169,7 @@ While a log subscription is on, the device sends batches of 1–`LOG_MAX_LINES` 
 
 A device has one current connection. When a newer `tabula/register` succeeds for the same device (typically the device reconnected before HA noticed the old socket died):
 
-- The integration makes the new connection current and stops sending commands on the old one. HA gives integrations no way to close one socket, so the old one stays open until it dies.
+- The integration makes the new connection current and stops sending commands on the old one. In HA 2025.1.0 and 2026.2.3, `ActiveConnection` (`homeassistant/components/websocket_api/connection.py`) has no method that closes its socket (`async_handle_close` is cleanup after a close); the server closes a socket only when its refresh token is revoked, which would also end the device's new connection. The development branch at 0fa84d1d adds `async_auth_revoked`, also tied to revocation. So the old socket stays open until it dies.
 - Any later `tabula/*` frame on the old connection gets `error_result` `superseded` and has no effect, so stale state never overwrites fresh state. A device that receives `superseded` closes that socket.
 - Commands still waiting for results on the old connection fail when their timeout expires (results are matched per connection, 4.6).
 - The old connection closing does not change the device's availability; only the current connection's close does.
@@ -210,6 +210,7 @@ HA itself may also return its own codes (`unauthorized`, `unknown_command`, …)
 - `protocol_version` is an integer major. This document is major 1.
 - The integration supports its current major and the one before it (plan 5.4). It answers `register_result.protocol_version` with the major it will speak, which is the device's.
 - Additive changes do not bump the major: new optional fields, new state keys, commands, events or frame types **gated by a new capability**. Both sides follow 4.0 (tolerant receivers, capability negotiation at registration).
+- **Enum extensions.** Ignoring unknown members does not cover a new value in an existing enum (a new screensaver mode, notification level or media action), which a strict receiver would reject. Such a value is additive only when gated by a capability: a sender uses it only if the peer declared (device) or accepted (integration) that capability. A receiver that still gets a value it does not know treats it as follows: a command argument → `invalid_args`; a state value → the key is ignored for that frame; an event `data` value → the event is forwarded with the value unchanged. v1 already lists every value FEATURES.md names, so v1 needs no such capability.
 - Both sides read `protocol_version` before validating the rest of `tabula/register` or `http_pair_request`, so a mismatch is always reported as `unsupported_protocol`.
 - Anything else (removing or renaming a field, changing a type or meaning, making a field required) bumps the major, adds `schema/tlp-v<N>.schema.json` and a new fixture directory, and keeps the previous ones for the N-1 conformance run (plan 8).
 - `schema_version` versions the settings schema (P0.5) independently; translation rules are in plan 5.4.

@@ -1,0 +1,12 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0001-notify",
+    "command": "notify",
+    "args": {
+      "message": "x",
+      "level": "alert"
+    }
+  }
+}
