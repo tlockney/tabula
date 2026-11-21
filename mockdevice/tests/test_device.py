@@ -188,12 +188,19 @@ def test_idle_return_runs_behind_a_screensaver_and_skips_when_already_home():
     device.state["screensaver_active"] = False
     clock["now"] += 60
     assert device.tick() is False, "already on the start target: no navigation"
-    # and the default target is "/" when nothing is configured
+    # no configured start target: the return stays inert. The frontend
+    # redirects "/" client-side to its default panel, which the page can
+    # never rest on, so returning would reload once per delay period
+    # forever (review round 3, ADR 0021 item 7) - empty and "/" are the
+    # same case.
     with_settings(device, {"start_path": "", "return_home_after": 60})
     device.state["current_page"] = "/config"
     clock["now"] += 60
-    assert device.tick() is True
-    assert device.state["current_page"] == "/"
+    assert device.tick() is False
+    with_settings(device, {"start_path": "/", "return_home_after": 60})
+    clock["now"] += 60
+    assert device.tick() is False
+    assert device.state["current_page"] == "/config"
 
 
 async def test_a_changed_return_delay_restarts_the_mock_countdown():

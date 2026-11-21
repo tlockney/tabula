@@ -192,6 +192,11 @@ class MockDevice:
         last touch; a device already on the start target (path only, so a
         fragment target counts as home) stays put. Either way the countdown
         starts over once the deadline has passed (ADR 0021).
+
+        No configured start target (empty, or "/" - which the frontend
+        redirects client-side to its default panel and which the page can
+        never rest on) means no idle return at all: returning would reload
+        once per delay period forever (ADR 0021 item 7).
         """
         delay = self._return_after()
         if delay <= 0:
@@ -201,10 +206,12 @@ class MockDevice:
             return False
         self._last_activity = now
         path = self.start_path()
-        target = page_path(path) if path else "/"
-        if self.state["current_page"] == target:
+        if not path or path == "/":
             return False
-        if path and not same_origin(self.base_url, path):
+        target = page_path(path)
+        if target is None or self.state["current_page"] == target:
+            return False
+        if not same_origin(self.base_url, path):
             return False
         self.update(current_page=target)
         self.on_event("page_changed", {"path": target})

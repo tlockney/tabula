@@ -477,10 +477,15 @@ F-NAV-03), and the **idle return** (a 15 s return delay, then a
 the client-side move up, which is the part a full-load-only report
 would miss — the screensaver started from HA; after the delay the
 current-page sensor shows the start path while the panel stays dark —
-the return happened behind the screensaver, F-DSH-15). Three steps ask
-the verifier to act or look: the cold-start view, the hand-tap move
-confirmation, and that the panel stayed dark during the covered
-return. Paste the whole output into the packet Result.
+the return happened behind the screensaver, F-DSH-15), and a
+**delay-only round** (start path cleared, delay still 15 s, the tablet
+navigated away: the page must stay put and no dashboard load may
+appear in the log for two delay periods — with no start target there
+is no return and no reload churn, ADR 0021 item 7 — then the go-home
+button still lands on the default panel). Four steps ask the verifier
+to act or look: the cold-start view, the hand-tap move confirmation,
+the panel-stayed-dark check, and the default panel after the button.
+Paste the whole output into the packet Result.
 
 ## Hardware check (P2.2)
 

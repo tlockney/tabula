@@ -159,7 +159,24 @@ sensor_is "$TABULA_PAGE" "$TABULA_START_PATH" \
 echo "-- the dashboard returned to $TABULA_START_PATH while covered"
 ask "On the tablet: did the panel stay dark (the screensaver never lifted) while the page changed underneath?"
 
-step "7. service log for the record"
+step "7. delay only: no start path means no idle return and no reload churn"
+ha_call text set_value "{\"entity_id\": \"$TABULA_TEXT\", \"value\": \"\"}"
+wait_for "the tablet to clear the start path" 30 sensor_is "$TABULA_TEXT" ""
+ha_call tabula navigate "{\"path\": \"$TABULA_OTHER_PATH\"}"
+wait_for "the tablet to reach $TABULA_OTHER_PATH" 30 sensor_is "$TABULA_PAGE" "$TABULA_OTHER_PATH"
+adb logcat -c
+echo "-- waiting out more than two 15 s delay periods; the page must not move"
+sleep 35
+sensor_is "$TABULA_PAGE" "$TABULA_OTHER_PATH" \
+    || fail "the page moved without a start target: $(ha_state "$TABULA_PAGE")"
+loads="$(adb shell logcat -d -v time -s TabulaDashboard:I | grep -c 'dashboard: loading' | tr -d '\r')"
+[[ "$loads" == 0 ]] \
+    || fail "no start target, but the dashboard was reloaded $loads times in 35 s"
+echo "-- no reload churn: the page stayed on $TABULA_OTHER_PATH"
+ha_call button press "{\"entity_id\": \"$TABULA_BUTTON\"}"
+ask "The go-to-start-page button was pressed: is the tablet showing the default panel (the view HA opens by itself)?"
+
+step "8. service log for the record"
 adb shell logcat -d -v time -s "$service_tag:I" "TabulaDashboard:I" | tail -40
 
 completed=1

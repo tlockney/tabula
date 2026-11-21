@@ -22,6 +22,8 @@ F-DSH-02 gives every device a start target: the page opened on launch, after a c
 
 6. **"Go home" is the `go_home` command, capability `go_home`, plus an HA button (F-NAV-03, F-HA-08).** Additive per PROTOCOL 8. `restart_app` already relaunches the process, and the relaunch loads the start target, so F-NAV-03's "restart lands on the start target" needs no separate mechanism; `reload` keeps the current page.
 
+7. **The idle return needs a configured target (review round 3).** An empty `start_path` — or one set to `/`, which the schema accepts — is no idle target: the countdown stays inert and `return_home_after` alone does nothing. The frontend redirects `/` client-side to its default panel (a history replaceState), so the dashboard can never rest on `/`, and the skip-when-already-home compare of item 3 is unreachable for that target: a return would reload the dashboard once per delay period forever — churn behind a screensaver and with the panel off, tearing down the frontend's socket each cycle against F-DSH-01. The feature is "returns to its start target"; with none configured there is nothing to return to. `go_home` keeps its fallback to HA's default page: it is one-shot, and after the frontend's redirect it lands on the default panel, which is the right destination (F-NAV-03).
+
 ## Consequences
 
 - The catalog-backed select (Phase 4) replaces the text entity and the path typing; the settings key keeps meaning "the start target", so no schema break is expected — only the editor changes.

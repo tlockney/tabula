@@ -17,11 +17,30 @@ class StartPageControllerTest {
         }
 
     @Test
-    fun `zero never returns and an unset target compares as the default page`() {
+    fun `zero never returns, and no target is configured`() {
         val c = controller()
         assertNull(c.deadlineMs(t0))
         assertFalse(c.onTick(t0 + 100_000, currentPage = "/somewhere/else"))
-        assertEquals("/", c.targetPath)
+        assertNull(c.targetPath, "an unset start path is no idle target (ADR 0021 item 7)")
+    }
+
+    @Test
+    fun `an unset or root target never loops the return`() {
+        // The frontend redirects "/" client-side to its default panel, so the
+        // page after a fallback load reports e.g. "/lovelace/0", never "/"
+        // (review round 3): with no configured target the idle return stays
+        // inert instead of reloading the dashboard once per delay period
+        // forever. "/" set explicitly is the same case (the schema accepts it).
+        val c = controller(startPath = "", returnAfterS = 60)
+        assertNull(c.deadlineMs(t0))
+        assertFalse(c.onTick(t0 + 60_001, currentPage = "/lovelace/0"), "no target: no return")
+        c.applySettings(Dashboard(startPath = "/", returnAfterS = 60), t0)
+        assertNull(c.deadlineMs(t0))
+        assertFalse(c.onTick(t0 + 60_001, currentPage = "/"), "the dashboard cannot rest on /")
+        assertFalse(
+            c.onTick(t0 + 60_001, currentPage = "/lovelace/0"),
+            "no reload churn after the frontend's redirect",
+        )
     }
 
     @Test

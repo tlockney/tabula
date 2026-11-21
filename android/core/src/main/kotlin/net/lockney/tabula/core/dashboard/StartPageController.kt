@@ -17,6 +17,10 @@ import net.lockney.tabula.core.settings.Dashboard
  * - When the deadline passes, the dashboard returns only if the current page
  *   is not already the start target (path only; a fragment target compares
  *   by path, F-DSH-02), and the countdown then starts over.
+ * - An empty `start_path` - or one set to `/`, which the frontend redirects
+ *   client-side to its default panel and which the dashboard can never rest
+ *   on - is no idle target: the countdown stays inert and `go_home` falls
+ *   back to HA's default page (ADR 0021 item 7).
  * - `return_home_after` 0 means never (the default), so a tablet without the
  *   setting behaves exactly as before.
  *
@@ -29,11 +33,15 @@ class StartPageController {
     private var holds = 0
 
     /**
-     * The start target as `current_page` compares it: the configured path
-     * without its fragment, or "/" when none is set (HA's default page).
+     * The start target as `current_page` compares it, or null when none is
+     * configured: the path without its fragment. An empty `start_path` - or
+     * one set to `/`, which the frontend redirects client-side to its default
+     * panel and which the dashboard can therefore never rest on - is no idle
+     * target (ADR 0021 item 7): the idle return stays inert instead of
+     * reloading once per delay period forever.
      */
     @get:Synchronized
-    val targetPath: String
+    val targetPath: String?
         get() = targetPathOf(startPath)
 
     /**
@@ -78,32 +86,36 @@ class StartPageController {
         if (holds == 0) lastActivityMs = nowMs
     }
 
-    /** When the countdown fires, or null while it cannot (never, held). */
+    /** When the countdown fires, or null while it cannot (never, no target, held). */
     @Synchronized
     fun deadlineMs(nowMs: Long): Long? {
-        if (returnAfterMs <= 0L || holds > 0) return null
+        if (!hasTarget || returnAfterMs <= 0L || holds > 0) return null
         return (lastActivityMs ?: nowMs.also { lastActivityMs = it }) + returnAfterMs
     }
 
     /**
      * The clock moved on: whether the dashboard should return to the start
-     * target now. False while no countdown runs, before the deadline, or when
-     * [currentPage] is already the target (F-DSH-15); the countdown starts
-     * over either way once the deadline has passed.
+     * target now. False while no countdown runs - never, no target (ADR 0021
+     * item 7), held - before the deadline, or when [currentPage] is already
+     * the target (F-DSH-15); the countdown starts over either way once the
+     * deadline has passed.
      */
     @Synchronized
     fun onTick(nowMs: Long, currentPage: String?): Boolean {
-        if (returnAfterMs <= 0L || holds > 0) return false
+        if (!hasTarget || returnAfterMs <= 0L || holds > 0) return false
         val last = lastActivityMs ?: nowMs.also { lastActivityMs = it }
         if (nowMs < last + returnAfterMs) return false
         lastActivityMs = nowMs
         return targetPath != currentPage
     }
 
-    private fun targetPathOf(path: String): String {
-        if (path.isEmpty()) return "/"
+    private val hasTarget: Boolean
+        get() = targetPathOf(startPath) != null
+
+    private fun targetPathOf(path: String): String? {
+        if (path.isEmpty() || path == "/") return null
         val fragment = path.indexOf('#')
         val target = if (fragment >= 0) path.substring(0, fragment) else path
-        return target.ifEmpty { "/" }
+        return target.ifEmpty { null }
     }
 }

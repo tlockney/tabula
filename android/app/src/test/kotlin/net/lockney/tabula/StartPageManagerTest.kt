@@ -147,6 +147,22 @@ class StartPageManagerTest {
     }
 
     @Test
+    fun `no configured start target: the idle return stays inert`() {
+        // Delay only, no start path (review round 3): nothing to return to,
+        // and the frontend's "/" redirect means a "/" target could never
+        // compare equal - so the countdown does not run at all.
+        running(startPath = "", returnAfterS = 60)
+        handle.page = "/lovelace/0"
+        scope.advanceTimeBy(120_000)
+        scope.runCurrent()
+        assertEquals(0, handle.startLoads, "no target: no return, no reload loop")
+        manager.applySettings(settings(startPath = "/", returnAfterS = 60))
+        scope.advanceTimeBy(120_000)
+        scope.runCurrent()
+        assertEquals(0, handle.startLoads, "the root path is no idle target either")
+    }
+
+    @Test
     fun `a settings push restarts a changed countdown and a later push keeps it`() {
         running()
         scope.advanceTimeBy(30_000)
