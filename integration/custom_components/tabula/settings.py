@@ -362,3 +362,27 @@ def schedule_settings_push(hub: TabulaHub, record: DeviceRecord) -> None:
     if stored is None or session.reported_settings_revision == stored.revision:
         return
     hub.hass.async_create_task(_push_task(hub, record))
+
+
+async def async_set_setting(
+    hub: TabulaHub, device_id: str, settings_key: str, value: Any
+) -> DeviceSettings:
+    """Write one settings leaf from an entity action (F-MGT-01).
+
+    Entities that map to a settings leaf (the P1.3 switch/number/select) go
+    through the store, never straight to a command: HA owns every setting, so
+    the write bumps the revision and pushes like any other edit, and an
+    offline tablet is reconciled at its next registration. ``settings_key`` is
+    the schema's flat field key (SettingsField.key, unique by construction).
+    """
+    fields = hub.settings.schema.fields()
+    leaf = next((f for f in fields if f.key == settings_key), None)
+    if leaf is None:
+        raise SettingsError([f"unknown settings key: {settings_key}"])
+    stored = hub.settings.get(device_id)
+    document = stored.settings if stored is not None else hub.settings.schema.defaults()
+    set_path(document, leaf.path, value)
+    saved = await hub.settings.async_save(device_id, document)
+    if (record := hub.devices.get(device_id)) is not None:
+        schedule_settings_push(hub, record)
+    return saved

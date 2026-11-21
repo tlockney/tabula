@@ -14,6 +14,7 @@ import asyncio
 import aiohttp
 from custom_components.tabula import TabulaHub
 from homeassistant.core import Event
+from homeassistant.helpers import entity_registry as er
 from mockdevice.client import TLPClient
 from mockdevice.device import ALL_CAPABILITIES, MockDevice
 from mockdevice.store import DeviceStore
@@ -69,6 +70,42 @@ def _listen(hass, name: str) -> list[Event]:
     seen: list[Event] = []
     hass.bus.async_listen(name, seen.append)
     return seen
+
+
+async def test_entity_write_goes_through_the_settings_store(
+    hass_setup, server, hub, paired, tmp_path, hass_storage
+):
+    """A settings-mapped entity action writes the store, not a bare command.
+
+    Toggling the keep-screen-on switch saves the settings document (revision
+    bump), and the push reconciles with the tablet exactly like an
+    options-flow edit (F-MGT-01: HA owns every setting).
+    """
+    device, client, task = await _connect(hass_setup, server, paired, tmp_path)
+    eid = er.async_get(hass_setup).async_get_entity_id(
+        "switch", "tabula", f"{paired.device_id}_keep_screen_on"
+    )
+    assert eid is not None
+    await hass_setup.services.async_call("switch", "turn_on", {"entity_id": eid}, blocking=True)
+
+    try:
+        for _ in range(200):
+            if device.settings.get("screen", {}).get("keep_screen_on") is True:
+                break
+            await asyncio.sleep(0.05)
+        assert device.settings["screen"]["keep_screen_on"] is True
+
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        stored = runtime.settings.get(paired.device_id)
+        assert stored is not None
+        assert stored.revision == 1
+        record = runtime.devices[paired.device_id]
+        assert record.current is not None
+        assert record.current.reported_settings_revision == 1
+    finally:
+        client.stop()
+        await asyncio.wait_for(task, 10)
 
 
 async def test_options_flow_save_reaches_the_device(

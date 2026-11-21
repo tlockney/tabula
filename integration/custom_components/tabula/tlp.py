@@ -75,6 +75,10 @@ class TLPValidator:
         self.frame_types = tuple(self._doc["x-tabula-frames"])
         self.known_capabilities = frozenset(self._doc["$defs"]["capability"]["enum"])
 
+    def enum_values(self, definition: str, prop: str) -> list[str]:
+        """The enum of one property of a $defs object, e.g. state.screensaver_mode."""
+        return list(self._doc["$defs"][definition]["properties"][prop]["enum"])
+
     def _validator(self, frame_type: str, lenient: bool) -> Draft202012Validator:
         if frame_type not in self.frame_types:
             raise KeyError(f"unknown frame type: {frame_type}")

@@ -35,5 +35,11 @@ COMMAND_TIMEOUT = 10.0  # s; awaiting a command's tabula/result (PROTOCOL.md 4.6
 USER_NAME_PREFIX = "Tabula"
 LOCAL_ONLY = "local_only"  # hub option: False creates device users reachable remotely
 
+# Dispatcher signals (P1.3): a device's declared capabilities changed (platforms
+# add or remove entities); a device's state or availability changed ({} is the
+# device_id).
+SIGNAL_CAPABILITIES = f"{DOMAIN}_capabilities"
+SIGNAL_DEVICE_UPDATE = f"{DOMAIN}_device_update_{{}}"
+
 # hass.data keys
 DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
