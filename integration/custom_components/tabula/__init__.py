@@ -523,10 +523,15 @@ class TabulaHub:
         # Strict sender (PROTOCOL.md 4.0): a frame we would send invalid is a bug
         # in the caller's arguments, reported as such.
         if problems := self.tlp.problems(f"command_{command}", frame, lenient=False):
+            # Name only the failing member: the schema message quotes the
+            # value, which may hold credentials (a URL with userinfo).
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="command_invalid",
-                translation_placeholders={"command": command, "problem": problems[0][:200]},
+                translation_placeholders={
+                    "command": command,
+                    "problem": problems[0].split(":", 1)[0][:200],
+                },
             )
         key = (record.device_id, command_id)
         future: asyncio.Future = self.hass.loop.create_future()

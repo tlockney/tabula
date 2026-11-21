@@ -117,7 +117,7 @@
       "message": "The tablet does not support the {command} command."
     },
     "command_invalid": {
-      "message": "The {command} command has invalid arguments: {problem}"
+      "message": "The {command} command has an invalid value at {problem}."
     },
     "command_timeout": {
       "message": "The tablet did not answer the {command} command in time."

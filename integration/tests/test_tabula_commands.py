@@ -425,3 +425,37 @@ async def test_media_controls(hass_setup, tablet):
         blocking=True,
     )
     assert tablet.device.state["muted"] is True
+
+
+async def test_invalid_url_error_does_not_echo_credentials(hass_setup, tablet):
+    """The schema refuses userinfo; the error names the member, never the value."""
+    speaker = entity_id(hass_setup, "media_player", tablet.paired, "speaker")
+    with pytest.raises(HomeAssistantError) as err:
+        await hass_setup.services.async_call(
+            "media_player",
+            "play_media",
+            {
+                "entity_id": speaker,
+                "media_content_id": "http://user:hunter2@nas.local/song.mp3",
+                "media_content_type": "music",
+            },
+            blocking=True,
+        )
+    assert "hunter2" not in str(err.value)
+    assert "event/args/url" in str(err.value)
+    assert tablet.device.played == []
+
+
+async def test_url_without_path_is_normalised(hass_setup, tablet):
+    speaker = entity_id(hass_setup, "media_player", tablet.paired, "speaker")
+    await hass_setup.services.async_call(
+        "media_player",
+        "play_media",
+        {
+            "entity_id": speaker,
+            "media_content_id": "https://example.com?track=1",
+            "media_content_type": "music",
+        },
+        blocking=True,
+    )
+    assert tablet.device.played[0]["url"] == "https://example.com/?track=1"

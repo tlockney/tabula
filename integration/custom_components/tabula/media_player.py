@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import yarl
 from homeassistant.components import media_source
 from homeassistant.components.media_player import (
     ATTR_MEDIA_ANNOUNCE,
@@ -74,14 +75,18 @@ class TabulaSpeaker(TabulaEntity, MediaPlayerEntity):
         if media_source.is_media_source_id(media_id):
             item = await media_source.async_resolve_media(self.hass, media_id, self.entity_id)
             media_id = item.url
-        url = async_process_play_media_url(self.hass, media_id, allow_relative_url=True)
+        # yarl normalises what the schema is strict about (an empty path
+        # becomes "/", spaces are quoted) without changing what is fetched.
+        url = str(
+            yarl.URL(async_process_play_media_url(self.hass, media_id, allow_relative_url=True))
+        )
         args: dict[str, Any] = {
             "url": url,
             "media_type": "music" if media_type == MediaType.MUSIC else "audio",
             "announce": bool(kwargs.get(ATTR_MEDIA_ANNOUNCE)),
         }
         volume = (kwargs.get(ATTR_MEDIA_EXTRA) or {}).get("volume")
-        if isinstance(volume, int) and 0 <= volume <= 100:
+        if isinstance(volume, int) and not isinstance(volume, bool) and 0 <= volume <= 100:
             args["volume"] = volume
         await self.async_command("play_media", args)
 
