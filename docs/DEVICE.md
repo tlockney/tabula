@@ -445,6 +445,41 @@ blank bitmap via `View.draw` (`DashboardView.capture`); if the check
 reports a blank image, the fallback is `PixelCopy` on the window — note
 what you saw in the packet Result either way.
 
+## Hardware check (P3.15, start page and return to it after idle)
+
+Install a P3.15 build (or later), provision and pair, leave Tabula in
+front with the panel on, then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_START_PATH=/lovelace/1 \
+TABULA_OTHER_PATH=/lovelace/0 \
+TABULA_TEXT=text.<tablet>_start_path \
+TABULA_NUMBER=number.<tablet>_return_home_after \
+TABULA_BUTTON=button.<tablet>_go_home \
+TABULA_RESTART=button.<tablet>_restart_app \
+TABULA_PAGE=sensor.<tablet>_current_page \
+ANDROID_SERIAL=<serial> tools/device/check_p315.sh
+```
+
+`TABULA_START_PATH` is a second dashboard view and `TABULA_OTHER_PATH`
+a different one to navigate away to. The entity ids are on the tablet's
+device page in HA. The exit trap clears the start path, sets the return
+delay back to 0 and stops the screensaver on any failure or Ctrl-C.
+
+The check runs, in order: the baseline (the go-to-start-page button is
+live), the **start-path setting** (writing it moves nothing on screen,
+F-DSH-02), the **go-home button** (from the other view it returns to the
+start path), a **cold start** (`force-stop` plus a relaunch lands on the
+start view), an **app restart** (the restart-app button lands there too,
+F-NAV-03), and the **idle return** (a 15 s return delay, the tablet on
+the other view, the screensaver started from HA; after the delay the
+current-page sensor shows the start path while the panel stays dark —
+the return happened behind the screensaver, F-DSH-15). Three steps ask
+the verifier to look: the cold-start view, the restarted view, and that
+the panel stayed dark during the covered return. Paste the whole output
+into the packet Result.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:
