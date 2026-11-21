@@ -6,7 +6,7 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 
 | ADR | Title | Status |
 | --- | --- | --- |
-| 0001 | HA platform (P0.3) | reserved |
+| [0001](0001-ha-platform.md) | HA platform (P0.3) | accepted |
 | 0002 | Constants (P0.4) | reserved |
 | [0003](0003-repository-and-package.md) | Repository and Android package | accepted |
 | [0004](0004-build-and-toolchain.md) | Build entry point and toolchain | accepted |
