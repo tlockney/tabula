@@ -237,9 +237,24 @@ Every check in items 1, 2, 4 and 5 produced identical evidence on HA 2025.1.0, 2
 
 Not re-tested at the floor: item 3 ran only on HA 2026.2.3 with frontend 20260128.6 (the V1 bridge it uses is older than 2025.1), and the Chromium 67 floor comes from frontend main, not the frontend shipped with 2025.1. `assist_satellite` exists in all three versions.
 
+The full integration suite is now verified across the supported range: `make test-ha-matrix` runs it against one HA release per leg (selected by the pytest-homeassistant-custom-component pin), CI runs all three legs, and all 148 tests pass on the floor, the pin and the newest release (local run, 2026-11-21):
+
+```text
+phacc 0.13.201 -> HA 2025.1.0, Python 3.13: 148 passed
+phacc 0.13.316 -> HA 2026.2.3, Python 3.13: 148 passed
+phacc 0.13.375 -> HA 2026.10.4, Python 3.14: 148 passed
+```
+
+Two harness differences are handled in the test scaffolding, not in the integration:
+
+- The floor harness (phacc 0.13.201) predates the teardown exemption for pycares's `_run_safe_shutdown_loop` thread, which any aiohttp client session starts for the process (aiodns is a homeassistant dependency). The test conftests start the thread once before any test's thread snapshot, so the teardown check stays active on every leg. This is the same lingering-thread assertion the spike's floor runs reported above.
+- HA 2026.10 (aiohttp 3.14) leaves the websocket heartbeat timer scheduled when auth revocation closes a live connection: aiohttp 3.14 stopped cancelling prior heartbeat handles to cut TimerHandle churn, and the harness teardown predates an exemption for that. The one lifecycle test exercising that close declares the harness's `expected_lingering_timers` fixture; the socket is HA's websocket_api, and tabula only calls the auth API.
+
+Mid-range behavior (verified in HA sources at 2025.8.0 through 2025.12.0, not run as a matrix leg): on those releases the `helpers.service` fallback logs one deprecation line per service call. HA deprecated that wrapper when `helpers.target` appeared, but `TargetSelection` only exists from 2026.1, so 2025.8-2025.12 must use the deprecated import; the integration works, at the cost of HA's log line.
+
 - `hacs.json` and the integration manifest declare `homeassistant: 2025.1.0` (set in P1.2).
-- CI tests the integration against the minimum and the latest HA release.
-- Python stays 3.13 (ADR 0004): both versions support it.
+- CI tests the integration against the floor, the pin and the latest HA release (three `test-ha-matrix` legs).
+- Python: 3.13 on the floor and pin; HA 2026.10 requires 3.14, and the suite passes on it (ADR 0004 governs the integration's own requirement).
 - The external-bus V2 bridge is used only when the server reports 2026.4.2 or later.
 
 ## Decision

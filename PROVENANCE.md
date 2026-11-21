@@ -145,3 +145,4 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | An optional EXIF details overlay shows the date taken and the camera (no location) in a free corner, bottom corners first | F-SSV-12, F-WGT-02 | P3.8 |
 | A playlist in which every photo fails to decode (e.g. HEIC on an old build) falls back to the clock stand-in too, not a black screen | F-SSV-12; ADR 0016 item 1 | P3.8 |
 | The slideshow pauses while Tabula's window is not in front (a powered-off panel included) and resumes where it was, so no decode or fetch runs against a dark screen | F-SSV-02; ADR 0016 item 9 | P3.8 |
+| The integration imports and runs on every supported HA release: target extraction prefers `homeassistant.helpers.target` (from HA 2026.1) and falls back to `homeassistant.helpers.service` below it, so the floor 2025.1.0 through the latest release all load (ADR 0001 item 8) | independent design (ADR 0001 item 8) | #83 |
