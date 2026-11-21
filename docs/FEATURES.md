@@ -146,7 +146,7 @@ HA: the list is a device setting; a rotation on/off switch is a candidate entity
 Open: whether external (non-HA, non-custom) URLs may be rotation entries and, if so, whether they show as overlays; whether rotation on/off gets a switch entity.
 
 ### F-DSH-17 View freeze
-A mode that freezes the current view: while on, the screensaver does not start, rotation pauses, and return-to-start does not fire. Turning it on dismisses an active screensaver, except a now-playing view the user opened deliberately. It can be toggled from the menu, a gesture, a dashboard link, the bridge, an overlay page's hold flag (F-DSH-11) and HA. An optional auto-release timer (default: architect picks) turns it off by itself. While on, the menu shows a visible notice that the hold is active, with a way to release it.
+A mode that freezes the current view: while on, the screensaver does not start, rotation pauses, and return-to-start does not fire. Turning it on dismisses an active screensaver, except a now-playing view the user opened deliberately. It can be toggled from the menu, a gesture, a dashboard link, the bridge, an overlay page's freeze flag (F-DSH-11) and HA. An optional auto-release timer (default: architect picks) turns it off by itself. While on, the menu shows a visible notice that the freeze is active, with a way to release it.
 HA: candidate switch. Open: switch entity vs. `tabula.*` service.
 
 ### F-DSH-18 Page-declared interactions (bridge)
@@ -1389,7 +1389,7 @@ Available from HA; buttons only for the plan's settled set (F-HA-08), the rest a
 - Navigation: open a URL; open an HA dashboard or view; go to the start page; reload.
 - Screen: on, off; set brightness (the normal level, or the adaptive ceiling when adaptive brightness is on; optionally only for the current session).
 - Screensaver: start, stop, postpone (restart idle countdown, dismissing it if up), next / previous slide in photo modes (otherwise no-op; the result says whether it moved).
-- Overlay page: show a page over the dashboard with a close control, optionally holding the view while shown; hide it.
+- Overlay page: show a page over the dashboard with a close control, optionally freezing the view while shown; hide it.
 - Apps: launch another installed app over Tabula; bring Tabula back; list launchable apps; show / hide the app launcher (refused when the launcher is disabled; limited to allowed apps in kiosk mode).
 - Launcher role: report status, take the home role, release it (release works even with no Tabula screen visible, as a recovery lever).
 - Speech and notices: speak text; show and dismiss cards (notifications area).
@@ -1554,7 +1554,7 @@ One snapshot: kiosk mode, lockdown, HA header/sidebar hiding, screensaver active
 ### F-JSB-05 Interaction holds and screensaver
 - Interaction hold (distinct from view freeze, F-DSH-17): a page marks the start and end of an interaction, optionally with a reason. While one is open, the screensaver, view rotation and the return-to-start timer are paused. Reason "media" pauses only the screensaver.
 - Dismiss the screensaver once.
-- Suppress / release the screensaver: shorthand for a hold with no reason.
+- Suppress / release the screensaver: shorthand for an interaction hold with no reason.
 - Query: whether Tabula owns the screen (so the page should not run its own screensaver).
 - Events: screensaver started, screensaver stopped.
 Open: what releases a hold when a page navigates away or crashes without releasing it (recommendation: page unload releases its holds, plus a safety timeout, constant: architect picks).
