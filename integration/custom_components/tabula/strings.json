@@ -162,11 +162,26 @@
       },
       "adaptive_brightness": {
         "name": "Adaptive brightness"
+      },
+      "screensaver_enabled": {
+        "name": "Screensaver enabled"
+      },
+      "screensaver_brightness_enabled": {
+        "name": "Separate screensaver brightness"
+      },
+      "schedule_enabled": {
+        "name": "Screensaver schedule"
+      },
+      "widgets_shown": {
+        "name": "Screensaver widgets"
       }
     },
     "number": {
       "screensaver_brightness": {
         "name": "Screensaver brightness"
+      },
+      "screensaver_idle_timeout": {
+        "name": "Screensaver idle timeout"
       }
     },
     "select": {
@@ -236,6 +251,11 @@
     "notify": {
       "notifications": {
         "name": "Notifications"
+      }
+    },
+    "text": {
+      "clock_background": {
+        "name": "Clock background image"
       }
     }
   },

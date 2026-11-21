@@ -70,6 +70,7 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TEXT,
 ]
 UNSUPPORTED_PROTOCOL_ISSUE = "unsupported_protocol_{}"
 
@@ -166,6 +167,9 @@ class DeviceRecord:
             # Kept so entities exist (unavailable) after an HA restart, before
             # the tablet reconnects; nothing is removed on disconnect.
             "capabilities": list(self.capabilities),
+            # Kept for the same reason: settings entities are gated by the
+            # settings schema the device speaks (P3.2, ADR 0015).
+            "schema_version": self.schema_version,
             # The last capture started by the capture button (F-HA-12).
             "last_capture": self.last_capture,
         }
@@ -244,6 +248,7 @@ class TabulaHub:
                 name=info.get("name"),
                 model=info.get("model"),
                 capabilities=list(info.get("capabilities", [])),
+                schema_version=info.get("schema_version"),
                 last_capture=info.get("last_capture"),
             )
             self.devices[record.device_id] = record
@@ -450,10 +455,10 @@ class TabulaHub:
         ir.async_delete_issue(
             self.hass, DOMAIN, UNSUPPORTED_PROTOCOL_ISSUE.format(record.device_id)
         )
-        previous = set(record.capabilities)
+        previous = (set(record.capabilities), record.schema_version)
         record.update_from_register(frame, self.tlp.known_capabilities)
         self._update_device_registry(record)
-        if set(record.capabilities) != previous:
+        if (set(record.capabilities), record.schema_version) != previous:
             self._persist()
         # Every registration syncs entities (idempotent): a capability gained
         # or dropped, a re-paired device, or a first register with no

@@ -128,7 +128,33 @@ class ScreensaverControllerTest {
         assertTrue(out.transitions.isEmpty())
         assertEquals(ScreensaverMode.BLACK, out.state?.screensaverMode)
         assertEquals(5, out.state?.screensaverBrightness)
-        assertEquals("2027-01-15T08:02:00Z", out.state?.nextScreensaver, "120 s from the last activity at t0")
+        assertEquals("2027-01-15T08:02:10Z", out.state?.nextScreensaver, "a new timeout starts the countdown over (F-HA-11)")
+    }
+
+    @Test
+    fun `a new idle timeout starts the countdown over, an unchanged one does not`() {
+        val c = controller(timeoutS = 60)
+        c.applySettings(Screensaver(enabled = true, idleTimeout = 60, brightness = 20), t0 + 30_000)
+        assertEquals(t0 + 60_000, c.deadlineMs(t0 + 30_000), "same timeout: the countdown keeps running")
+        c.applySettings(Screensaver(enabled = true, idleTimeout = 90, brightness = 20), t0 + 40_000)
+        assertEquals(t0 + 130_000, c.deadlineMs(t0 + 40_000), "new timeout: counted from the change")
+    }
+
+    @Test
+    fun `the separate screensaver level applies only while switched on`() {
+        val c = controller(timeoutS = 60)
+        c.onTick(t0 + 60_000)
+        assertEquals(20, c.brightnessWhileShown)
+        c.applySettings(Screensaver(enabled = true, idleTimeout = 60, brightness = 20, brightnessEnabled = false), t0 + 61_000)
+        assertNull(c.brightnessWhileShown, "off: the panel keeps its current level")
+        c.applySettings(
+            Screensaver(enabled = true, idleTimeout = 60, mode = SettingsMode.Black, brightness = 20, brightnessEnabled = false),
+            t0 + 62_000,
+        )
+        c.onCommand(active = true, requested = ScreensaverMode.BLACK, nowMs = t0 + 62_000)
+        assertEquals(0, c.brightnessWhileShown, "black keeps its own lowest level either way")
+        c.onCommand(active = true, requested = ScreensaverMode.DIM, nowMs = t0 + 63_000)
+        assertEquals(20, c.brightnessWhileShown, "dim dims either way (F-SSV-07)")
     }
 
     @Test

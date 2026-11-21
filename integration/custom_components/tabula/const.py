@@ -63,6 +63,8 @@ SIGNAL_DEVICE_UPDATE = f"{DOMAIN}_device_update_{{}}"
 # A capture landed (or the stored one was dropped, F-MGT-07); the image entity
 # refreshes (P3.13).
 SIGNAL_SCREENSHOT = f"{DOMAIN}_screenshot_{{}}"
+# A device's stored settings document changed (P3.2: settings entities refresh).
+SIGNAL_SETTINGS_UPDATE = f"{DOMAIN}_settings_update_{{}}"
 
 # hass.data keys
 DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
