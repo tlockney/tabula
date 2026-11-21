@@ -111,4 +111,21 @@ object Constants {
      * (P2.5). Not const: the literal needs the Long-to-Int narrowing.
      */
     val CARD_BACKGROUND: Int = 0xEE1C1C1C.toInt()
+
+    // --- Gallery (docs/decisions/0002-constants.md, "Gallery core") --------------
+
+    /** GALLERY_TRANSITION_MS: ms the crossfade, slide and zoom animations take (P3.8). */
+    const val GALLERY_TRANSITION_MS = 800L
+
+    /** GALLERY_RELEASE_MARGIN_MS: ms after a transition starts that the replaced slide's bitmap is released (P3.8). */
+    const val GALLERY_RELEASE_MARGIN_MS = 1000L
+
+    /** GALLERY_SMART_FILL_TOLERANCE: aspect-ratio difference, as a fraction of the panel's, under which smart fill crops (P3.8). */
+    const val GALLERY_SMART_FILL_TOLERANCE = 0.10
+
+    /** GALLERY_EDGE_ZONE_FRACTION: the width of each edge-tap zone, as a fraction of the panel's width (P3.8). */
+    const val GALLERY_EDGE_ZONE_FRACTION = 0.08f
+
+    /** GALLERY_URL_HISTORY: URL-source photos kept for stepping back (P3.8). */
+    const val GALLERY_URL_HISTORY = 8
 }
