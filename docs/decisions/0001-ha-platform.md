@@ -44,7 +44,17 @@ system confirm: abort paired
 
 **Constraint found:** the manifest must **not** set `"single_config_entry": true`. With it, once an entry exists HA aborts every new flow except ignore, reauth and reconfigure (`config_entries.py`, `async_init` and `async_finish_flow` both return `single_instance_allowed`), so device discovery would stop working after the hub is set up.
 
-**Side effect of discovery:** pressing "Ignore" on a discovered tablet creates a `tabula` config entry with source `ignore` and `unique_id` = device ID. P1.2 must skip ignored entries when looking up the hub, and that device ID stays suppressed until the ignored entry is removed.
+**Side effect of discovery:** pressing "Ignore" on a discovered tablet starts a flow with source `ignore` and the flow's `unique_id`, which creates a `tabula` config entry with source `ignore` keyed by the device ID (`config_entries.py`, `ConfigFlow.async_step_ignore`). Later discovery flows for that `unique_id` abort in `_abort_if_unique_id_configured`. Evidence (HA 2026.2.3):
+
+```text
+ignore -> create_entry
+entries: [('user', 'hub'), ('ignore', '0f0e0d0c-0000-4000-8000-000000000001')]
+flows left: 0
+flows after re-pair request: 0
+hub lookup by unique_id: user hub
+```
+
+P1.2 looks up the hub by its own `unique_id` (as above), never "the first entry", and documents that an ignored tablet is re-enabled from the integration's ignored list before it can pair again.
 
 **Claim endpoint:** the spike answered `202 pending` for an unknown or already-claimed device. P1.2 must return a terminal error for those (plan 5.3: unknown device IDs are rejected) so the device stops polling. The hub singleton is enforced in the user step instead, with a fixed `unique_id` and `_abort_if_unique_id_configured()` (see "second hub flow" above).
 
@@ -200,6 +210,8 @@ adb shell dumpsys package com.android.webview | grep -E 'versionName|versionCode
 ```
 
 How WebView updates arrive on Fire OS (**unverified**; no source checked in this spike): Fire OS is expected to ship Amazon's own WebView package (`com.amazon.webview.chromium`) rather than Google's, updated by Amazon rather than Google Play. The `dumpsys webviewupdate` and `lastUpdateTime` lines in the device output will confirm or correct this.
+
+Additional targets (stated 2026-11-21): a second Fire HD 10 Plus and two Echo Show 8 (2nd gen). The second Fire tablet takes the same check and the same provisioning. The Echo Show is outside v1 scope in plan section 4; whether it can run a sideloaded app with the system WebView, and with what WebView version, is **unverified**. The same read-only commands decide the WebView question once ADB access exists on one; the architect revisits plan section 4 with that output.
 
 PF1007L frames: they need a WebView of Chromium 67 or later to run today's frontend at all, and the frontend raises its floor over time. Before committing to them, run the same commands on one; anything below 67 rules them out for the dashboard (the native screensaver could still run).
 
