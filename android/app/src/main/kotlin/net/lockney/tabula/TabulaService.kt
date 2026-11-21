@@ -133,10 +133,13 @@ class TabulaService : Service() {
 
     /**
      * The media player (packet P2.5) plays HA TTS and media URLs, fetched
-     * with no credential and no redirects (PROTOCOL 4.5, ADR 0001 item 5),
-     * on the OS music stream at the settings' media volume (plan 5.6).
+     * with no credential and redirects followed within the ADR 0002 bounds
+     * (PROTOCOL 4.5, ADR 0001 item 5), on the OS music stream at the
+     * settings' media volume (plan 5.6). Files left by an abrupt death are
+     * swept at start.
      */
     private fun startAudio() {
+        MediaManager.sweepStale(cacheDir)
         audio = MediaManager(
             controller = net.lockney.tabula.core.media.MediaController(),
             haUrl = { store.haUrl },
@@ -151,11 +154,13 @@ class TabulaService : Service() {
     }
 
     /**
-     * Fetch media audio to a cache file: no Authorization header (ADR 0001
-     * item 5) and a refused redirect, like every other Tabula request.
+     * Fetch media audio to a uniquely named cache file (no Authorization
+     * header, ADR 0001 item 5); the manager deletes it at the playback's
+     * terminal state, and [MediaManager.sweepStale] removes any that survived
+     * a process death.
      */
     private suspend fun downloadMedia(url: String): java.io.File {
-        val file = java.io.File(cacheDir, "tabula-media-${System.currentTimeMillis()}")
+        val file = java.io.File.createTempFile("tabula-media", null, cacheDir)
         mediaFetcher.fetch(url, file)
         return file
     }

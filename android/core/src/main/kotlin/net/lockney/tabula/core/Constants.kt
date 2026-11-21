@@ -89,4 +89,10 @@ object Constants {
 
     /** MEDIA_EVENT_BUFFER: media_finished events kept while they wait for the session (P2.5). */
     const val MEDIA_EVENT_BUFFER = 16
+
+    /** MEDIA_MAX_BYTES: largest audio file the media player downloads before playing it (P2.5). */
+    const val MEDIA_MAX_BYTES = 50L * 1024 * 1024
+
+    /** MEDIA_MAX_REDIRECTS: redirect hops the media fetch follows before giving up (P2.5). */
+    const val MEDIA_MAX_REDIRECTS = 5
 }

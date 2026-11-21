@@ -70,8 +70,11 @@ interface MediaPlayerHandle {
  *
  * The fetch never carries the device credential (PROTOCOL 4.5, ADR 0001
  * item 5): HA-hosted media is signed or unauthenticated, so the request goes
- * out with no Authorization header. [download] must refuse redirects like
- * every other Tabula request (P2.1's rule, Http.kt).
+ * out with no Authorization header. Redirects are followed - this request
+ * carries no secret, so the P2.1 no-redirect rule does not apply - with a
+ * https-to-http downgrade and long chains refused, and the downloaded file
+ * is deleted at every terminal state, on replacement, and by the startup
+ * sweep ([sweepStale]), so a wall tablet never accumulates audio.
  *
  * Loads are generation-counted: a `play_media` that arrives while an earlier
  * one is still loading cancels it, and the older load's late callbacks
@@ -101,6 +104,9 @@ class MediaManager(
     private val generation = AtomicInteger(0)
     private var loadJob: Job? = null
     private var current: MediaPlayerHandle.Prepared? = null
+
+    /** The file [current] plays; deleted when the playback reaches a terminal state. */
+    private var currentFile: File? = null
 
     /** Full media state for registration (PROTOCOL 4.2). */
     fun current(): StateDelta = controller.current()
@@ -138,12 +144,14 @@ class MediaManager(
         }
     }
 
-    /** Release the player and cancel any load in flight (service shutdown). */
+    /** Release the player, cancel any load in flight, and drop its file. */
     fun close() {
         generation.incrementAndGet()
         loadJob?.cancel()
         current?.stop()
         current = null
+        currentFile?.delete()
+        currentFile = null
     }
 
     @Synchronized
@@ -155,6 +163,7 @@ class MediaManager(
                     loadJob?.cancel()
                     current?.stop()
                     current = null
+                    releaseFile() // the replaced playback's audio is nobody's now
                 }
                 is MediaController.Effect.Prepare -> {
                     val gen = generation.incrementAndGet()
@@ -182,12 +191,16 @@ class MediaManager(
      * Fetch the audio and prepare it. [download] runs its own IO dispatching
      * (MediaFetcher in the app). The generation check before and after each
      * slow step drops the load when a newer command replaced it, and the
-     * player it prepared is released rather than left running.
+     * player it prepared is released - and its file deleted - rather than
+     * left running.
      */
     private suspend fun load(gen: Int, url: String) {
         try {
             val file = download(url)
-            if (generation.get() != gen) return
+            if (generation.get() != gen) {
+                file.delete() // replaced while it downloaded; nobody will play it
+                return
+            }
             finishLoad(gen, file)
         } catch (e: CancellationException) {
             throw e // the stop that cancelled this load already reported the transition
@@ -200,26 +213,59 @@ class MediaManager(
 
     @Synchronized
     private fun finishLoad(gen: Int, file: File) {
-        if (generation.get() != gen) return
+        if (generation.get() != gen) {
+            file.delete()
+            return
+        }
         val prepared = try {
             player.prepare(file, onEnded = { onPlaybackEnded(gen) }, onError = { message -> onPlaybackError(gen, message) })
         } catch (e: Exception) {
+            file.delete()
             carryOut(controller.onError()) // the audio could not be decoded (F-TTS-10)
             return
         }
         if (generation.get() != gen) {
             prepared.stop() // replaced while it decoded; the newer load owns the speaker
+            file.delete()
             return
         }
         current = prepared
+        currentFile = file
         carryOut(controller.onPrepared())
     }
 
     private fun onPlaybackEnded(gen: Int) {
-        if (generation.get() == gen) carryOut(controller.onEnded())
+        if (generation.get() == gen) {
+            carryOut(controller.onEnded())
+            releaseFile() // the playback is over; its audio is nobody's now
+        }
     }
 
     private fun onPlaybackError(gen: Int, message: String) {
-        if (generation.get() == gen) carryOut(controller.onError())
+        if (generation.get() == gen) {
+            carryOut(controller.onError())
+            releaseFile()
+        }
+    }
+
+    /** Delete the current playback's file (F-TTS-10: a terminal state releases it). */
+    @Synchronized
+    private fun releaseFile() {
+        currentFile?.delete()
+        currentFile = null
+    }
+
+    companion object {
+        private const val FILE_PREFIX = "tabula-media"
+
+        /**
+         * Delete leftover media files at service start: a file survives a
+         * crash or a process kill only when its playback never reached a
+         * terminal state (F-TTS-10), so at most one per abrupt death.
+         */
+        fun sweepStale(dir: File) {
+            dir.listFiles { file -> file.isFile && file.name.startsWith(FILE_PREFIX) }
+                ?.forEach { it.delete() }
+        }
     }
 }

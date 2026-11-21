@@ -44,12 +44,21 @@ class NotificationCardsView(
         visibility = if (cards.isEmpty()) GONE else VISIBLE
     }
 
-    /** Whether a touch at ([x], [y]) lands on a card, so the activity can leave the screensaver alone (F-NTF-12). */
+    /**
+     * Whether a touch at window coordinates ([x], [y]) lands on a card, so
+     * the activity can leave the screensaver alone (F-NTF-12). The event's
+     * coordinates are in the window's frame; this view may sit below a status
+     * bar or a non-immersive inset, so they are converted first.
+     */
     fun cardAt(x: Float, y: Float): Boolean {
+        val origin = IntArray(2)
+        getLocationInWindow(origin)
+        val localX = x - origin[0]
+        val localY = y - origin[1]
         val point = Rect()
         for (index in 0 until childCount) {
             getChildAt(index).getHitRect(point)
-            if (point.contains(x.toInt(), y.toInt())) return true
+            if (point.contains(localX.toInt(), localY.toInt())) return true
         }
         return false
     }

@@ -22,14 +22,19 @@ import net.lockney.tabula.ha.CommandHandler
 @OptIn(ExperimentalCoroutinesApi::class)
 class MediaManagerTest {
     private val scope = TestScope()
+    private val mediaDir = kotlin.io.path.createTempDirectory("p25-manager").toFile()
     private val downloaded = mutableListOf<String>()
+    private val files = mutableListOf<File>()
     private val volumeWrites = mutableListOf<Int>()
     private val published = mutableListOf<StateDelta>()
     private val fakePlayer = FakePlayer()
     private val manager = MediaManager(
         controller = MediaController(),
         haUrl = { "http://ha:8123" },
-        download = { url -> downloaded += url; File("media-${downloaded.size}") },
+        download = { url ->
+            downloaded += url
+            File.createTempFile("tabula-media", null, mediaDir).also { files += it }
+        },
         player = fakePlayer,
         audio = object : AudioVolume {
             override fun setVolume(percent: Int) {
@@ -54,7 +59,10 @@ class MediaManagerTest {
     }
 
     @AfterTest
-    fun tearDown() = manager.close()
+    fun tearDown() {
+        manager.close()
+        mediaDir.deleteRecursively()
+    }
 
     @Test
     fun `plays an HA path resolved against the base URL`() {
@@ -97,6 +105,26 @@ class MediaManagerTest {
     }
 
     @Test
+    fun `a playback's file is deleted when it ends (review must-fix 1)`() {
+        manager.current()
+        manager.play("/a.mp3", MediaType.AUDIO, true, null)
+        scope.runCurrent()
+        assertTrue(files.single().exists(), "the downloaded audio is there while it plays")
+        fakePlayer.started.last().ended()
+        assertTrue(!files.single().exists(), "a terminal state deletes the file")
+    }
+
+    @Test
+    fun `a playback's file is deleted when the player reports an error`() {
+        manager.current()
+        manager.play("/a.mp3", MediaType.AUDIO, true, null)
+        scope.runCurrent()
+        fakePlayer.started.last().error()
+        assertEquals(listOf("${EventName.MEDIA_FINISHED.name}:error"), events())
+        assertTrue(!files.single().exists(), "a terminal state deletes the file")
+    }
+
+    @Test
     fun `a failed fetch is a terminal error`() {
         val failing = MediaManager(
             controller = MediaController(),
@@ -117,6 +145,17 @@ class MediaManagerTest {
     }
 
     @Test
+    fun `the startup sweep removes only leftover tabula-media files`() {
+        val stale = File(mediaDir, "tabula-media-crashed.tmp").apply { writeText("partial") }
+        val staleTwo = File(mediaDir, "tabula-media-older.tmp").apply { writeText("partial") }
+        val other = File(mediaDir, "unrelated.txt").apply { writeText("keep me") }
+        MediaManager.sweepStale(mediaDir)
+        assertTrue(!stale.exists())
+        assertTrue(!staleTwo.exists())
+        assertTrue(other.exists(), "sweeping never touches files it does not own")
+    }
+
+    @Test
     fun `controls reach the player and unsupported ones fail`() {
         manager.play("/a.mp3", MediaType.AUDIO, true, null)
         scope.runCurrent()
@@ -132,6 +171,7 @@ class MediaManagerTest {
 
     @Test
     fun `a second play stops the first and its late callbacks are dropped`() {
+        manager.current() // registration reported the initial state
         manager.play("/a.mp3", MediaType.AUDIO, true, null)
         scope.runCurrent()
         val prepared = fakePlayer.started.last()
@@ -140,6 +180,7 @@ class MediaManagerTest {
         scope.runCurrent()
         assertEquals(listOf("${EventName.MEDIA_FINISHED.name}:stopped"), events())
         assertTrue(prepared.stopped, "the replaced playback was released")
+        assertTrue(!files[0].exists(), "the replaced playback's file was deleted")
 
         // the replaced playback's decoder answers after the stop: dropped, not started
         prepared.lateEnded()
@@ -162,14 +203,22 @@ class MediaManagerTest {
         val sought = mutableListOf<Double>()
 
         override fun prepare(file: File, onEnded: () -> Unit, onError: (String) -> Unit): MediaPlayerHandle.Prepared =
-            FakePrepared(onEnded).also { started += it }
+            FakePrepared(onEnded, onError).also { started += it }
 
-        inner class FakePrepared(private val onEnded: () -> Unit) : MediaPlayerHandle.Prepared {
+        inner class FakePrepared(
+            private val onEnded: () -> Unit,
+            private val onError: (String) -> Unit,
+        ) : MediaPlayerHandle.Prepared {
             var stopped = false
 
             /** The playback's own completion: skipped once stopped. */
             fun ended() {
                 if (!stopped) onEnded()
+            }
+
+            /** A mid-playback decoder error: a terminal state too (F-TTS-10). */
+            fun error() {
+                if (!stopped) onError("decode failed")
             }
 
             /** A callback racing a release; the manager's generation drops it. */
