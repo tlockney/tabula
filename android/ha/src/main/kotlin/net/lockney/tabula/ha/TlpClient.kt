@@ -488,7 +488,14 @@ class TlpClient(
         }
     }
 
-    /** Send device events in order; stale ones from before registration are dropped. */
+    /**
+     * Send device events in order. Events queued before this loop starts are
+     * dropped: they describe moments the register frame's state already
+     * covers. An event raised in the short gap between the register snapshot
+     * and this loop's start is dropped with them; state still converges
+     * through the next delta, but an HA automation keyed on the event misses
+     * that one edge (a known gap, ADR 0013).
+     */
     private suspend fun eventLoop(conn: Connection) {
         val events = config.events ?: return
         while (events.tryReceive().isSuccess) {

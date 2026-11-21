@@ -80,6 +80,9 @@ class ScreenManager(
 
     /** The level to return to when the override is cleared. */
     private var restore: Int? = null
+
+    /** The level the latest decision aims for; a fade may not have reached it yet. */
+    private var decided: Int? = null
     private var fadeJob: Job? = null
     private var recheckJob: Job? = null
 
@@ -129,7 +132,8 @@ class ScreenManager(
         if (level == override) return
         generation.incrementAndGet()
         fadeJob?.cancel()
-        if (override == null) restore = onPanel ?: panel.readLevel()
+        // the decided level, not a mid-fade one: the cancelled fade's target comes back
+        if (override == null) restore = decided ?: onPanel ?: panel.readLevel()
         override = level
         val target = level ?: restore ?: return
         panel.setLevel(target)
@@ -150,6 +154,7 @@ class ScreenManager(
 
     private fun carryOut(decision: ScreenController.Decision) {
         decision.level?.let { target ->
+            decided = target
             val gen = generation.incrementAndGet()
             fadeJob?.cancel()
             val from = onPanel

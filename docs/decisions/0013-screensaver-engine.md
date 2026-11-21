@@ -22,7 +22,9 @@ The idle timer pauses while the panel is off or Tabula's window is not in front,
 
 - HA's screensaver switch, the `tabula.screensaver` service and the idle timer all drive one controller, and every start and stop reaches HA as a `tabula_screensaver` event with the mode and cause.
 - The screensaver runs for the service's lifetime, independent of the HA connection.
-- Follow-ups: F-SSV-02's dismissal when another app takes the foreground (P2.4 pauses the timer but leaves the screensaver state as is; the `stopped` triggers have no cause for it yet); an HA entity for the master switch and the idle timeout (F-SSV-01, Phase 3 settings entities); clock faces and options (F-SSV-08 to F-SSV-10); a separate dim level; the remaining modes, schedule, overlays, pixel shift and fade (Phase 3).
+- Follow-ups: F-SSV-02's dismissal when another app takes the foreground (P2.4 pauses the timer but leaves the screensaver state as is; the `stopped` triggers have no cause for it yet); an HA entity for the master switch and the idle timeout (F-SSV-01, Phase 3 settings entities); clock faces and options (F-SSV-08 to F-SSV-10); a separate dim level; the postpone action (F-SSV-01, F-SSV-04); waking the panel when the screensaver stops while it is off (F-SSV-20); the remaining modes, schedule, overlays, pixel shift and fade (Phase 3).
+- `next_screensaver` is also null while the timer is paused (panel off, Tabula not in front), a case PROTOCOL 4.4's "null while active or disabled" does not name. It is the honest value; PROTOCOL 4.4 should say so in a follow-up.
+- An event raised between the register snapshot and the start of the session's event loop is dropped with the stale ones; state converges, but an automation keyed on the event misses that edge.
 
 ## Alternatives considered
 

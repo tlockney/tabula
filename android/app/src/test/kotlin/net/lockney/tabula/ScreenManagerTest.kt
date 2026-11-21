@@ -234,4 +234,22 @@ class ScreenManagerTest {
         manager.setOverride(null)
         assertEquals(curve.levelFor(1.0), panel.level)
     }
+
+    @Test
+    fun `an override that cuts a fade short returns to the fade's target`() {
+        manager.applySettings(settings(adaptive = true))
+        manager.onLux(1.0)
+        scope.advanceUntilIdle()
+        scope.advanceTimeBy(5_000)
+        manager.onLux(10_000.0) // a fade towards the bright level starts
+        scope.advanceTimeBy(100)
+        scope.runCurrent()
+        val target = curve.levelFor(10_000.0)
+        assertTrue(panel.level != target, "still mid-fade")
+        manager.setOverride(20)
+        scope.advanceUntilIdle()
+        assertEquals(20, panel.level)
+        manager.setOverride(null)
+        assertEquals(target, panel.level)
+    }
 }

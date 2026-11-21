@@ -138,4 +138,12 @@ class ScreensaverControllerTest {
         val withTime = Tlp.encodeFrame("state_delta", StateFrame(id = 8, state = StateDelta(nextScreensaver = "2027-01-15T08:01:00Z")))
         assertTrue(withTime.contains(""""next_screensaver":"2027-01-15T08:01:00Z""""))
     }
+
+    @Test
+    fun `a settings push that changes nothing here reports nothing`() {
+        val c = controller(timeoutS = 60)
+        val again = c.applySettings(Screensaver(enabled = true, idleTimeout = 60, mode = SettingsMode.Clock, brightness = 20), t0)
+        assertTrue(again.transitions.isEmpty())
+        assertTrue(again.state == null || !again.state!!.isNotEmpty, "no unchanged keys: ${again.state}")
+    }
 }

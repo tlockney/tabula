@@ -48,6 +48,8 @@ class ScreensaverController(
     private var pauses = 0
     private var shown: ScreensaverMode? = null
     private var reportedNext: String? = null
+    private var reportedMode: ScreensaverMode? = null
+    private var reportedBrightness: Int? = null
 
     /** The mode on screen, or null when no screensaver shows. */
     @get:Synchronized
@@ -70,7 +72,10 @@ class ScreensaverController(
         screensaverMode = mode,
         screensaverBrightness = brightness,
         nextScreensaver = next(nowMs).also { reportedNext = it },
-    )
+    ).also {
+        reportedMode = mode
+        reportedBrightness = brightness
+    }
 
     /** When the idle timer fires, or null while it cannot (disabled, paused, showing). */
     @Synchronized
@@ -90,10 +95,11 @@ class ScreensaverController(
         val transitions = if (!enabled && shown != null) listOf(stop(ScreensaverStopTrigger.COMMAND, nowMs)) else emptyList()
         return Outcome(
             transitions,
+            // a delta holds only the keys that changed (PROTOCOL 4.4)
             StateDelta(
                 screensaverActive = if (transitions.isNotEmpty()) false else null,
-                screensaverMode = mode,
-                screensaverBrightness = brightness,
+                screensaverMode = mode.takeIf { it != reportedMode }?.also { reportedMode = it },
+                screensaverBrightness = brightness.takeIf { it != reportedBrightness }?.also { reportedBrightness = it },
             ).withNext(nowMs),
         )
     }
