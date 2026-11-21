@@ -9,10 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import timedelta
 
 import aiohttp
 from custom_components.tabula import TabulaHub
-from custom_components.tabula.const import DOMAIN, PAIR_PENDING_CAP, PAIR_RATE_LIMIT
+from custom_components.tabula.const import (
+    DOMAIN,
+    PAIR_PENDING_CAP,
+    PAIR_PENDING_TTL,
+    PAIR_RATE_LIMIT,
+)
 from custom_components.tabula.pairing import RateLimiter
 from helpers import (
     Paired,
@@ -26,7 +32,9 @@ from helpers import (
     ws_connect,
 )
 from homeassistant.helpers import device_registry as dr
+from homeassistant.util import dt as dt_util
 from mockdevice.pairing import new_nonce, nonce_hash
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 DEVICE = uid()
 
@@ -372,6 +380,33 @@ async def test_confirmed_but_unclaimed_is_revoked_on_expiry(hass_setup, server, 
     assert await hass_setup.auth.async_get_user(user_id) is None
     assert dr.async_get(hass_setup).async_get(ha_device_id) is None
     assert hub_runtime.entry.data.get("devices", {}) == {}
+
+
+async def test_unclaimed_revoked_by_expiry_timer_without_traffic(hass_setup, server, hub, session):
+    """The expiry timer revokes an unclaimed credential with no further pairing traffic."""
+    attempt, _ = await post_pair(session, server, DEVICE)
+    result = await confirm_code(hass_setup, DEVICE, attempt.code)
+    assert result["reason"] == "paired"
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    user_id = hub_runtime.devices[DEVICE].user_id
+
+    # Nothing touches the pending store; only the clock moves past the TTL.
+    async_fire_time_changed(hass_setup, dt_util.utcnow() + timedelta(seconds=PAIR_PENDING_TTL + 1))
+    await hass_setup.async_block_till_done()
+
+    assert DEVICE not in hub_runtime.devices
+    assert await hass_setup.auth.async_get_user(user_id) is None
+
+
+async def test_expiry_timer_spares_a_claimed_device(hass_setup, server, hub, session):
+    """A claimed pairing is consumed; its timer firing later revokes nothing."""
+    paired = await pair_device(hass_setup, server, DEVICE)
+    async_fire_time_changed(hass_setup, dt_util.utcnow() + timedelta(seconds=PAIR_PENDING_TTL + 1))
+    await hass_setup.async_block_till_done()
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert paired.device_id in hub_runtime.devices
 
 
 # --- unknown device ids: no side effects (packet Done-when) -------------------------

@@ -22,6 +22,8 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
 
 from . import pairing
@@ -29,9 +31,12 @@ from .const import (
     CLAIM_RATE_LIMIT,
     DOMAIN,
     LOCAL_ONLY,
+    PAIR_PENDING_TTL,
     PAIR_RATE_LIMIT,
     PAIR_RATE_WINDOW,
     PROTOCOL_VERSION,
+    SIGNAL_CAPABILITIES,
+    SIGNAL_DEVICE_UPDATE,
     USER_NAME_PREFIX,
 )
 from .pairing import (
@@ -39,11 +44,23 @@ from .pairing import (
     PendingPairings,
     RateLimiter,
 )
+from .settings import SettingsStore
 from .tlp import TLPValidator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = []  # entities arrive in P1.3
+# Phase 1 platforms (plan 5.5); entities are created from declared capabilities.
+PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.LIGHT,
+    Platform.MEDIA_PLAYER,
+    Platform.NOTIFY,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 UNSUPPORTED_PROTOCOL_ISSUE = "unsupported_protocol_{}"
 
 
@@ -74,6 +91,9 @@ class DeviceSession:
     registered: bool = False
     superseded: bool = False
     subscription_id: int | None = None
+    # The settings revision the device reported at registration (PROTOCOL.md
+    # 4.2); compared against HA's stored revision when the subscription opens.
+    reported_settings_revision: int | None = None
 
 
 @dataclass
@@ -90,11 +110,17 @@ class DeviceRecord:
     os_version: str | None = None
     app_version: str | None = None
     protocol_version: int | None = None
+    schema_version: int | None = None
     capabilities: list[str] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
     events: deque = field(default_factory=lambda: deque(maxlen=50))
     logs: deque = field(default_factory=lambda: deque(maxlen=200))
     current: DeviceSession | None = None
+
+    @property
+    def connected(self) -> bool:
+        """A registered, current connection exists (PROTOCOL.md 4.9)."""
+        return self.current is not None
 
     def update_from_register(self, frame: dict[str, Any], known: frozenset[str]) -> None:
         """Adopt the register frame's identity, state (replaced) and capabilities."""
@@ -103,6 +129,7 @@ class DeviceRecord:
         self.os_version = frame.get("os_version")
         self.app_version = frame.get("app_version")
         self.protocol_version = frame.get("protocol_version")
+        self.schema_version = frame.get("schema_version")
         self.state = dict(frame["state"])
         self.capabilities = [c for c in frame["capabilities"] if c in known]
 
@@ -114,6 +141,9 @@ class DeviceRecord:
             "ha_device_id": self.ha_device_id,
             "name": self.name,
             "model": self.model,
+            # Kept so entities exist (unavailable) after an HA restart, before
+            # the tablet reconnects; nothing is removed on disconnect.
+            "capabilities": list(self.capabilities),
         }
 
 
@@ -126,6 +156,8 @@ class TabulaHub:
         self.tlp = TLPValidator()
         self.devices: dict[str, DeviceRecord] = {}
         self.by_user: dict[str, str] = {}
+        # Per-device settings documents and revisions (settings.py, plan 5.6).
+        self.settings = SettingsStore(hass)
         # Strong refs, keyed by the connection object; entries are removed when the
         # subscription's cleanup runs (socket close) and when a newer registration
         # replaces an unsubscribed session. ActiveConnection has __slots__ and no
@@ -137,6 +169,8 @@ class TabulaHub:
         # (device_id, command_id) -> Future; the P1.4 command path resolves these.
         self.result_futures: dict[tuple[str, str], asyncio.Future] = {}
         self._unsub: list[Any] = []
+        # device_id -> cancel callback of the pending entry's expiry timer.
+        self._pending_timers: dict[str, Any] = {}
 
     # --- lookups -----------------------------------------------------------
 
@@ -164,6 +198,7 @@ class TabulaHub:
                 ha_device_id=info["ha_device_id"],
                 name=info.get("name"),
                 model=info.get("model"),
+                capabilities=list(info.get("capabilities", [])),
             )
             self.devices[record.device_id] = record
             self.by_user[record.user_id] = record.device_id
@@ -219,6 +254,7 @@ class TabulaHub:
         """Tokens first, then the user (ADR 0001 item 3); removing a token closes the
         device's live WebSocket (HA registers a revoke callback per connection)."""
         await self._revoke_user(record.user_id)
+        await self.settings.async_remove(record.device_id)
         self.devices.pop(record.device_id, None)
         self.by_user.pop(record.user_id, None)
         ir.async_delete_issue(
@@ -243,17 +279,49 @@ class TabulaHub:
         """
         if pending.confirmed_token is None:
             return
-        self.hass.async_create_task(self._revoke_unclaimed(pending))
+        self.hass.async_create_task(self.revoke_unclaimed(pending))
 
-    async def _revoke_unclaimed(self, pending: PendingPairing) -> None:
-        """A confirmed-but-unclaimed attempt must leave nothing behind."""
+    async def revoke_unclaimed(self, pending: PendingPairing) -> None:
+        """A confirmed-but-unclaimed attempt must leave nothing behind.
+
+        Idempotent, and it only touches the record this attempt created: a
+        later successful pairing of the same device has another token.
+        """
         record = self.devices.get(pending.device_id)
-        if record is not None:
-            # Revoking first pops the record, so the device-registry remove
-            # event below finds no record and does not revoke a second time.
-            await self.revoke_device(record)
-        if pending.confirmed_ha_device_id is not None:
-            dr.async_get(self.hass).async_remove_device(pending.confirmed_ha_device_id)
+        token = (
+            self.hass.auth.async_get_refresh_token_by_token(pending.confirmed_token)
+            if pending.confirmed_token is not None
+            else None
+        )
+        if record is None or token is None or record.refresh_token_id != token.id:
+            return
+        # Revoking first pops the record, so the device-registry remove event
+        # below finds no record and does not revoke a second time.
+        await self.revoke_device(record)
+        registry = dr.async_get(self.hass)
+        if registry.async_get(record.ha_device_id) is not None:
+            registry.async_remove_device(record.ha_device_id)
+
+    @callback
+    def schedule_pending_expiry(self, device_id: str) -> None:
+        """Expire a new pending entry on time, even if nothing touches the store.
+
+        The store otherwise only sweeps on access, so a tablet that goes dark
+        after the user confirmed would keep its unclaimed credential until the
+        next pairing activity.
+        """
+        entry = self.pending.get(device_id)
+        if entry is None:
+            return
+        if (cancel := self._pending_timers.pop(device_id, None)) is not None:
+            cancel()
+
+        @callback
+        def _expire(_now: Any) -> None:
+            self._pending_timers.pop(device_id, None)
+            self.pending.expire(entry)
+
+        self._pending_timers[device_id] = async_call_later(self.hass, PAIR_PENDING_TTL, _expire)
 
     @callback
     def _persist(self) -> None:
@@ -327,6 +395,7 @@ class TabulaHub:
             record.current.superseded = True
         record.current = session
         session.registered = True
+        session.reported_settings_revision = frame["settings_revision"]
         # Superseded sessions stay in place: every frame they send answers
         # "superseded" until the socket closes (PROTOCOL.md 4.9). The close
         # itself runs the cleanup registered under the register's msg id, so
@@ -335,12 +404,20 @@ class TabulaHub:
         ir.async_delete_issue(
             self.hass, DOMAIN, UNSUPPORTED_PROTOCOL_ISSUE.format(record.device_id)
         )
+        previous = set(record.capabilities)
         record.update_from_register(frame, self.tlp.known_capabilities)
         self._update_device_registry(record)
+        if set(record.capabilities) != previous:
+            self._persist()
+        # Every registration syncs entities (idempotent): a capability gained
+        # or dropped, a re-paired device, or a first register with no
+        # capabilities, which still gets its always-present entities.
+        async_dispatcher_send(self.hass, SIGNAL_CAPABILITIES, record)
+        self.notify_update(record)
         result = {
             "ha_device_id": record.ha_device_id,
             "protocol_version": PROTOCOL_VERSION,
-            "settings_revision": 0,  # HA has no settings store until P1.5
+            "settings_revision": self.settings.revision(record.device_id),
             "server_time": _utc_now(),
             "capabilities": record.capabilities,
         }
@@ -349,6 +426,21 @@ class TabulaHub:
             {"id": frame["id"], "type": "result", "success": True, "result": result},
         )
         return result
+
+    @callback
+    def apply_identity(self, record: DeviceRecord) -> None:
+        """identity.name in the stored settings is the device's display name
+        (F-MGT-03, set at pairing or from the settings editor)."""
+        stored = self.settings.get(record.device_id)
+        name = (stored.settings.get("identity") or {}).get("name") if stored else None
+        if not name or name == record.name:
+            return
+        record.name = name
+        registry = dr.async_get(self.hass)
+        entry = registry.async_get(record.ha_device_id)
+        if entry is not None and entry.name != name:
+            registry.async_update_device(entry.id, name=name)
+        self._persist()
 
     @callback
     def _update_device_registry(self, record: DeviceRecord) -> None:
@@ -371,10 +463,27 @@ class TabulaHub:
             record = session.device
             if record is not None and record.current is session:
                 record.current = None
+                self.notify_update(record)
             self.sessions.pop(session.connection, None)
             session.subscription_id = None
 
         return _cleanup
+
+    @callback
+    def notify_update(self, record: DeviceRecord, keys: set[str] | None = None) -> None:
+        """Tell the device's entities to refresh.
+
+        ``keys`` names the state keys that changed; None means availability or
+        the whole state changed. Each entity writes its state at most once per
+        call, so one state frame is one coalesced update per entity.
+        """
+        async_dispatcher_send(self.hass, SIGNAL_DEVICE_UPDATE.format(record.device_id), keys)
+
+    @callback
+    def apply_state(self, record: DeviceRecord, delta: dict[str, Any]) -> None:
+        """Merge a state delta and push it to the affected entities."""
+        record.state.update(delta)
+        self.notify_update(record, set(delta))
 
     @callback
     def subscribe(self, session: DeviceSession, msg_id: int) -> None:
@@ -406,6 +515,9 @@ class TabulaHub:
         for unsub in self._unsub:
             unsub()
         self._unsub.clear()
+        for cancel in self._pending_timers.values():
+            cancel()
+        self._pending_timers.clear()
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -427,13 +539,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub = TabulaHub(hass, entry)
     hass.data[DOMAIN] = hub
     hub.load_records()
+    await hub.settings.async_load()
     await hub.sweep_orphans()
     hub.listen_device_registry()
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload the hub: views and listeners go away; credentials stay for a reload."""
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
     hub = hass.data.pop(DOMAIN, None)
     if hub is not None:
         hub.teardown()

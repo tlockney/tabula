@@ -76,6 +76,16 @@ class PendingPairings:
             if self._on_drop is not None:
                 self._on_drop(pending)
 
+    def expire(self, pending: PendingPairing) -> None:
+        """Drop this exact entry on its expiry timer, if it is still the one stored.
+
+        A newer attempt for the same device is a different object and stays.
+        """
+        if self._entries.get(pending.device_id) is pending:
+            del self._entries[pending.device_id]
+            if self._on_drop is not None:
+                self._on_drop(pending)
+
     def get(self, device_id: str) -> PendingPairing | None:
         self.sweep()
         return self._entries.get(device_id)
@@ -261,6 +271,7 @@ class TabulaPairView(HomeAssistantView):
             )
         if status == "created":
             hub.start_discovery_flow(body)
+            hub.schedule_pending_expiry(body["device_id"])
         response = {
             "status": "pending",
             "expires_in": int(PAIR_PENDING_TTL),

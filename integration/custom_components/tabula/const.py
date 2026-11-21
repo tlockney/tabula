@@ -13,7 +13,7 @@ HUB_UNIQUE_ID = "tabula-hub"
 # v1 is the only major, so both are 1).
 PROTOCOL_VERSION = 1
 SUPPORTED_PROTOCOL_VERSIONS = {1}
-SCHEMA_VERSION = 1  # settings schema (P0.5); HA has no settings store until P1.5
+SCHEMA_VERSION = 1  # settings schema (P0.5); documents are stored at this version
 
 # Pairing (ADR 0002)
 PAIR_CODE_DIGITS = 6
@@ -28,11 +28,18 @@ PAIR_MAX_BODY = 4096  # bytes
 
 # WebSocket session (ADR 0002)
 FRAME_MAX_BYTES = 256 * 1024
+COMMAND_TIMEOUT = 10.0  # s; awaiting a command's tabula/result (PROTOCOL.md 4.6)
 
 # Per-device system users (ADR 0001 items 2-4): local_only=True by default,
 # group user via homeassistant.auth.const.GROUP_ID_USER, names "Tabula <id8>".
 USER_NAME_PREFIX = "Tabula"
 LOCAL_ONLY = "local_only"  # hub option: False creates device users reachable remotely
+
+# Dispatcher signals (P1.3): a device's declared capabilities changed (platforms
+# add or remove entities); a device's state or availability changed ({} is the
+# device_id).
+SIGNAL_CAPABILITIES = f"{DOMAIN}_capabilities"
+SIGNAL_DEVICE_UPDATE = f"{DOMAIN}_device_update_{{}}"
 
 # hass.data keys
 DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"

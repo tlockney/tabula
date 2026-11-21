@@ -31,6 +31,8 @@ from .const import (
     PROTOCOL_VERSION,
     SUPPORTED_PROTOCOL_VERSIONS,
 )
+from .events import relay_event
+from .settings import schedule_settings_push
 
 
 def _reject_size(frame: dict[str, Any]) -> bool:
@@ -112,6 +114,10 @@ def ws_subscribe(hass: HomeAssistant, connection: ActiveConnection, msg: dict[st
         return
     hub.subscribe(session, msg["id"])
     connection.send_result(msg["id"])
+    # PROTOCOL.md 4.2: right after the subscription opens, push HA's copy when
+    # the revisions the two ends hold differ (settings.py, plan 5.6).
+    assert session.device is not None
+    schedule_settings_push(hub, session.device)
 
 
 @callback
@@ -123,7 +129,7 @@ def ws_state(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, A
     if (frame := _frame(hub, connection, msg, "state_delta")) is None:
         return
     assert session.device is not None
-    session.device.state.update(frame["state"])
+    hub.apply_state(session.device, frame["state"])
     connection.send_result(msg["id"])
 
 
@@ -144,7 +150,7 @@ def ws_result(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, 
 
 @callback
 def ws_event(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
-    """tabula/event: accepted and kept for diagnostics; the bus relay is P1.5."""
+    """tabula/event: kept for diagnostics and relayed to the HA bus (plan 5.7)."""
     hub = TabulaHub.get(hass)
     if hub is None or (session := _session(hub, connection, msg)) is None:
         return
@@ -152,6 +158,7 @@ def ws_event(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, A
         return
     assert session.device is not None
     session.device.events.append(frame)
+    relay_event(hass, session.device, frame["event"], frame["data"])
     connection.send_result(msg["id"])
 
 

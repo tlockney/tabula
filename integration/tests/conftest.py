@@ -30,6 +30,10 @@ async def integration_fixture(hass_setup):
     the router once it runs) - exactly what HA's own startup order guarantees.
     """
     assert await async_setup_component(hass_setup, DOMAIN, {})
+    # Entity platforms whose components register HTTP views (media_player,
+    # and notify via repairs) must also be set up before the server starts.
+    for component in ("media_player", "notify"):
+        assert await async_setup_component(hass_setup, component, {})
     return hass_setup
 
 

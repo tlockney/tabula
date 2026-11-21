@@ -11,10 +11,9 @@
 #
 # Paste the whole output into the packet Result section.
 #
-# Note: with only P1.2 merged there are no entities yet, so "unavailable" is
-# observed through the app's logcat (connection lost) and the HA registry
-# entry staying put; the entity-state assertions become checkable when P1.3
-# lands. The script prints entity states as soon as they exist.
+# Entity platforms are in the tree (P1.3), so the HA queries also print the
+# tablet's entity states; before the entity packets merged the same script
+# relied on the registry entry and the app's logcat alone.
 
 set -euo pipefail
 

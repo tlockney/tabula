@@ -66,14 +66,12 @@ It verifies, with pasted evidence for each step:
 
 1. the service is running (`dumpsys activity services net.lockney.tabula`);
 2. the app's persisted device_id;
-3. HA's device registry knows the tablet (this is the "appears in HA" gate
-   until the entity platforms of P1.3 land);
-4. airplane mode: the app logs `connection lost` and HA shows the device
-   while its entities read unavailable (entity assertions activate with
-   P1.3; before that the logcat line plus the surviving registry entry is
-   the evidence);
-5. airplane mode off: the app re-registers (`registered with HA device`) and
-   HA reflects the device again;
+3. HA's device registry knows the tablet, with its entity states (the
+   entity platforms are in the tree since P1.3);
+4. airplane mode: the app logs `connection lost` and HA's entities for the
+   tablet read unavailable (F-HA-04); the registry entry stays;
+5. airplane mode off: the app re-registers (`registered with HA device`)
+   and HA's entities refresh from the tablet's state;
 6. the full service log.
 
 The script's exit status is 0 only when every step's evidence appeared.
