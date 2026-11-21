@@ -43,6 +43,11 @@ class TabulaService : Service() {
     private lateinit var lightSensor: LightSensor
     private lateinit var screen: ScreenManager
     private lateinit var screensaver: ScreensaverManager
+    private lateinit var notifications: NotificationsManager
+    private lateinit var chime: NotificationChime
+    private lateinit var audio: MediaManager
+    private lateinit var deviceEvents: EventFanIn
+    private val mediaFetcher = net.lockney.tabula.ha.MediaFetcher()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -58,6 +63,8 @@ class TabulaService : Service() {
         startForeground(NOTIFICATION_ID, notification(phaseText(TabulaStatus.phase.value)))
         startScreenControl()
         startScreensaver()
+        startNotifications()
+        startAudio()
     }
 
     /**
@@ -104,6 +111,60 @@ class TabulaService : Service() {
         scope.launch { TabulaStatus.foreground.collect { screensaver.setForeground(it) } }
     }
 
+    /**
+     * Notifications (packet P2.5) run for the service's lifetime too. Cards
+     * arrive only from HA, but the ones already up keep timing out while HA
+     * is down, and the chime is a synthesized tone on the notification
+     * stream (F-NTF-09). A card's tap travels back through
+     * [TabulaStatus.cardDismiss]; it removes only that card (F-NTF-08).
+     */
+    private fun startNotifications() {
+        chime = NotificationChime()
+        notifications = NotificationsManager(
+            controller = net.lockney.tabula.core.notifications.NotificationCards(),
+            show = { cards -> TabulaStatus.notifications.value = cards },
+            chime = chime::play,
+            scope = scope,
+        )
+        notifications.applySettings(store.settings)
+        notifications.start()
+        scope.launch { TabulaStatus.cardDismiss.collect { notifications.dismiss(it) } }
+    }
+
+    /**
+     * The media player (packet P2.5) plays HA TTS and media URLs, fetched
+     * with no credential and redirects followed within the ADR 0002 bounds
+     * (PROTOCOL 4.5, ADR 0001 item 5), on the OS music stream at the
+     * settings' media volume (plan 5.6). Files left by an abrupt death are
+     * swept at start.
+     */
+    private fun startAudio() {
+        MediaManager.sweepStale(cacheDir)
+        audio = MediaManager(
+            controller = net.lockney.tabula.core.media.MediaController(),
+            haUrl = { store.haUrl },
+            download = ::downloadMedia,
+            player = AndroidPlayer,
+            audio = AndroidAudioVolume(applicationContext),
+            scope = scope,
+        )
+        audio.applySettings(store.settings)
+        // one event stream for the TLP session from every source (P2.4, P2.5)
+        deviceEvents = EventFanIn(scope, listOf(screensaver.events, notifications.events, audio.events))
+    }
+
+    /**
+     * Fetch media audio to a uniquely named cache file (no Authorization
+     * header, ADR 0001 item 5); the manager deletes it at the playback's
+     * terminal state, and [MediaManager.sweepStale] removes any that survived
+     * a process death.
+     */
+    private suspend fun downloadMedia(url: String): java.io.File {
+        val file = java.io.File.createTempFile("tabula-media", null, cacheDir)
+        mediaFetcher.fetch(url, file)
+        return file
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_PAIR -> {
@@ -128,8 +189,12 @@ class TabulaService : Service() {
 
     override fun onDestroy() {
         screensaver.stop()
+        notifications.stop()
+        chime.release()
+        audio.close()
         screen.setOverride(null)
         TabulaStatus.screensaver.value = null
+        TabulaStatus.notifications.value = emptyList()
         lightSensor.stop()
         panel.close()
         job?.cancel()
@@ -220,6 +285,7 @@ class TabulaService : Service() {
             )
             screen.listener = state::publish
             screensaver.listener = state::publish
+            audio.listener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
                 TlpClient.Config(
@@ -239,8 +305,10 @@ class TabulaService : Service() {
                         dashboard = (application as TabulaApp).dashboard,
                         screen = screen,
                         screensaver = screensaver,
+                        notifications = notifications,
+                        audio = audio,
                     ),
-                    events = screensaver.events,
+                    events = deviceEvents.events,
                 ),
                 (application as TabulaApp).tokens,
                 OkHttpWsTransportFactory(),
@@ -275,6 +343,7 @@ class TabulaService : Service() {
             } finally {
                 screen.listener = null
                 screensaver.listener = null
+                audio.listener = null
                 state.close()
             }
         }
@@ -295,23 +364,24 @@ class TabulaService : Service() {
         }
     }
 
-    /** Screen and screensaver state for registration (PROTOCOL 4.2). */
+    /** Screen, screensaver and media state for registration (PROTOCOL 4.2). */
     private fun extraState(): net.lockney.tabula.core.tlp.StateDelta {
         val saver = screensaver.current()
-        return screen.current().copy(
+        val screenAndSaver = screen.current().copy(
             screensaverActive = saver.screensaverActive,
             screensaverMode = saver.screensaverMode,
             screensaverBrightness = saver.screensaverBrightness,
             nextScreensaver = saver.nextScreensaver,
         )
+        return net.lockney.tabula.ha.mergeState(screenAndSaver, audio.current())
     }
 
     /**
      * The capabilities this device declares (PROTOCOL 4.2): battery (P2.1),
      * navigation (P2.2, the dashboard WebView follows a navigate command and
      * reports the current page), screen and brightness (P2.3),
-     * adaptive_brightness only when the tablet has a light sensor, and
-     * screensaver (P2.4).
+     * adaptive_brightness only when the tablet has a light sensor,
+     * screensaver (P2.4), and notifications and audio (P2.5).
      */
     private fun capabilities(): List<String> = buildList {
         add("battery")
@@ -320,6 +390,8 @@ class TabulaService : Service() {
         add("brightness")
         if (lightSensor.available) add("adaptive_brightness")
         add("screensaver")
+        add("notifications")
+        add("audio")
     }
 
     private fun versionName(): String =

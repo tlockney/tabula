@@ -98,6 +98,26 @@ async def test_screensaver_events_group_one_bus_event(hass_setup, server, hub, s
     await client.close()
 
 
+async def test_media_finished_event_relays_to_the_bus(hass_setup, server, hub, session, paired):
+    """tabula_media carries media_finished with its reason (plan 5.7, PROTOCOL 4.7)."""
+    client = await _registered_subscribed(session, server, paired)
+    seen = _listen(hass_setup, ["tabula_media"])
+
+    reply = await client.reply(
+        frame_fixture("event", id=9, event="media_finished", data={"reason": "ended"})
+    )
+    assert reply["success"], reply
+
+    assert len(seen) == 1
+    event = seen[0]
+    assert event.event_type == "tabula_media"
+    assert event.data["type"] == "media_finished"
+    assert event.data["reason"] == "ended"
+    assert event.data["device_id"] == paired.ha_device_id
+    assert event.data["tabula_device_id"] == paired.device_id
+    await client.close()
+
+
 async def test_unknown_event_is_rejected_not_relayed(hass_setup, server, hub, session, paired):
     client = await _registered_subscribed(session, server, paired)
     seen = _listen(hass_setup, ["tabula_notification", "tabula_screensaver", "tabula_media"])

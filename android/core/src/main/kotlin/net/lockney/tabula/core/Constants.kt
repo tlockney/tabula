@@ -83,4 +83,16 @@ object Constants {
 
     /** SCREENSAVER_EVENT_BUFFER: screensaver events kept while they wait for the session (P2.4). */
     const val SCREENSAVER_EVENT_BUFFER = 16
+
+    /** NOTIFICATION_EVENT_BUFFER: notification events kept while they wait for the session (P2.5). */
+    const val NOTIFICATION_EVENT_BUFFER = 16
+
+    /** MEDIA_EVENT_BUFFER: media_finished events kept while they wait for the session (P2.5). */
+    const val MEDIA_EVENT_BUFFER = 16
+
+    /** MEDIA_MAX_BYTES: largest audio file the media player downloads before playing it (P2.5). */
+    const val MEDIA_MAX_BYTES = 50L * 1024 * 1024
+
+    /** MEDIA_MAX_REDIRECTS: redirect hops the media fetch follows before giving up (P2.5). */
+    const val MEDIA_MAX_REDIRECTS = 5
 }

@@ -103,6 +103,15 @@ Manual brightness from HA (the light entity, the `screen` command) is applied at
 | --- | --- | --- |
 | `SCREENSAVER_EVENT_BUFFER` | 16 events | Screensaver start and stop events wait here for the TLP session; the oldest are dropped past this. A connected session drains it at once, and one that registers drops what came before, so the bound only caps memory while HA is down. |
 
+### Notifications and media (P2.5)
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `NOTIFICATION_EVENT_BUFFER` | 16 events | Notification shown and dismissed events wait here for the TLP session, with the same bounds and drop-oldest rule as `SCREENSAVER_EVENT_BUFFER`: a burst of cards while HA is down cannot grow without limit, a connected session drains it at once, and one that registers drops what came before. |
+| `MEDIA_EVENT_BUFFER` | 16 events | `media_finished` events wait here for the TLP session; same reasoning. Playback only starts from an HA command, so at most a couple are ever pending. |
+| `MEDIA_MAX_BYTES` | 50 MiB | The media player downloads the audio it plays rather than streaming it, so the fetch is JVM-testable and its redirects stay under Tabula's control (PROTOCOL 4.5; ADR 0001 item 5 still holds: no credential is ever attached). The cap bounds a runaway or endless stream, which would otherwise fill storage: HA TTS clips are well under 1 MiB, and ordinary music files and podcast episodes are a few to a few dozen MiB, so 50 MiB passes every real clip and fails only what could never be a sensible announcement — with `media_finished` reason `error`. |
+| `MEDIA_MAX_REDIRECTS` | 5 | The media fetch follows redirects (the P2.1 no-redirect rule exists so a *credential* cannot be re-sent somewhere else, and this fetch carries none, ADR 0001 item 5) but refuses a downgrade from https to http. Common CDN and signed-URL chains are one or two hops; a chain longer than 5 is a misconfiguration or a loop. |
+
 The idle timeout, mode and brightness defaults are in "Phase 1–2 behavior defaults" below.
 
 ### Phase 1–2 behavior defaults

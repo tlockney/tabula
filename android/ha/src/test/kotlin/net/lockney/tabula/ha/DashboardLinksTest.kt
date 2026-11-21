@@ -117,4 +117,35 @@ class DashboardLinksTest {
         assertTrue(!DashboardLinks.offOriginLoad("http://homeassistant.local:8123/../..//x", ha))
         assertTrue(!DashboardLinks.offOriginLoad("about:blank", ha)) // loaded on teardown
     }
+
+    // --- play_media (P2.5) ---------------------------------------------------
+
+    @Test
+    fun `play_media paths resolve against the HA base URL`() {
+        assertEquals(
+            "http://homeassistant.local:8123/api/tts_proxy/clip.mp3",
+            DashboardLinks.resolvePlayUrl("/api/tts_proxy/clip.mp3", ha),
+        )
+    }
+
+    @Test
+    fun `absolute play_media urls pass through from anywhere`() {
+        assertEquals(
+            "http://elsewhere.example:9000/a.mp3",
+            DashboardLinks.resolvePlayUrl("http://elsewhere.example:9000/a.mp3", ha),
+        )
+        assertEquals(
+            "https://example.org/a.mp3",
+            DashboardLinks.resolvePlayUrl("https://example.org/a.mp3", ha),
+        )
+    }
+
+    @Test
+    fun `play_media refuses credentials, odd schemes and network-path references`() {
+        assertNull(DashboardLinks.resolvePlayUrl("http://user:pass@homeassistant.local:8123/a.mp3", ha))
+        assertNull(DashboardLinks.resolvePlayUrl("ftp://homeassistant.local/a.mp3", ha))
+        assertNull(DashboardLinks.resolvePlayUrl("//evil.example/a.mp3", ha))
+        assertNull(DashboardLinks.resolvePlayUrl("a.mp3", ha))
+        assertNull(DashboardLinks.resolvePlayUrl("http://", ha))
+    }
 }

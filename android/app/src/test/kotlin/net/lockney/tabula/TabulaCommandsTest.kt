@@ -206,4 +206,112 @@ class TabulaCommandsTest {
         val unsupported = without.handle("screensaver", buildJsonObject { put("active", false) })
         assertEquals(ErrorCode.UNSUPPORTED_COMMAND, (unsupported as CommandHandler.Reply.Error).code)
     }
+
+    // --- notify / play_media / media_control (P2.5) ------------------------------
+
+    private class FakeNotifications : NotificationControl {
+        val shown = mutableListOf<net.lockney.tabula.core.tlp.NotifyArgs>()
+        val settings = mutableListOf<Settings>()
+
+        override fun show(args: net.lockney.tabula.core.tlp.NotifyArgs): CommandHandler.Reply {
+            shown += args
+            return CommandHandler.Reply.Ok()
+        }
+
+        override fun applySettings(settings: Settings) {
+            this.settings += settings
+        }
+    }
+
+    private class FakeAudio : AudioControl {
+        val played = mutableListOf<Triple<String, Boolean, Int?>>()
+        val controls = mutableListOf<Triple<String, Int?, Double?>>()
+        val settings = mutableListOf<Settings>()
+
+        override fun play(url: String, mediaType: net.lockney.tabula.core.tlp.MediaType, announce: Boolean, volume: Int?): CommandHandler.Reply {
+            played += Triple(url, announce, volume)
+            return CommandHandler.Reply.Ok()
+        }
+
+        override fun control(
+            action: net.lockney.tabula.core.tlp.MediaControlAction,
+            volume: Int?,
+            position: Double?,
+        ): CommandHandler.Reply {
+            controls += Triple(action.name, volume, position)
+            return CommandHandler.Reply.Ok()
+        }
+
+        override fun applySettings(settings: Settings) {
+            this.settings += settings
+        }
+    }
+
+    @Test
+    fun `notify, play_media and media_control reach the managers`() {
+        val notes = FakeNotifications()
+        val audio = FakeAudio()
+        val commands = TabulaCommands(store(), onRestartApp = {}, notifications = notes, audio = audio)
+
+        val notify = commands.handle(
+            "notify",
+            buildJsonObject {
+                put("message", "dryer done")
+                put("title", "Laundry")
+                put("level", "success")
+                put("chime", false)
+                put("tag", "dryer")
+            },
+        )
+        assertTrue(notify is CommandHandler.Reply.Ok)
+        assertEquals(1, notes.shown.size)
+        assertEquals("dryer done", notes.shown.single().message)
+        assertEquals(net.lockney.tabula.core.tlp.NotificationLevel.SUCCESS, notes.shown.single().level)
+
+        val play = commands.handle(
+            "play_media",
+            buildJsonObject {
+                put("url", "/api/tts_proxy/a.mp3")
+                put("media_type", "audio")
+                put("announce", true)
+                put("volume", 70)
+            },
+        )
+        assertTrue(play is CommandHandler.Reply.Ok)
+        assertEquals(listOf(Triple<String, Boolean, Int?>("/api/tts_proxy/a.mp3", true, 70)), audio.played)
+
+        val control = commands.handle(
+            "media_control",
+            buildJsonObject {
+                put("action", "set_volume")
+                put("volume", 30)
+            },
+        )
+        assertTrue(control is CommandHandler.Reply.Ok)
+        assertEquals(listOf(Triple<String, Int?, Double?>("SET_VOLUME", 30, null)), audio.controls)
+
+        commands.handle("set_settings", setSettingsArgs(1))
+        assertEquals(1, notes.settings.size)
+        assertEquals(1, audio.settings.size)
+    }
+
+    @Test
+    fun `notify, play_media and media_control are unsupported when not declared`() {
+        val commands = TabulaCommands(store(), onRestartApp = {})
+        assertEquals(
+            ErrorCode.UNSUPPORTED_COMMAND,
+            (commands.handle("notify", buildJsonObject { put("message", "x") }) as CommandHandler.Reply.Error).code,
+        )
+        assertEquals(
+            ErrorCode.UNSUPPORTED_COMMAND,
+            (commands.handle(
+                "play_media",
+                buildJsonObject { put("url", "/a.mp3"); put("media_type", "audio"); put("announce", false) },
+            ) as CommandHandler.Reply.Error).code,
+        )
+        assertEquals(
+            ErrorCode.UNSUPPORTED_COMMAND,
+            (commands.handle("media_control", buildJsonObject { put("action", "pause") }) as CommandHandler.Reply.Error).code,
+        )
+    }
 }

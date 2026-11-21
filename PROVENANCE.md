@@ -100,3 +100,16 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | The screensaver brightness holds the backlight while it shows, and the previous level returns on dismissal, including levels HA set meanwhile | F-SSV-17 (dim level from ADR 0013) | P2.4 |
 | HA can start the screensaver while the idle start is switched off | independent design (ADR 0013) | P2.4 |
 | Each start and stop is sent to HA as a `tabula_screensaver` event with mode and cause, and the next idle start time is reported to HA | F-SSV-26, F-SSV-01 | P2.4 |
+| HA can put a card on the tablet's screen: cards stack newest-first at the top, above the dashboard, the native screens and the screensaver, and each card removes itself when its lifetime runs out | F-NTF-01, F-NTF-07, F-NTF-12, F-SSV-21 | P2.5 |
+| A card's severity sets its stock glyph and accent color; a missing or unknown level falls back to the device setting's level, and a card's own duration, chime and tag override the settings | F-NTF-02, F-NTF-05, F-NTF-09; defaults in ADR 0002 | P2.5 |
+| Cards chime per severity (warning and error by default), played as a synthesized tone on the OS notification stream | F-NTF-09; chime defaults in ADR 0002 | P2.5 |
+| Tapping a card removes only that card and does nothing else — not even the idle timer, so a card over the screensaver leaves the screensaver up | F-NTF-08, F-NTF-12 | P2.5 |
+| A repeated tag replaces the earlier card; the visible-card cap evicts the oldest | F-NTF-07, F-NTF-08; cap in ADR 0002 | P2.5 |
+| Each card's appearance and exit reaches HA as a `tabula_notification` event with the tag and the reason (shown, replaced, timed out, touched) | F-NTF-08, F-EVT-02, PROTOCOL 4.7 | P2.5 |
+| The tablet's speaker is an HA media_player that plays TTS and media URLs, fetched with no credential, and a new playback replaces the current one | F-TTS-01, F-TTS-02, F-TTS-06, ADR 0001 item 5, PROTOCOL 4.5 | P2.5 |
+| The media fetch follows redirects (up to five hops, never a https-to-http downgrade), since it carries no credential for the P2.1 no-redirect rule to protect | ADR 0001 item 5; bounds in ADR 0002 | P2.5 |
+| The media download is cancellable — a replaced or stopped load stops fetching at once — and capped (MEDIA_MAX_BYTES); an over-cap or endless stream ends the playback with media_finished reason error | F-TTS-10; cap in ADR 0002 | P2.5 |
+| Downloaded audio is deleted when its playback ends, is replaced, or fails to decode, and any leftover is swept at service start, so a long-running tablet never accumulates files | independent design (PR review) | P2.5 |
+| Play, pause, stop, seek, volume and mute reach the device's media channel, reported as volume, muted and media state; next and previous fail (no queue), and stopping nothing is a no-op | F-MED-01, F-TTS-06, F-TTS-07, PROTOCOL 4.4-4.5 | P2.5 |
+| Every playback reaches a terminal state: the end, a stop or a fetch/decode failure is reported as a `tabula_media` (`media_finished`) event with its reason | F-TTS-10, PROTOCOL 4.7 | P2.5 |
+| The media volume is a device setting HA owns (audio.media_volume) and the device applies to its music stream; a per-call volume applies for that playback | F-TTS-07, plan 5.6, ADR 0002 | P2.5 |

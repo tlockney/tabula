@@ -44,6 +44,10 @@ class MainActivity : Activity() {
     private lateinit var native: LinearLayout
     private var dashboard: DashboardView? = null
     private lateinit var screensaver: ScreensaverView
+    private lateinit var cards: NotificationCardsView
+
+    /** The touch being dispatched, so [onUserInteraction] can tell a card tap from other activity (F-NTF-12). */
+    private var dispatchingTouch: android.view.MotionEvent? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,6 +71,11 @@ class MainActivity : Activity() {
         addContentView(screensaver, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
         ))
+        // the notification cards sit above the screensaver too (P2.5, F-NTF-12, F-SSV-21)
+        cards = NotificationCardsView(this) { id -> TabulaStatus.cardDismiss.tryEmit(id) }
+        addContentView(cards, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
         ScreenWindow.attach(this, scope)
         observe()
         TabulaService.start(this)
@@ -82,9 +91,25 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
-    /** Every touch or key on the window restarts the idle timer (F-SSV-02). */
+    /**
+     * Every touch or key on the window restarts the idle timer (F-SSV-02) -
+     * except a touch that lands on a notification card: it only removes that
+     * card and does nothing else, so a card over the screensaver does not
+     * dismiss the screensaver (F-NTF-08, F-NTF-12).
+     */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        dispatchingTouch = ev
+        try {
+            return super.dispatchTouchEvent(ev)
+        } finally {
+            dispatchingTouch = null
+        }
+    }
+
     override fun onUserInteraction() {
         super.onUserInteraction()
+        val touch = dispatchingTouch
+        if (touch != null && cards.cardAt(touch.x, touch.y)) return
         TabulaStatus.userActivity.tryEmit(Unit)
     }
 
@@ -102,6 +127,9 @@ class MainActivity : Activity() {
     private fun observe() {
         scope.launch {
             TabulaStatus.screensaver.collect { screensaver.show(it) }
+        }
+        scope.launch {
+            TabulaStatus.notifications.collect { cards.render(it) }
         }
         scope.launch {
             TabulaStatus.phase.collect { render(it) }
