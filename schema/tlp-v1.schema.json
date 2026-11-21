@@ -59,6 +59,7 @@
         "audio",
         "battery",
         "navigation",
+        "go_home",
         "logs",
         "screenshot"
       ]

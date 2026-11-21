@@ -1,5 +1,5 @@
-"""Screensaver brightness (plan 5.5) and the idle timeout setting (P3.2, F-HA-11).
-Volume lives on the media player."""
+"""Screensaver brightness (plan 5.5), the idle timeout setting (P3.2, F-HA-11)
+and the return-to-start delay (P3.15, F-DSH-15). Volume lives on the media player."""
 
 from __future__ import annotations
 
@@ -46,13 +46,8 @@ IDLE_TIMEOUT = TabulaEntityDescription(
 )
 
 
-class TabulaIdleTimeout(TabulaSettingEntity, NumberEntity):
-    """Seconds without interaction before the screensaver starts (F-SSV-01).
-
-    Bounds come from the schema (ADR 0002), so they cannot drift from what
-    the store validates. The device starts its countdown over when the value
-    changes (F-HA-11).
-    """
+class TabulaSettingsNumber(TabulaSettingEntity, NumberEntity):
+    """A settings integer leaf in seconds; bounds come from the schema (ADR 0002)."""
 
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
@@ -60,7 +55,8 @@ class TabulaIdleTimeout(TabulaSettingEntity, NumberEntity):
 
     def __init__(self, hub: TabulaHub, record, description: TabulaEntityDescription) -> None:
         super().__init__(hub, record, description)
-        field_ = hub.settings.schema.field("screensaver_idle_timeout")
+        assert description.setting is not None
+        field_ = hub.settings.schema.field(description.setting)
         self._attr_native_min_value = field_.minimum
         self._attr_native_max_value = field_.maximum
 
@@ -70,6 +66,14 @@ class TabulaIdleTimeout(TabulaSettingEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.async_write_setting(round(value))
+
+
+RETURN_HOME_AFTER = TabulaEntityDescription(
+    key="return_home_after",
+    translation_key="return_home_after",
+    entity_category=EntityCategory.CONFIG,
+    setting="dashboard_return_home_after",  # F-DSH-15; 0 never returns
+)
 
 
 async def async_setup_entry(
@@ -83,5 +87,7 @@ async def async_setup_entry(
         )
     )
     entry.async_on_unload(
-        setup_platform(hass, hub, async_add_entities, [IDLE_TIMEOUT], TabulaIdleTimeout)
+        setup_platform(
+            hass, hub, async_add_entities, [IDLE_TIMEOUT, RETURN_HOME_AFTER], TabulaSettingsNumber
+        )
     )

@@ -85,11 +85,36 @@ class DashboardView(
         bus.attach(this)
     }
 
-    /** Load the dashboard with the external-auth bootstrap (F-DSH-01). */
+    /** Load the dashboard with the external-auth bootstrap (F-DSH-01), on the
+     * start target when one is set (F-DSH-02: launch, crash restart and
+     * restart_app land there; a fragment target keeps its fragment). */
     fun load() {
         val url = store.haUrl ?: return
-        Log.i(TAG, "dashboard: loading $url")
-        view.loadUrl("$url/?external_auth=1")
+        val target = startTargetUrl()?.let { DashboardLinks.withParam(it, "external_auth=1") }
+        if (target == null) {
+            Log.i(TAG, "dashboard: loading $url")
+            view.loadUrl("$url/?external_auth=1")
+        } else {
+            Log.i(TAG, "dashboard: loading start target $target")
+            view.loadUrl(target)
+        }
+    }
+
+    /**
+     * The resolved start target (F-DSH-02), or null when none is set or the
+     * value is invalid or off-origin - the caller then loads HA's default
+     * page. Validation is `navigate`'s own (single leading slash, resolved
+     * against the HA base URL, refused off the origin, ADR 0001 item 3).
+     */
+    private fun startTargetUrl(): String? {
+        val path = store.settings.dashboard.startPath
+        if (path.isEmpty()) return null
+        val origin = haUri ?: return null
+        val resolved = DashboardLinks.resolveNavigatePath(path, origin)
+        if (resolved == null) {
+            Log.w(TAG, "dashboard: start path '$path' is not a valid HA frontend path; falling back to HA's default page")
+        }
+        return resolved
     }
 
     /** The activity is done with it: detach first so a dying handle is never used. */
@@ -115,6 +140,15 @@ class DashboardView(
 
     override fun load(url: String) {
         main.post { view.loadUrl(url) }
+    }
+
+    override fun loadStart() {
+        // In-session (go_home, the idle return): the frontend keeps its own
+        // session, so no external-auth bootstrap is appended - same as
+        // navigate. Unset, invalid or off-origin falls back to HA's default
+        // page (F-DSH-02).
+        val resolved = startTargetUrl() ?: return load()
+        main.post { view.loadUrl(resolved) }
     }
 
     override fun currentPage(): String? = currentUrl?.let(DashboardLinks::pagePath)

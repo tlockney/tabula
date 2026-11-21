@@ -526,7 +526,7 @@ class TlpClient(
             Commands.MEDIA_CONTROL -> event.mediaControlArgs(Tlp.json)
             Commands.SCREENSAVER -> event.screensaverArgs(Tlp.json)
             Commands.NAVIGATE -> event.navigateArgs(Tlp.json)
-            Commands.RELOAD, Commands.RESTART_APP, Commands.CLEAR_CACHE -> event.emptyArgs(Tlp.json)
+            Commands.RELOAD, Commands.RESTART_APP, Commands.CLEAR_CACHE, Commands.GO_HOME -> event.emptyArgs(Tlp.json)
             Commands.LOG_SUBSCRIPTION -> event.logSubscriptionArgs(Tlp.json)
             Commands.SCREENSHOT -> event.screenshotArgs(Tlp.json)
         }

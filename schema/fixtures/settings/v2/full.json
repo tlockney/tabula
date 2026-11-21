@@ -10,6 +10,10 @@
     "adaptive_brightness": true,
     "keep_screen_on": true
   },
+  "dashboard": {
+    "start_path": "/lovelace/kitchen#popup",
+    "return_home_after": 600
+  },
   "screensaver": {
     "enabled": true,
     "idle_timeout": 600,

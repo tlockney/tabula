@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,7 @@ ALL_CAPABILITIES = [
     "audio",
     "battery",
     "navigation",
+    "go_home",
     "logs",
     "screenshot",
 ]
@@ -35,6 +37,7 @@ COMMAND_CAPABILITY: dict[str, str | None] = {
     "media_control": "audio",
     "screensaver": "screensaver",
     "navigate": "navigation",
+    "go_home": "go_home",
     "reload": None,
     "restart_app": None,
     "clear_cache": None,
@@ -95,8 +98,13 @@ class MockDevice:
         behavior: Behavior | None = None,
         settings_revision: int = 0,
         base_url: str = "http://homeassistant.local:8123",
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self.base_url = base_url
+        # The clock drives the return-to-start countdown (F-DSH-15, P3.15);
+        # tests inject a fake one.
+        self.clock = clock or time.monotonic
+        self._last_activity = self.clock()
         self.capabilities = list(capabilities or ALL_CAPABILITIES)
         self.behavior = behavior or Behavior()
         self.settings_revision = settings_revision
@@ -145,6 +153,62 @@ class MockDevice:
         """A new connection registered: the stale-revision rule restarts (PROTOCOL.md 4.5)."""
         self._connection_revision = None
         self.log_streaming = False
+        # A registration is a fresh launch: the mock lands on its start target
+        # (F-DSH-02, P3.15). An invalid or off-origin path keeps the default
+        # page, exactly as the app falls back.
+        self._land_on_start_page()
+
+    # --- start target (P3.15, F-DSH-02, F-DSH-15) -------------------------
+
+    def start_path(self) -> str:
+        """dashboard.start_path, or "" when unset."""
+        return self.settings.get("dashboard", {}).get("start_path", "")
+
+    def _return_after(self) -> float:
+        """dashboard.return_home_after in seconds; 0 (or absent) never returns."""
+        return float(self.settings.get("dashboard", {}).get("return_home_after", 0))
+
+    def _land_on_start_page(self) -> None:
+        path = self.start_path()
+        if path and same_origin(self.base_url, path):
+            self.update(current_page=page_path(path))
+
+    def _cmd_go_home(self, args: dict[str, Any]) -> None:
+        path = self.start_path()
+        if path and not same_origin(self.base_url, path):
+            raise CommandError("invalid_args", "start path leaves the Home Assistant origin")
+        target = page_path(path) if path else "/"
+        self.update(current_page=target)
+        self.on_event("page_changed", {"path": target})
+
+    def touch(self) -> None:
+        """A touch on the kiosk: resets the return-to-start countdown (F-DSH-15)."""
+        self._last_activity = self.clock()
+
+    def tick(self) -> bool:
+        """The clock moved: return to the start target after the idle delay.
+
+        The countdown runs behind a screensaver (F-DSH-15, F-OPT) and from the
+        last touch; a device already on the start target (path only, so a
+        fragment target counts as home) stays put. Either way the countdown
+        starts over once the deadline has passed (ADR 0019).
+        """
+        delay = self._return_after()
+        if delay <= 0:
+            return False
+        now = self.clock()
+        if now - self._last_activity < delay:
+            return False
+        self._last_activity = now
+        path = self.start_path()
+        target = page_path(path) if path else "/"
+        if self.state["current_page"] == target:
+            return False
+        if path and not same_origin(self.base_url, path):
+            return False
+        self.update(current_page=target)
+        self.on_event("page_changed", {"path": target})
+        return True
 
     def log(self, level: str, tag: str, message: str) -> None:
         if self.log_streaming:
@@ -174,7 +238,12 @@ class MockDevice:
         applied = self._connection_revision
         if applied is not None and args["revision"] < applied:
             raise CommandError("stale_revision", f"revision {applied} applied on this connection")
+        old_delay = self._return_after()
         self.settings = args["settings"]
+        # A changed return delay restarts the countdown (ADR 0019 item 5);
+        # a changed start path never moves the page (F-DSH-02).
+        if self._return_after() != old_delay:
+            self.touch()
         self.settings_revision = args["revision"]
         self._connection_revision = args["revision"]
         return {"revision": self.settings_revision}

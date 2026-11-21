@@ -63,7 +63,9 @@ class TabulaService : Service() {
     private lateinit var notifications: NotificationsManager
     private lateinit var chime: NotificationChime
     private lateinit var audio: MediaManager
+    private lateinit var startPage: StartPageManager
     private lateinit var deviceEvents: EventFanIn
+    private var stopPageListener: (() -> Unit)? = null
     private val mediaFetcher = net.lockney.tabula.ha.MediaFetcher()
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -80,6 +82,7 @@ class TabulaService : Service() {
         startForeground(NOTIFICATION_ID, notification(phaseText(TabulaStatus.phase.value)))
         startScreenControl()
         startScreensaver()
+        startStartPage()
         startNotifications()
         startAudio()
     }
@@ -127,6 +130,29 @@ class TabulaService : Service() {
         screensaver.start()
         scope.launch { TabulaStatus.userActivity.collect { screensaver.onActivity() } }
         scope.launch { TabulaStatus.foreground.collect { screensaver.setForeground(it) } }
+    }
+
+    /**
+     * The return-to-start timer (packet P3.15, F-DSH-15): runs for the
+     * service's lifetime, fed by touches and page changes, independent of the
+     * screensaver - it keeps counting behind it and while the panel is off,
+     * so a covered dashboard resets without lighting the screen. The
+     * settings' delay defaults to never (ADR 0002), so a tablet that never
+     * received the keys behaves as before.
+     */
+    private fun startStartPage() {
+        val bus = (application as TabulaApp).dashboard
+        startPage = StartPageManager(
+            controller = net.lockney.tabula.core.dashboard.StartPageController(),
+            dashboard = bus,
+            scope = scope,
+        )
+        startPage.applySettings(store.settings)
+        startPage.start()
+        scope.launch { TabulaStatus.userActivity.collect { startPage.onActivity() } }
+        // a page change - the user's or HA's - resets the countdown (ADR 0019);
+        // listeners must be quick, and the controller call is synchronized
+        stopPageListener = bus.onPageChanged { startPage.onPageChanged() }
     }
 
     /**
@@ -212,6 +238,9 @@ class TabulaService : Service() {
 
     override fun onDestroy() {
         screensaver.stop()
+        startPage.stop()
+        stopPageListener?.invoke()
+        stopPageListener = null
         entityData.stop()
         notifications.stop()
         chime.release()
@@ -343,6 +372,7 @@ class TabulaService : Service() {
                             haUrl = { haUrl },
                             screenOn = { screen.current().screenOn ?: true },
                         ),
+                        startPage = startPage,
                     ),
                     events = deviceEvents.events,
                 ),
@@ -418,7 +448,8 @@ class TabulaService : Service() {
     /**
      * The capabilities this device declares (PROTOCOL 4.2): battery (P2.1),
      * navigation (P2.2, the dashboard WebView follows a navigate command and
-     * reports the current page), screen and brightness (P2.3),
+     * reports the current page), go_home (P3.15, the start target and the
+     * go_home command), screen and brightness (P2.3),
      * adaptive_brightness only when the tablet has a light sensor,
      * screensaver (P2.4), notifications and audio (P2.5), and screenshot
      * (P3.13, the capture-and-upload flow).
@@ -426,6 +457,7 @@ class TabulaService : Service() {
     private fun capabilities(): List<String> = buildList {
         add("battery")
         add("navigation")
+        add("go_home")
         add("screen")
         add("brightness")
         if (lightSensor.available) add("adaptive_brightness")

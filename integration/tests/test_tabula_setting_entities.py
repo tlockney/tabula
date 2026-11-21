@@ -15,10 +15,10 @@ from contextlib import asynccontextmanager
 import aiohttp
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
-from custom_components.tabula.number import IDLE_TIMEOUT
+from custom_components.tabula.number import IDLE_TIMEOUT, RETURN_HOME_AFTER
 from custom_components.tabula.settings import SettingsSchema
 from custom_components.tabula.switch import SETTING_SWITCHES
-from custom_components.tabula.text import CLOCK_BACKGROUND
+from custom_components.tabula.text import CLOCK_BACKGROUND, START_PATH
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -30,7 +30,9 @@ from mockdevice.store import DeviceStore
 SETTING_ENTITIES = [
     *(("switch", d.key, d.setting) for d in SETTING_SWITCHES),
     ("number", IDLE_TIMEOUT.key, IDLE_TIMEOUT.setting),
+    ("number", RETURN_HOME_AFTER.key, RETURN_HOME_AFTER.setting),
     ("text", CLOCK_BACKGROUND.key, CLOCK_BACKGROUND.setting),
+    ("text", START_PATH.key, START_PATH.setting),
 ]
 
 
@@ -95,6 +97,8 @@ def test_every_setting_entity_names_a_shared_schema_leaf():
         "schedule_enabled": 2,
         "widgets_shown": 2,
         "screensaver_clock_background_source": 2,
+        "dashboard_start_path": 2,
+        "dashboard_return_home_after": 2,
     }
 
 
@@ -189,22 +193,38 @@ async def test_v2_entities_write_their_leaves(hass_setup, server, hub, paired, t
             {"entity_id": background, "value": "https://example.org/pic.jpg"},
             blocking=True,
         )
+        # the start-page keys (P3.15): a frontend path, and an idle delay
+        start_path = eid(hass_setup, dev, "text", "start_path")
+        await hass_setup.services.async_call(
+            "text",
+            "set_value",
+            {"entity_id": start_path, "value": "/lovelace/kitchen#popup"},
+            blocking=True,
+        )
+        delay = eid(hass_setup, dev, "number", "return_home_after")
+        await hass_setup.services.async_call(
+            "number", "set_value", {"entity_id": delay, "value": 300}, blocking=True
+        )
 
         stored = runtime.settings.get(dev)
         assert stored is not None
-        assert stored.revision == 5, "one revision per write"
+        assert stored.revision == 7, "one revision per write"
         s = stored.settings
         assert s["screensaver"]["brightness_enabled"] is False
         assert s["widgets"]["shown"] is False
         assert s["schedule"]["enabled"] is True
         assert s["screensaver"]["idle_timeout"] == 120
         assert s["screensaver"]["clock"]["background_source"] == "https://example.org/pic.jpg"
+        assert s["dashboard"] == {"start_path": "/lovelace/kitchen#popup", "return_home_after": 300}
         assert hass_setup.states.get(timeout).state == "120"
         assert hass_setup.states.get(background).state == "https://example.org/pic.jpg"
+        assert hass_setup.states.get(delay).state == "300"
         # the schema-2 device converges on the last revision with the v2 keys
-        await until(lambda: device.settings_revision == 5)
+        await until(lambda: device.settings_revision == 7)
         assert device.settings["widgets"]["shown"] is False
         assert device.settings["screensaver"]["clock"]["background_source"].endswith("pic.jpg")
+        assert device.settings["dashboard"]["start_path"] == "/lovelace/kitchen#popup"
+        assert device.settings["dashboard"]["return_home_after"] == 300
 
 
 async def test_same_background_value_is_still_a_new_revision(

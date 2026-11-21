@@ -1,4 +1,5 @@
-"""Buttons (plan 5.5): restart app, reload dashboard, clear cache, capture screenshot."""
+"""Buttons (plan 5.5): restart app, reload dashboard, clear cache, go to the
+start page, capture screenshot."""
 
 from __future__ import annotations
 
@@ -43,6 +44,12 @@ BUTTONS = (
         translation_key="clear_cache",
         entity_category=EntityCategory.CONFIG,
         command="clear_cache",
+    ),
+    TabulaButtonDescription(
+        key="go_home",
+        translation_key="go_home",
+        command="go_home",
+        capabilities=frozenset({"go_home"}),
     ),
     TabulaButtonDescription(
         key="capture_screenshot",

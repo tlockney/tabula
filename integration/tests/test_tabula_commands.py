@@ -164,6 +164,20 @@ async def test_tabula_navigate_and_screensaver(hass_setup, tablet):
         )
 
 
+# --- go_home (P3.15) ---------------------------------------------------------
+
+
+async def test_go_home_button_sends_the_device_to_its_start_target(hass_setup, tablet):
+    """F-NAV-03 via the F-HA-08 button: press, and the mock lands on its start path."""
+    tablet.device.settings = {
+        "dashboard": {"start_path": "/lovelace/kitchen", "return_home_after": 0}
+    }
+    eid = entity_id(hass_setup, "button", tablet.paired, "go_home")
+    await hass_setup.services.async_call("button", "press", {"entity_id": eid}, blocking=True)
+    await wait_until(lambda: tablet.device.state["current_page"] == "/lovelace/kitchen")
+    assert ("page_changed", {"path": "/lovelace/kitchen"}) in tablet.events
+
+
 # --- failures ---------------------------------------------------------------
 
 

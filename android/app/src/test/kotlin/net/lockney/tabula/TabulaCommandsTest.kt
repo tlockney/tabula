@@ -57,6 +57,12 @@ class TabulaCommandsTest {
             loaded.add(url)
         }
 
+        var startLoads = 0
+
+        override fun loadStart() {
+            startLoads++
+        }
+
         override fun currentPage(): String? = page
 
         override suspend fun capture(quality: Int?): ByteArray? = byteArrayOf(1, 2, 3)
@@ -191,6 +197,40 @@ class TabulaCommandsTest {
         val reply = commands.run("navigate", navigateArgs("/lovelace/1"))
         assertTrue(reply is CommandHandler.Reply.Error)
         assertEquals(ErrorCode.FAILED, reply.code)
+    }
+
+    // --- go_home (P3.15) -----------------------------------------------------------
+
+    @Test
+    fun `go_home asks the dashboard for its start target`() = runTest {
+        val dashboard = FakeDashboard()
+        val reply = commands(busWith(dashboard)).run("go_home", buildJsonObject {})
+        assertTrue(reply is CommandHandler.Reply.Ok)
+        assertEquals(1, dashboard.startLoads)
+        assertTrue(dashboard.loaded.isEmpty(), "the bus's loadStart carries it, not load")
+    }
+
+    @Test
+    fun `go_home fails when no dashboard is showing`() = runTest {
+        val reply = commands(busWith()).run("go_home", buildJsonObject {})
+        assertTrue(reply is CommandHandler.Reply.Error)
+        assertEquals(ErrorCode.FAILED, reply.code)
+    }
+
+    private class FakeStartPage : StartPageControl {
+        val settings = mutableListOf<Settings>()
+
+        override fun applySettings(settings: Settings) {
+            this.settings += settings
+        }
+    }
+
+    @Test
+    fun `set_settings reaches the start page manager too`() = runTest {
+        val start = FakeStartPage()
+        val commands = TabulaCommands(store(), onRestartApp = {}, startPage = start)
+        assertTrue(commands.run("set_settings", setSettingsArgs(1)) is CommandHandler.Reply.Ok)
+        assertEquals(1, start.settings.size)
     }
 
     private class FakeScreensaver : ScreensaverControl {

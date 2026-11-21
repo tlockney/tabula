@@ -107,6 +107,125 @@ async def test_missing_capability_and_failure_mode():
     assert err.value.code == "failed"
 
 
+# --- start target (P3.15, F-DSH-02, F-DSH-15) --------------------------------
+
+
+def with_settings(device: MockDevice, dashboard: dict) -> None:
+    device.settings = {"dashboard": dashboard}
+
+
+async def test_go_home_loads_the_start_path():
+    device = MockDevice(base_url="http://ha.local:8123")
+    events = []
+    device.on_event = lambda e, d: events.append((e, d))
+    with_settings(device, {"start_path": "/lovelace/kitchen", "return_home_after": 0})
+    await device.handle("go_home", {})
+    assert device.state["current_page"] == "/lovelace/kitchen"
+    assert events == [("page_changed", {"path": "/lovelace/kitchen"})]
+
+
+async def test_go_home_without_a_start_path_is_the_default_page():
+    device = MockDevice(base_url="http://ha.local:8123")
+    with_settings(device, {})
+    await device.handle("go_home", {})
+    assert device.state["current_page"] == "/"
+
+
+async def test_go_home_refuses_an_off_origin_start_path():
+    device = MockDevice(base_url="http://ha.local:8123")
+    with_settings(device, {"start_path": "//evil.example/x"})
+    with pytest.raises(CommandError) as err:
+        await device.handle("go_home", {})
+    assert err.value.code == "invalid_args"
+
+
+async def test_registration_lands_on_the_start_path():
+    device = MockDevice(base_url="http://ha.local:8123")
+    with_settings(device, {"start_path": "/lovelace/kitchen#popup"})
+    device.state["current_page"] = "/lovelace/0"
+    device.begin_connection()
+    assert device.state["current_page"] == "/lovelace/kitchen", "the fragment is not current_page"
+    # an off-origin path falls back: the page stays where it was
+    with_settings(device, {"start_path": "//evil.example/x"})
+    device.state["current_page"] = "/lovelace/0"
+    device.begin_connection()
+    assert device.state["current_page"] == "/lovelace/0"
+
+
+def test_idle_return_fires_after_the_delay_and_a_touch_resets_it():
+    clock = {"now": 100.0}
+    device = MockDevice(base_url="http://ha.local:8123", clock=lambda: clock["now"])
+    with_settings(device, {"start_path": "/lovelace/kitchen", "return_home_after": 60})
+    device.state["current_page"] = "/lovelace/0"
+    events = []
+    device.on_event = lambda e, d: events.append((e, d))
+
+    assert device.tick() is False, "before the delay"
+    clock["now"] += 59
+    assert device.tick() is False
+    device.touch()  # a touch resets the countdown
+    clock["now"] += 30
+    assert device.tick() is False, "the touch moved the deadline"
+    clock["now"] += 30
+    assert device.tick() is True, "returns to the start target"
+    assert device.state["current_page"] == "/lovelace/kitchen"
+    assert events == [("page_changed", {"path": "/lovelace/kitchen"})]
+
+    # the countdown starts over once it fired
+    clock["now"] += 1
+    assert device.tick() is False
+
+
+def test_idle_return_runs_behind_a_screensaver_and_skips_when_already_home():
+    clock = {"now": 0.0}
+    device = MockDevice(base_url="http://ha.local:8123", clock=lambda: clock["now"])
+    with_settings(device, {"start_path": "/lovelace/kitchen", "return_home_after": 60})
+    device.state["screensaver_active"] = True  # the countdown does not care (F-OPT)
+    clock["now"] += 60
+    assert device.tick() is True
+
+    device.state["current_page"] = "/lovelace/kitchen"
+    device.state["screensaver_active"] = False
+    clock["now"] += 60
+    assert device.tick() is False, "already on the start target: no navigation"
+    # and the default target is "/" when nothing is configured
+    with_settings(device, {"start_path": "", "return_home_after": 60})
+    device.state["current_page"] = "/config"
+    clock["now"] += 60
+    assert device.tick() is True
+    assert device.state["current_page"] == "/"
+
+
+async def test_a_changed_return_delay_restarts_the_mock_countdown():
+    clock = {"now": 0.0}
+    device = MockDevice(base_url="http://ha.local:8123", clock=lambda: clock["now"])
+    device.begin_connection()
+    settings = {"revision": 1, "schema_version": 2, "settings": {}}
+    await device.handle(
+        "set_settings",
+        {
+            **settings,
+            "settings": {"dashboard": {"start_path": "/lovelace/kitchen", "return_home_after": 60}},
+        },
+    )
+    clock["now"] += 50
+    assert device.tick() is False
+    # a changed delay restarts the countdown (ADR 0019 item 5); an unchanged
+    # one (same document resent) does not
+    await device.handle(
+        "set_settings",
+        {
+            **settings,
+            "revision": 2,
+            "settings": {"dashboard": {"start_path": "/lovelace/kitchen", "return_home_after": 90}},
+        },
+    )
+    clock["now"] += 60
+    assert device.tick() is False, "the new delay counts from its own apply"
+    clock["now"] += 30
+    assert device.tick() is True
+
+
 def test_backoff_equal_jitter_and_reset():
     backoff = Backoff(base=1, cap=8, reset_after=60, rng=random.Random(1))
     delays = [backoff.next_delay() for _ in range(6)]
