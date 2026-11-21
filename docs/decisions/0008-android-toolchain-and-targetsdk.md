@@ -16,7 +16,7 @@ The v1 devices (plan section 3) are Fire HD 10 Plus on Fire OS 7 / Android 9 (AP
 
 - **minSdk 24** — plan section 3, "Baselines" (Android 7, the PF1007L floor).
 - **compileSdk 34, targetSdk 34** — Tabula is sideloaded over ADB, so Play's targetSdk policy does not apply; targetSdk only selects platform behavior changes. 34 matches the pinned SDK components (platform android-34, build-tools 34.0.0), is well inside the range the pinned AGP supports, and no v1 feature needs a newer level. Revisit per phase, with a new ADR, when a feature needs one.
-- Java/Kotlin target: **17** for the Gradle build and bytecode.
+- Java/Kotlin target: **17** for the Gradle build and bytecode, set explicitly for both compilers in every module: Java `sourceCompatibility`/`targetCompatibility` (the `android.compileOptions` block in `:app`) alongside Kotlin `compilerOptions.jvmTarget`. Without the Java settings Gradle configures `compileJava` for the running JDK's default, and the Kotlin plugin fails the build with an inconsistent-JVM-target error when that is not 17 (seen on JDK 21, issue #56). A JVM toolchain (`jvmToolchain(17)`) was considered and rejected: requesting 17 breaks machines that only have a newer accepted JDK, and Foojay auto-provisioning is a release download (rule 7). Explicit compatibility lets any JDK in the 17-21 range cross-compile both languages to 17 bytecode.
 
 The codec module is **plain Kotlin JVM, no Android framework dependencies** (packet requirement): `:core` tests on any JDK against `schema/fixtures/`, and the app module (`:app`) consumes it as a library. P2.1 must enable `coreLibraryDesugaring` in the app module, because the codec uses `java.time` and minSdk 24 predates it.
 
