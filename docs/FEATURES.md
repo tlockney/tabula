@@ -33,7 +33,7 @@ Each entry has a stable ID (for example F-SCR-03) and describes behavior in our 
 | F-CAL | Calendar | 11 |
 | F-KSK | Kiosk and lockdown | 22 |
 | F-LNC | Home launcher | 7 |
-| F-GST | Gestures and actions | 11 |
+| F-GST | Gestures and actions | 12 |
 | F-HA | Device presence in Home Assistant | 14 |
 | F-EVT | Events reported to HA | 7 |
 | F-MGT | Management from HA | 11 |
@@ -41,7 +41,7 @@ Each entry has a stable ID (for example F-SCR-03) and describes behavior in our 
 | F-UPD | Self-update | 10 |
 | F-JSB | JavaScript bridge | 8 |
 
-254 entries in total. Items dropped or deferred by plan section 4 are listed once, as one-line hooks, in the last section.
+255 entries in total. Items dropped or deferred by plan section 4 are listed once, as one-line hooks, in the last section.
 
 ## Dashboard shell (F-DSH)
 
@@ -82,7 +82,7 @@ HA: candidate switch. Open: switch entity vs. setting plus `tabula.*` service.
 ### F-DSH-08 Side menu
 An edge swipe from the left of the screen pulls out a native drawer over the dashboard. It carries shortcuts useful at the wall, then the app version, then a light/dark theme toggle that is always the last row. Kiosk-mode behavior: F-KSK-02 and F-KSK-06.
 - Which entries appear, and in what order, is a device setting edited in HA (choose and reorder). Defaults: architect picks.
-- Candidate entries, each present only once its feature ships: go to start target, hide HA header/sidebar, start screensaver, touch lock (F-KSK-11), view hold (F-DSH-17), app launcher, reload, clear web cache, restart app, exit app, plus shortcuts contributed by other areas (alarms, timers, calendar, now playing).
+- Candidate entries, each present only once its feature ships: go to start target, hide HA header/sidebar, start screensaver, touch lock (F-KSK-11), view freeze (F-DSH-17), app launcher, reload, clear web cache, restart app, exit app, plus shortcuts contributed by other areas (alarms, timers, calendar, now playing).
 - No settings entry: Tabula has no on-device settings screen; settings are edited in HA.
 - A chosen entry is hidden while it has nothing to do on this device: launcher with no apps picked; exit app while Tabula holds the home role (F-LNC-04); a feature not configured.
 - Exit app and restart app require a confirm step.
@@ -103,10 +103,10 @@ A second web view stacked above the dashboard, with a visible close control. Ope
 - Dismissal: close control, back, home, or an HA command. Whatever lay under it is visible again.
 - Opened by HA: any screensaver is dismissed and the display woken first, so the overlay is actually visible.
 - Idle: touching it counts as activity, but its presence does not stop the idle countdown; left alone, it ends up under the screensaver as usual.
-- Hold flag (optional): opening with the flag switches view hold (F-DSH-17) on; closing switches it back off, unless hold was already on beforehand, in which case it stays on. Hold's own auto-release still applies.
+- Freeze flag (optional): opening with the flag turns view freeze (F-DSH-17) on; closing turns it off again, unless it was already on beforehand, in which case it stays on. Freeze's own auto-release still applies.
 - Sign-in: overlays on HA's address share the dashboard session; other origins get none.
 - Schemes: http and https only.
-HA: `tabula.*` services to open a URL overlay (optionally with the hold flag) and to close it.
+HA: `tabula.*` services to open a URL overlay (optionally with the freeze flag) and to close it.
 
 ### F-DSH-12 Custom pages: list
 Device setting: a list of custom pages. Each entry = display name + target. The target is either a path on the HA server (joined to HA's base URL; e.g. files in HA's local web folder) or a complete URL on some other server.
@@ -120,17 +120,17 @@ HA: edited along with the other device settings.
 - Caching: custom pages skip the HTTP cache and HA's service worker on every load, so edits appear the next time they load. HA dashboards cache normally.
 - Features specific to HA dashboards (header/sidebar hiding, update filtering, view carousel) are inert on custom pages; HA's settings UI for those features notes this.
 - The page's prefers-color-scheme follows the kiosk's current theme and changes live, without a reload.
-- `window.tabula` is injected on custom pages, with kiosk state (kiosk mode, touch lock, screensaver, view hold, rotation) and change events.
+- `window.tabula` is injected on custom pages, with kiosk state (kiosk mode, touch lock, screensaver, view freeze, rotation) and change events.
 - Trust: a server used for a custom page is treated as first-party, like HA. Navigation among its pages happens in the main surface rather than as an overlay, and every page from it gets the bridge.
 
 ### F-DSH-14 Custom pages: shared HA connection
-Optional device setting. When on, custom pages may send HA WebSocket commands and subscriptions through the bridge, riding on the device's own authenticated HA access, so the page needs no token. Subscriptions are restored automatically after a reconnect; waiting commands fail with a clear "connection lost" error. The page can do what the device's HA user can, except manage credentials or users (create/list/revoke tokens, change passwords, add users), which are refused. A page's connection ends when the WebView navigates away from that page. Errors are distinguished (not enabled, not configured, HA unreachable, auth invalid, refused).
+Optional device setting. When on, custom pages may send HA WebSocket commands and subscriptions through the bridge, riding on the HA access the tablet already holds, so the page never deals with a credential of its own. Subscriptions are restored automatically after a reconnect; waiting commands fail with a clear "connection lost" error. The page can do what the device's HA user can, except manage credentials or users (create/list/revoke tokens, change passwords, add users), which are refused. A page's connection ends when the WebView navigates away from that page. Errors are distinguished (not enabled, not configured, HA unreachable, auth invalid, refused).
 Open: whether Tabula's single device-to-HA connection can multiplex page traffic, or this needs a scoped credential; the security boundary is the architect's.
 
 ### F-DSH-15 Return to start target after idle
 A device setting: after no touch for a configured time (default: architect picks; a value meaning never turns it off), the dashboard returns to its start target. Rules:
 - The timer keeps running behind a screensaver, so the device can reset overnight without lighting the screen. When the screensaver itself shows an HA dashboard view, the return happens when that screensaver ends instead.
-- Paused by view hold (F-DSH-17) and by page-declared interactions (F-DSH-18).
+- Paused by view freeze (F-DSH-17) and by page-declared interactions (F-DSH-18).
 - In the swipe-map navigation style the return goes to the dashboard view of the current slot (F-NAV-13), not the global start target.
 - Features with their own "where to land after closing" setting (e.g. now playing, other areas) override it for that one return.
 
@@ -138,15 +138,15 @@ A device setting: after no touch for a configured time (default: architect picks
 A device setting lists pages (catalog entries, F-DSH-03) to cycle through, each shown for a configured dwell (constant/default: architect picks). Rules:
 - Any touch (including gestures) pauses rotation; it resumes after idle.
 - Paused while a screensaver is up; resumes from its current position afterwards.
-- Paused by view hold and page-declared interactions.
+- Paused by view freeze and page-declared interactions.
 - Switching between views of HA dashboards is in-page (no reload); switching to/from custom pages reloads (F-DSH-13).
 - While rotation is off, a page HA navigates to stays put (useful for automations that show a view temporarily). Turning rotation on restarts from the first entry.
-- Unlike view hold, turning rotation off does not stop the screensaver or screen-off.
+- Unlike view freeze, turning rotation off does not stop the screensaver or screen-off.
 HA: the list is a device setting; a rotation on/off switch is a candidate entity.
 Open: whether external (non-HA, non-custom) URLs may be rotation entries and, if so, whether they show as overlays; whether rotation on/off gets a switch entity.
 
-### F-DSH-17 View hold
-A mode that freezes the current view: while on, the screensaver does not start, rotation pauses, and return-to-start does not fire. Turning it on dismisses an active screensaver, except a now-playing view the user opened deliberately. It can be toggled from the menu, a gesture, a dashboard link, the bridge, an overlay page's hold flag (F-DSH-11) and HA. An optional auto-release timer (default: architect picks) turns it off by itself. While on, the menu shows a visible notice that the hold is active, with a way to release it.
+### F-DSH-17 View freeze
+A mode that freezes the current view: while on, the screensaver does not start, rotation pauses, and return-to-start does not fire. Turning it on dismisses an active screensaver, except a now-playing view the user opened deliberately. It can be toggled from the menu, a gesture, a dashboard link, the bridge, an overlay page's freeze flag (F-DSH-11) and HA. An optional auto-release timer (default: architect picks) turns it off by itself. While on, the menu shows a visible notice that the freeze is active, with a way to release it.
 HA: candidate switch. Open: switch entity vs. `tabula.*` service.
 
 ### F-DSH-18 Page-declared interactions (bridge)
@@ -252,7 +252,7 @@ With no HA dashboard view in the layout, the HA page is never loaded, to save me
 ### F-NAV-16 Swipe-map back, close, idle, kiosk
 - Back: off-center, goes to the center; at the center, opens the controls view if the layout has one.
 - Close control on a native view: goes to the center. The center view shows no close control.
-- Return-to-center: after a configured period without touch (default: architect picks; a value meaning never turns it off), paused by view hold. Falling due under a screensaver, it is applied silently so the screensaver ends onto the center. A screensaver may start over any slot without changing it.
+- Return-to-center: after a configured period without touch (default: architect picks; a value meaning never turns it off), paused by view freeze. Falling due under a screensaver, it is applied silently so the screensaver ends onto the center. A screensaver may start over any slot without changing it.
 - Kiosk mode on: slots whose action is not on the allow list (F-KSK-06) are skipped, except the center and HA dashboard views, which always remain. The controls view exists only if the restricted menu is enabled, and then lists allowed actions only. Anything else requires leaving kiosk mode (F-KSK-03).
 
 ## Screen control (F-SCR)
@@ -272,7 +272,7 @@ The panel appears in HA as a light. Brightness on the light changes the stored b
 HA: light entity; diagnostic sensor for actual panel level.
 
 ### F-SCR-05 Adaptive brightness
-When on, brightness follows room light through a user-shaped curve. The light reading comes from the device's ambient light sensor, or from a chosen HA illuminance sensor instead (useful on devices with no sensor). With an HA source: non-numeric states (unknown, unavailable) are ignored and the screen holds its last level; the last reading is remembered across restarts so start-up brightness is right before HA connects; if HA is unreachable the screen holds its level. Adaptive brightness runs on the device, so it keeps working when HA is down when the device sensor is the source.
+When on, brightness follows room light through a user-shaped curve. The reading comes from a light sensor in the tablet itself, or from an HA illuminance entity when there is none on the hardware (or when the user would rather HA decided). With an HA source: non-numeric states (unknown, unavailable) are ignored and the screen holds its last level; the last reading is remembered across restarts so start-up brightness is right before HA connects; if HA is unreachable the screen holds its level. Adaptive brightness runs on the device, so it keeps working when HA is down when the device sensor is the source.
 HA: switch to turn adaptive brightness on/off; device settings for source and curve.
 
 ### F-SCR-06 Brightness curve
@@ -295,13 +295,13 @@ Choices: sensor-driven, or fixed landscape, portrait, or the reverse of either. 
 Device settings hide the status bar and the navigation bar independently; a hidden bar can be revealed briefly with an edge swipe. Kiosk/lockdown mode always hides both regardless of these settings.
 
 ### F-SCR-12 Display cutout
-A device setting chooses whether the dashboard draws into the area around a camera cutout or stays clear of it.
+A device setting decides whether the dashboard may paint up to the display's edge where the front camera interrupts it, or must keep its content inside the unbroken rectangle.
 
 ### F-SCR-13 Show over a secure lock screen
 Optional. When on, the dashboard appears above a PIN/pattern/password lock screen so it returns after Tabula powers the panel back on; other apps and system navigation still require unlocking. When off, a secured lock screen is left in front of the dashboard. Unsecured (swipe-only) lock screens are cleared automatically when Tabula wakes the panel, because powering the panel off arms the lock screen even without a PIN.
 
 ### F-SCR-14 Panel power off
-Tabula can power the panel off (requires the device-admin permission) and back on. Without the permission it logs a warning, keeps the panel on, and offers a black-screen alternative (F-SSV-19) that needs no permission. Features that wait for rising light must not assume the light sensor keeps reporting while the panel is dark; on some hardware it does not.
+Tabula can switch the panel off and on again, which needs the system permission reserved for device administration. Without the permission it logs a warning, keeps the panel on, and offers a black-screen alternative (F-SSV-19) that needs no permission. Features that wait for rising light must not assume the light sensor keeps reporting once the panel has no power; on some hardware it stops.
 
 ## Screensaver (F-SSV)
 
@@ -316,7 +316,7 @@ Touch resets the idle timer. The idle timer stops while another app is in the fo
 The screensaver can be started from the side menu (the menu entry can be hidden), a mapped gesture, the HA "screensaver active" switch, a `tabula.*` service, or the JS bridge.
 
 ### F-SSV-04 Dismissing
-Touch dismisses the screensaver and resets the idle timer, with these exceptions defined by individual modes: edge taps on photo slideshows step slides (F-SSV-12); modes that host interactive content can require a double tap (F-SSV-14, F-SSV-15); the calendar mode closes only through its close button (F-CAL). Other things that dismiss it: turning "screensaver active" off in HA, the postpone button, navigating the dashboard from HA, and enabling view hold (F-DSH-17). External presence sensors can dismiss it (F-SSV-24).
+Touch dismisses the screensaver and resets the idle timer, with these exceptions defined by individual modes: edge taps on photo slideshows step slides (F-SSV-12); modes that host interactive content can require a double tap (F-SSV-14, F-SSV-15); the calendar mode closes only through its close button (F-CAL). Other things that dismiss it: turning "screensaver active" off in HA, the postpone button, navigating the dashboard from HA, and enabling view freeze (F-DSH-17). External presence sensors can dismiss it (F-SSV-24).
 
 ### F-SSV-05 Mode selection
 One active mode at a time, chosen from: clock, weather scene, photo slideshow (several sources), website, HA dashboard view, calendar, dim, black. Each mode has its own settings. A schedule (F-SSV-18) can switch modes by time of day.
@@ -336,7 +336,7 @@ An optional picture behind the face. Source: a local file, or a web address the 
 HA: text entity for the background source.
 
 ### F-SSV-10 Clock night mode
-Uses the device's own light sensor (never the HA illuminance source). Below a light threshold the clock switches to a night color scheme (text and widgets in a single dim accent color, dark background); above the threshold plus hysteresis it switches back (constants: architect picks). Options: hide the background image at night, hide widgets and At a Glance at night, and turn the panel off after night mode has lasted a set time, turning it back on when light rises. The night power-off only applies while the clock mode is showing; ringing alarms, now-playing and other foreground apps keep the panel on and restart the countdown. If the device lacks a light sensor, night mode is unavailable. Missing device-admin permission: night power-off is skipped without prompting. A black-screen alternative avoids power-off for sensors that stop reporting while the panel is off.
+Reads light from the tablet's own sensor only; an HA illuminance entity is never used here. Below a light threshold the clock switches to a night color scheme (text and widgets in a single dim accent color, dark background); above the threshold plus hysteresis it switches back (constants: architect picks). Options: hide the background image at night, hide the corner widgets and the At a Glance row at night, and turn the panel off after night mode has lasted a set time, turning it back on when light rises. The night power-off only applies while the clock mode is showing; ringing alarms, now-playing and other foreground apps keep the panel on and restart the countdown. If the device lacks a light sensor, night mode is unavailable. Missing device-admin permission: night power-off is skipped without prompting. A black-screen alternative avoids power-off for sensors that stop reporting while the panel is off.
 
 ### F-SSV-11 Weather scene mode
 An animated sky that reflects the condition of a chosen HA weather entity (all standard HA weather conditions) and the time of day from HA's sun entity (dawn/dusk/night), with a local-time fallback when the sun entity is missing. Optional overlays: a clock and a weather information bar (temperature, condition, daily high/low when the entity has a daily forecast, humidity, wind, visibility, apparent temperature, an optional place name). With no entity chosen, the mode shows a prompt to pick one. If weather data drops out it keeps the last condition; with no reading yet, a plain overcast scene is shown. Rendering must stay smooth on weak hardware and pause when the panel is off or the app is backgrounded. A local preview control lets a user try any condition/time of day without HA. Optional: blur behind overlays, lightning toggle.
@@ -361,7 +361,7 @@ Shows any URL full screen in its own web view sharing the dashboard's cookies, w
 An option makes the website mode require a double tap to dismiss so single taps reach the page.
 
 ### F-SSV-15 HA dashboard view mode
-Shows a chosen dashboard view as the screensaver by navigating the existing dashboard web view in-page (no reload). On dismissal it returns to the view that was showing before, or to the home view if return-to-home is configured; if HA navigated the dashboard during the screensaver, it stays where HA left it. Header/sidebar hiding can be overridden for this mode only. A tap dismisses without activating the card under the finger, unless double-tap-to-dismiss is on, in which case the dashboard is fully usable and a double tap dismisses. The dashboard keeps rendering in this mode. Requires HA to be connected.
+Shows a chosen dashboard view as the screensaver by navigating the existing dashboard web view in-page (no reload). On dismissal it goes back to the view that was showing before, or to the start target when the return rule (F-DSH-15) is on; if HA navigated the dashboard during the screensaver, it stays where HA left it. Header/sidebar hiding can be overridden for this mode only. A single tap dismisses without pressing whatever card lies under the finger; with the option that requires two taps turned on, the whole page stays usable and only a double tap leaves. The dashboard keeps rendering in this mode. Requires HA to be connected.
 
 ### F-SSV-16 Calendar mode
 Shows the calendar view (F-CAL) as the screensaver, with its own choice of calendar view separate from the calendar's default. It stays interactive; only its close button dismisses it. Widgets and At a Glance are not drawn over it.
@@ -378,7 +378,7 @@ HA: switch to turn the schedule on or off.
 An optional delay after which a running screensaver powers the panel off (requires device admin; constant: architect picks the range). Alternatively a plain black screen at minimum brightness can be shown instead of powering off (no permission needed; nothing is drawn on it, overlays included, until it is woken). Touch on that black screen returns to the dashboard.
 
 ### F-SSV-20 Wake behaviour after panel off
-Unless configured otherwise (below), any wake from panel-off lands on the live dashboard: touch, power button, HA turning "screensaver active" off, a `tabula.*` service that stops the screensaver. One exception is fixed: turning the HA screen light on restores the screensaver (not the dashboard) with a fresh power-off countdown, so a morning automation can light the photos and later dismiss to the dashboard. A setting extends that screensaver-preserving wake to chosen wake sources (external presence, power button / any wake Tabula did not cause, touch on the black-screen alternative); with touch selected, touching the dark screen restores the screensaver, and touching again goes on to the dashboard. Under lockdown mode, presence and power-button wakes always keep the screensaver.
+Unless configured otherwise (below), any wake from panel-off lands on the live dashboard: touch, power button, HA turning "screensaver active" off, a `tabula.*` service that stops the screensaver. One exception is fixed: turning the HA screen light on restores the screensaver (not the dashboard) and its power-off timer starts over, so a morning automation can light the photos and later dismiss to the dashboard. A setting extends that screensaver-preserving wake to chosen wake sources (external presence, power button / any wake Tabula did not cause, touch on the black-screen alternative); with touch selected, touching the dark screen restores the screensaver, and touching again goes on to the dashboard. Under lockdown mode, presence and power-button wakes always keep the screensaver.
 
 ### F-SSV-21 Overlays on top of the screensaver
 Notifications, timers and the now-playing view may draw over the screensaver. The screensaver honours them as described in F-NTF, F-TMR and F-MED.
@@ -394,7 +394,7 @@ A chosen HA occupancy/motion/presence binary sensor can act as a presence source
 Open: device sensors (camera motion/face, proximity) are deferred; the architect may keep the presence-source abstraction general so they plug in later.
 
 ### F-SSV-25 Interaction with the dashboard
-While a screensaver fully covers the dashboard, dashboard rendering may pause (F-OPT). Automatic view rotation pauses and resumes where it was. The return-to-home-view timer keeps running behind the screensaver so the dashboard is reset without lighting the panel.
+While a screensaver fully covers the dashboard, dashboard rendering may pause (F-OPT). Automatic view rotation pauses and resumes where it was. The return-to-start timer (F-DSH-15) keeps running behind the screensaver, so the dashboard can be reset without lighting the panel.
 
 ### F-SSV-26 Lifecycle reporting
 Starting and stopping the screensaver (with the mode and the cause) is reported to HA as a `tabula_screensaver` event and reflected in the "screensaver active" switch.
@@ -532,7 +532,7 @@ Two display modes; which one applies when a call names neither: architect picks.
 - Audio only: sound with no card, no screen wake, and the app is not brought forward.
 
 ### F-TTS-05 Chime, repeat
-- Optional lead-in chime, played once (device setting, overridable per call). Sound: built-in or a library file (F-NTF-10); if missing, fall back to the configured standard sound, then to the built-in one.
+- Optional lead-in chime, played once (device setting, overridable per call). Sound: a bundled tone or a library file (F-NTF-10); if that file is gone, use the configured default sound, and the bundled tone after that.
 - Repeat count and the gap between repeats are bounded (constants: architect picks).
 - The response includes the clip's length.
 
@@ -616,11 +616,11 @@ HA: device settings (show, size, keep playing on dismiss, pause timeout).
 HA: `tabula.*` show/hide service (candidate button); device settings; shown/hidden state in the bridge's kiosk state (F-JSB-04).
 
 ### F-MED-05 Now Playing and the screensaver
-- Followed player actively playing -> the normal screensaver is held off. View rotation and return-to-home still run unless hold mode is on.
+- Followed player actively playing -> the normal screensaver is held off. View rotation and the return-to-start timer keep running unless the view is frozen.
 - Mode "replace": an idle timeout during playback brings up Now Playing in place of the screensaver.
 - Mode "beside": the screen is split between screensaver and Now Playing, axis following orientation; a screen too small along the split (threshold: constant, architect picks) gets full-screen Now Playing instead. Dashboard-view and dim screensavers keep showing the dashboard in their part. A tap on the screensaver part dismisses both; the player part has no close control. The screensaver's dismissal rules and brightness (schedules included) apply unless a "use normal brightness" override is set. Playback ends -> the screensaver takes the whole screen.
 - Per schedule window: follow global / force beside / suppress Now Playing (music continues, no auto-open, brightness unchanged).
-- Return target when Now Playing ends a screensaver session: home view, the view that was showing when the screensaver began, or a fixed view (default: architect picks).
+- Return target when Now Playing ends a screensaver session: the start target, the view that was showing when the screensaver began, or a fixed view (default: architect picks).
 - Precedence: ringing alarms and timers and other higher-priority interruptions come first. If Now Playing is the center of a directional navigation layout, tap, key and motion dismissal are disabled (it would just reopen).
 HA: device settings; the per-window override is stored with screensaver schedules.
 
@@ -910,7 +910,7 @@ HA: candidate entity: an HA select (or similar) that opens a given view (Open: c
 
 ### F-CAL-03 Views
 Four views; the initial one is a setting (default: architect picks). Navigation: a today control, previous/next by the view's unit; horizontal swipes do the same.
-- Day: a lane per calendar headed by avatar and name; an all-day band; an hourly grid with a now-marker. Concurrent events within one lane are placed next to each other.
+- Day: the hours run down the screen with a marker at the present moment; whole-day items sit in a strip above them; each calendar gets a vertical band labelled with its person and colour, and events sharing a band are drawn side by side.
 - Week: a column per weekday, all-day entries on top, today emphasised; a tap on a column header goes to that day.
 - Month: each cell shows the events that fit plus a count of the rest; a tap on a cell goes to that day.
 - Agenda: a "today" panel (date, current forecast, upcoming item, then today's remaining items); a second panel with the coming days over a look-ahead window (constant: architect picks).
@@ -1074,12 +1074,13 @@ HA: candidate sensor.
 - Device owner unavailable: Fire's parental-controls component already occupies the profile-owner slot, so device-owner provisioning always fails. Consequences: no lock-task mode, no reboot by the app, no silent self-update (an update needs one confirmation tap; see the self-update area).
 - Lock screen: switching the panel off through device admin engages Fire's swipe lock screen. On Fire OS 7 the app may dismiss that lock screen, provided it has no security, at the moment it wakes the panel, so waking shows the kiosk directly.
 - Slow restart of dead services by the system: covered by the watchdog alarm (F-KSK-09).
+- Microphone permission does not persist for a sideloaded app: Fire OS withdraws it at boot and after a Wi-Fi reconnect, and it has to be granted again over ADB. Anything that listens (F-GST-12) reads as inactive until it is.
 - The system WebView can take down the whole process from its audio code; the self-heal relaunch handles that.
 - The system WebView lacks some real-time media features; features relying on them need a fallback (matters for deferred camera work).
 - Setup: install by ADB sideload; overlay, write-settings, usage-access, battery-exemption and device-admin grants can all be applied over ADB in a single session; the accessibility guard optionally too.
 
 ### F-KSK-22 Kiosk state on the bridge
-`window.tabula` exposes kiosk mode, touch lock, header/sidebar hiding, screensaver state, view hold and rotation state, with a change event whenever any of them moves.
+`window.tabula` exposes kiosk mode, touch lock, header/sidebar hiding, screensaver state, view freeze and rotation state, with a change event whenever any of them moves.
 
 ## Home launcher (F-LNC)
 
@@ -1095,7 +1096,7 @@ Device setting (master switch) that asks the OS to make Tabula the default home 
 Fire OS silently denies every attempt to replace its launcher (and even ADB role grants do not change the home button), so on Fire tablets the switch is not offered; HA's settings UI explains why and points to start on boot and kiosk protections. On the first target this whole area is therefore dormant.
 
 ### F-LNC-04 While the role is held
-- The device boots straight into the app; start on boot stands down.
+- After a reboot the tablet comes up in the app by itself, so the start-on-boot setting has nothing left to do.
 - Home always returns to the app; kiosk-mode pinning is skipped (unless the keep-pinning option is on) since the role already covers home.
 - Pressing home while the app is already in front closes the menu, app launcher, overlays and screensaver and lands on the dashboard.
 - "Exit app" is hidden (the OS would relaunch it); "restart app" stays.
@@ -1148,7 +1149,7 @@ With kiosk mode on and its "disable gestures" protection selected, all bindings 
 
 ### F-GST-07 Action registry
 A single registry of named actions, each with typed parameters, used by gestures, menu entries, dashboard links (F-DSH-09), HA services/buttons, and the `window.tabula` bridge. Every caller gets the same behavior and availability rules (an action whose feature is disabled refuses with a toast stating why). In-scope actions:
-- App: go to a catalog page; open a web page as overlay; reload; start screensaver; stop screensaver; toggle view hold; toggle HA header/sidebar hiding; open app launcher; start/stop touch lock.
+- App: go to a catalog page; open a web page as overlay; reload; start screensaver; stop screensaver; toggle view freeze; toggle HA header/sidebar hiding; open app launcher; start/stop touch lock.
 - Android: open an app by package; open a URI handled by another app; open system Settings.
 - HA: invoke an HA service (target entity and extra fields are optional); run a script; trigger an automation; fire an event (type, optional data).
 - Added by other areas as they land: alarms (stop, snooze, open list, open next), timers view, calendar view, now playing / play-pause, and similar.
@@ -1171,6 +1172,15 @@ Open: placeholder syntax and variable names (architect picks).
 ### F-GST-11 Gesture events to HA
 (independent design) Optionally, firing a binding also emits a `tabula_*` event identifying the device and the gesture, so automations can react without a per-binding event action.
 HA: a `tabula_*` event.
+
+### F-GST-12 Sound-triggered gestures
+A binding can use a short run of claps rather than a touch shape, so an action can be fired from across the room without approaching the panel.
+- Count: the run has a user-chosen length inside a small allowed range (constant: architect picks).
+- Timing: the claps must follow one another closely; a longer pause closes the run (window: constant, architect picks). As with corner tap counts, a binding waiting for a longer run makes the shorter one hold briefly before it fires (F-GST-04).
+- Detection: the app listens on the microphone and reacts to a sudden broad sound that stands out from the room's background level; the threshold follows that background, and all of it runs on the device with no network service.
+- Microphone: where voice capture is already running, the same input is reused; otherwise the app captures only while at least one clap binding exists. On Fire OS, where the OS withdraws microphone permission at boot or after a reconnect (F-KSK-21), the binding reads as inactive until it comes back.
+- Suppression: silenced the same way as touch shapes (F-GST-06), and ignored during a voice turn so that speaking cannot fire an action. Where voice input is muted, nothing is captured at all.
+Open: whether this ships on hardware whose microphone permission does not stay granted (Fire OS); the architect decides alongside the voice work in the plan.
 
 ## Device presence in Home Assistant (F-HA)
 
@@ -1218,7 +1228,7 @@ HA: candidate illuminance sensor.
 Open: whether to expose it at all.
 
 ### F-HA-07 Activity timestamps
-- Next screensaver (settled): when the idle countdown will reach the screensaver. Recomputed on touch, on dismissal and when the idle timeout changes, so automations can trigger on it or count down without per-second updates. Unknown while no countdown runs (screensaver disabled or already up, hold mode, another app in front, and similar). Under continuous touching, republishing is throttled (minimum gap: constant, architect picks), but a fresh value is always sent before the previously published time arrives.
+- Next screensaver (settled): when the idle countdown will reach the screensaver. Recomputed on touch, on dismissal and when the idle timeout changes, so automations can trigger on it or count down without per-second updates. Unknown while no countdown runs (screensaver disabled or already up, freeze mode, another app in front, and similar). Under continuous touching, republishing is throttled (minimum gap: constant, architect picks), but a fresh value is always sent before the previously published time arrives.
 - Last interaction (candidate): time of the last touch or user-initiated wake; kept across app restarts.
 HA: timestamp sensors.
 Open: whether last interaction ships.
@@ -1261,7 +1271,7 @@ Settled (plan); each reflects device state both ways and HA always shows the liv
 - number "screensaver brightness".
 Volume is not a number: it is the media_player's volume (F-TTS-01, F-TTS-07).
 Candidate entities (until decided, these are device settings edited in HA):
-- switches: screensaver enabled; hold mode (keep current view, suppress screensaver); view rotation; kiosk mode; HA header/sidebar hiding; screensaver dimming; screensaver schedule; screensaver widgets; Now Playing view and its layout options;
+- switches: screensaver enabled; freeze mode (keep current view, suppress screensaver); view rotation; kiosk mode; HA header/sidebar hiding; screensaver dimming; screensaver schedule; screensaver widgets; Now Playing view and its layout options;
 - numbers: non-media volume channels (F-TTS-07); idle timeout (a new value takes effect by starting the countdown over; a "never" value leaves only switch, schedule or gesture to start the screensaver); screensaver-to-screen-off delay (a "never" value disables it; a change while the screensaver runs starts that countdown over; an active schedule entry carrying its own value takes precedence);
 - text: clock screensaver background image (path or URL; each write reloads it, even with the same value).
 Screen power and brightness are the light entity (screen area).
@@ -1280,7 +1290,7 @@ HA: update entity (self-update area).
 `tabula.*` services cover actions that take parameters:
 - show / dismiss notification (F-NTF); announce / stop (F-TTS);
 - launch an installed app by package name: error if absent or not launchable; lockdown re-pinning and auto-return still apply;
-- open a web page overlaid on the dashboard, with an optional "hold until closed" flag; close it;
+- open a web page overlaid on the dashboard, with an optional "freeze until closed" flag; close it;
 - set brightness (screen area); set the followed media player (media area).
 Rule: a service that cannot act returns an error to the caller; nothing fails silently.
 HA: `tabula.*` services targeted at a device.
@@ -1340,7 +1350,7 @@ Always per device; dropped even if a profile includes them:
 - identity (name, IDs) and the device's HA pairing credentials;
 - hardware choices (audio outputs, rendering fallbacks, UI scale);
 - followed media player and speaker allowlist;
-- runtime state: alarm list and ringing state, hidden calendars, hold mode, lockdown on/off, positions of floating elements;
+- runtime state: alarm list and ringing state, hidden calendars, freeze mode, lockdown on/off, positions of floating elements;
 - interface language;
 - update installer choices (e.g. use of a privileged helper).
 HA: enforced by the integration; these keys are not offered in the profile editor.
@@ -1357,7 +1367,7 @@ Settings carry file references, never the files. A device missing a referenced f
 - Full export: every device and profile in one file; an offline device is included from HA's copy.
 - Import modes:
   - replace: the target takes the source's name and all its settings (for a replaced or reset tablet, which is a new HA device per F-HA-01);
-  - clone: the target keeps its own identity; the page's stored data can be skipped so it does not pose as the original.
+  - copy: the target keeps its own identity; the page's stored data can be left out so it does not pose as the original.
 - Never exported or imported: device private keys and certificates, another device's pairing secrets.
 HA: Tabularium actions; optionally `tabula.*` services. HA's own backups cover settings held by the integration.
 Open: whether a replace import can also move the old HA device's entity IDs and history onto the new device, or the old entry is simply deleted.
@@ -1379,7 +1389,7 @@ Available from HA; buttons only for the plan's settled set (F-HA-08), the rest a
 - Navigation: open a URL; open an HA dashboard or view; go to the start page; reload.
 - Screen: on, off; set brightness (the normal level, or the adaptive ceiling when adaptive brightness is on; optionally only for the current session).
 - Screensaver: start, stop, postpone (restart idle countdown, dismissing it if up), next / previous slide in photo modes (otherwise no-op; the result says whether it moved).
-- Overlay page: show a page over the dashboard with a close control, optionally holding the view while shown; hide it.
+- Overlay page: show a page over the dashboard with a close control, optionally freezing the view while shown; hide it.
 - Apps: launch another installed app over Tabula; bring Tabula back; list launchable apps; show / hide the app launcher (refused when the launcher is disabled; limited to allowed apps in kiosk mode).
 - Launcher role: report status, take the home role, release it (release works even with no Tabula screen visible, as a recovery lever).
 - Speech and notices: speak text; show and dismiss cards (notifications area).
@@ -1539,12 +1549,12 @@ Open: which origins receive the bridge (recommendation: HA's origin and explicit
 - One event, with the same shape, fires whenever either changes.
 
 ### F-JSB-04 Kiosk state
-One snapshot: kiosk mode, lockdown, HA header/sidebar hiding, screensaver active and its kind, screen on, hold mode, view rotation, and the followed media player (state playing/paused/idle, title, artist, player name, Now Playing shown). Any field change fires an event carrying the full snapshot.
+One snapshot: kiosk mode, lockdown, HA header/sidebar hiding, screensaver active and its kind, screen on, freeze mode, view rotation, and the followed media player (state playing/paused/idle, title, artist, player name, Now Playing shown). Any field change fires an event carrying the full snapshot.
 
 ### F-JSB-05 Interaction holds and screensaver
-- Hold: a page marks the start and end of an interaction, optionally with a reason. While held, the screensaver, view rotation and return-to-home are paused. Reason "media" pauses only the screensaver.
+- Interaction hold (distinct from view freeze, F-DSH-17): a page marks the start and end of an interaction, optionally with a reason. While one is open, the screensaver, view rotation and the return-to-start timer are paused. Reason "media" pauses only the screensaver.
 - Dismiss the screensaver once.
-- Suppress / release the screensaver: shorthand for a hold with no reason.
+- Suppress / release the screensaver: shorthand for an interaction hold with no reason.
 - Query: whether Tabula owns the screen (so the page should not run its own screensaver).
 - Events: screensaver started, screensaver stopped.
 Open: what releases a hold when a page navigates away or crashes without releasing it (recommendation: page unload releases its holds, plus a safety timeout, constant: architect picks).
@@ -1588,7 +1598,7 @@ One-line hooks only. Each is out of scope until a later packet brings it in.
 - MQTT or other device-side transports, node naming and generated network identity: not applicable; the device talks to HA only through the `tabula` integration.
 - Stopping/snoozing by spoken stop word or by voice request: deferred with voice satellite.
 - Setting alarms by voice through an LLM agent: deferred; a later voice feature would call the F-ALM-16 services.
-- Clap and hand/finger gestures to stop or snooze: dropped (camera/microphone).
+- Hand and finger gestures seen by the camera (to stop or snooze, say): deferred with the camera work.
 - Alarm control from a device-side remote-admin page: dropped; HA and Tabularium cover it.
 - Speaker-brand-specific media sources for wake-up media: dropped; generic HA media only.
 - Local OS broadcast intents for other on-device automation apps: deferred.
@@ -1607,16 +1617,15 @@ One-line hooks only. Each is out of scope until a later packet brings it in.
 - Device-owner provisioning and lock-task mode (impossible on Fire; may revisit for other targets).
 - Device reboot via device owner or Shizuku.
 - Fire OS 8-only items (lock-screen dismissal block, wireless-debugging port churn).
-- Fire OS microphone revocation for sideloaded apps (relevant only when microphone features return).
 - Camera/microphone/nearby-devices/log-access/all-files permissions (their features are deferred).
 - Android 14 Wi-Fi lock downgrade workaround and MediaTek background-killer workaround (not on target hardware).
 - Remote-admin recovery path (replaced by HA; later off-by-default recovery page).
 - Voice wake-word muting during touch lock (voice dropped).
 - Silent home-role acquisition on custom device images (device-owner only).
 - Camera hand gestures (finger counting).
-- Clap gestures via microphone.
 - Plugin triggers and plugin-hosted action settings.
 - Hardware-button gestures on screenless devices.
+- Optional usage analytics and crash reporting: dropped; no telemetry leaves the house.
 - Actions for intercom, camera views, music library/assistant, voice satellite.
 - Benchmarks and comparisons against other kiosk browsers: not a behavior, dropped.
 - Pausing the device's own camera / camera views behind the screensaver: device camera dropped.
