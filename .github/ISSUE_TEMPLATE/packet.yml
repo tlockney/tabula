@@ -1,0 +1,45 @@
+name: Packet
+description: Track a work packet from docs/packets/ (the unit of delegation)
+title: "P0.0 — "
+labels: ["packet"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The brief lives in the repo at `docs/packets/`, so it is versioned and reviewed with the code. This issue tracks it: who has it, its state and its pull request. See AGENTS.md, "Work tracking".
+  - type: input
+    id: packet
+    attributes:
+      label: Packet file
+      placeholder: docs/packets/P1.3-entity-platforms.md
+    validations:
+      required: true
+  - type: dropdown
+    id: side
+    attributes:
+      label: Side
+      options: [build, spec]
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier
+      options: [light, standard, deep]
+    validations:
+      required: true
+  - type: dropdown
+    id: verification
+    attributes:
+      label: Verification
+      options: [ci, hardware, review]
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      description: Issue numbers (#12) or packet IDs; "none" if none
+      placeholder: "#12, #14"
+    validations:
+      required: true

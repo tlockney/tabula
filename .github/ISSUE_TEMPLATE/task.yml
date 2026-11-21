@@ -1,0 +1,35 @@
+name: Task
+description: Work too small for a packet (a fix, a chore). Same shape as a packet brief.
+labels: ["task"]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+    validations:
+      required: true
+  - type: textarea
+    id: read-first
+    attributes:
+      label: Read first
+      description: Every file the executor needs; nothing else is assumed known
+  - type: textarea
+    id: do
+    attributes:
+      label: Do
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: Commands to run and expected results
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier
+      options: [light, standard, deep]
+    validations:
+      required: true

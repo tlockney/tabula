@@ -1,0 +1,13 @@
+# Issue labels (AGENTS.md, "Work tracking"). One per line: name|color|description
+# Synced to GitHub by .github/workflows/labels.yml on push to main. Labels not listed here are left alone.
+packet|1d76db|Tracks a work packet in docs/packets/
+task|5319e7|Work too small for a packet
+bug|d73a4a|Something behaves wrongly
+side:build|0e8a16|Build side (works from the repo only)
+side:spec|fbca04|Spec side (writes docs/FEATURES.md only)
+tier:light|c2e0c6|Mechanical; a test or diff shows correctness
+tier:standard|bfdadc|Well-specified implementation with tests
+tier:deep|0b5394|Design judgment, security, cross-cutting work
+verification:hardware|e99695|Needs the hardware verifier on a real device
+awaiting-hardware|f9d0c4|CI part done; device part pending
+blocked|b60205|Waiting on a dependency or decision
