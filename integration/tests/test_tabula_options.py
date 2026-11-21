@@ -12,21 +12,27 @@ import pytest
 import voluptuous as vol
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
+from custom_components.tabula.options_flow import array_to_text
 from custom_components.tabula.settings import NO_DEFAULT, SettingsSchema
 from helpers import frame_fixture, ws_connect
 from homeassistant.data_entry_flow import InvalidData
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.selector import TextSelector
 
 
 def form_values(schema: SettingsSchema, current: dict | None = None, **overrides) -> dict:
     """What the frontend submits: every field's shown value, plus overrides.
 
     Leaves without a default are submitted blank - that is the frontend's
-    rendering of "unset".
+    rendering of "unset". List leaves (settings v2) submit their shown editor
+    text; a raw list is also accepted by the flow's parser.
     """
     values = {}
     for field in schema.editable_fields():
-        shown = "" if field.default is NO_DEFAULT else field.default
+        if field.type == "array":
+            shown = array_to_text(field, field.default)
+        else:
+            shown = "" if field.default is NO_DEFAULT else field.default
         values[field.key] = overrides.pop(field.key, shown)
     assert not overrides, f"unknown fields: {overrides}"
     return values
@@ -58,10 +64,17 @@ async def test_options_form_is_generated_from_the_schema(hass_setup, server, hub
 
     schema = SettingsSchema()
     assert form_keys(result) == [f.key for f in schema.editable_fields()]
-    markers = {marker.schema: marker for marker in result["data_schema"].schema}
+    data_schema = result["data_schema"].schema  # voluptuous: {marker: validator}
+    markers = {marker.schema: marker for marker in data_schema}
+    validators = {marker.schema: data_schema[marker] for marker in data_schema}
     unset = vol.Optional("_probe").default  # voluptuous's "no default" sentinel
     for field in schema.editable_fields():
-        if field.default is NO_DEFAULT:
+        if field.type == "array":
+            # list leaves show their editor text ("" for the empty default)
+            # and validate through a multiline text selector
+            assert markers[field.key].default() == array_to_text(field, field.default)
+            assert isinstance(validators[field.key], TextSelector)
+        elif field.default is NO_DEFAULT:
             # identity and connection have no default: suggested empty, not set
             assert markers[field.key].default is unset
         else:
@@ -173,8 +186,18 @@ async def test_options_submit_pushes_to_a_connected_device(
     assert pushed is not None, "no set_settings event arrived"
     assert pushed["command"] == "set_settings"
     assert pushed["args"]["revision"] == 1
+    # the paired device registered at schema_version 1 (the register fixture),
+    # so the push is translated DOWN: v1 declared, v2-only keys pruned
     assert pushed["args"]["schema_version"] == 1
     assert pushed["args"]["settings"]["screen"]["brightness"] == 31
+    assert set(pushed["args"]["settings"]["screensaver"]) == {
+        "enabled",
+        "idle_timeout",
+        "mode",
+        "brightness",
+    }
+    assert "widgets" not in pushed["args"]["settings"]
+    assert "schedule" not in pushed["args"]["settings"]
 
 
 async def test_options_invalid_input_reshows_the_form(hass_setup, server, hub, session, paired):
@@ -223,6 +246,106 @@ async def test_options_schema_rejection_reshows_with_field_errors(
     runtime = TabulaHub.get(hass_setup)
     assert runtime is not None
     assert runtime.settings.get(paired.device_id) is None
+
+
+async def test_options_submit_stores_entity_list(hass_setup, server, hub, session, paired):
+    """A list of entity ids: one per line in the text editor, stored as a list."""
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"device_id": paired.ha_device_id}
+    )
+    schema = SettingsSchema()
+    values = form_values(
+        schema,
+        at_a_glance_entities="binary_sensor.front_door\nlock.garage\n\ncover.shop\n",
+    )
+    result = await hass_setup.config_entries.options.async_configure(flow["flow_id"], values)
+    assert result["type"] == "create_entry", result
+    await hass_setup.async_block_till_done()
+
+    runtime = TabulaHub.get(hass_setup)
+    assert runtime is not None
+    stored = runtime.settings.get(paired.device_id)
+    assert stored is not None
+    # blank lines are dropped, order kept (F-AAG-01)
+    assert stored.settings["at_a_glance"]["entities"] == [
+        "binary_sensor.front_door",
+        "lock.garage",
+        "cover.shop",
+    ]
+    # and the stored value is suggested back as the editor text
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"device_id": paired.ha_device_id}
+    )
+    markers = {m.schema: m for m in flow["data_schema"].schema}
+    assert markers["at_a_glance_entities"].default() == "\n".join(
+        ["binary_sensor.front_door", "lock.garage", "cover.shop"]
+    )
+
+
+async def test_options_submit_stores_schedule_slots(hass_setup, server, hub, session, paired):
+    """The schedule's slots: a YAML list of objects, validated on submit."""
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"device_id": paired.ha_device_id}
+    )
+    schema = SettingsSchema()
+    slots_yaml = (
+        "- start: '07:00'\n  mode: photos\n  brightness: 40\n- start: '22:30'\n  mode: black\n"
+    )
+    values = form_values(schema, schedule_enabled=True, schedule_slots=slots_yaml)
+    result = await hass_setup.config_entries.options.async_configure(flow["flow_id"], values)
+    assert result["type"] == "create_entry", result
+    await hass_setup.async_block_till_done()
+
+    runtime = TabulaHub.get(hass_setup)
+    assert runtime is not None
+    stored = runtime.settings.get(paired.device_id)
+    assert stored is not None
+    assert stored.settings["schedule"]["enabled"] is True
+    # omitted slot keys keep their schema defaults; unlisted overrides stay
+    # null ("inherit", F-SSV-18)
+    assert stored.settings["schedule"]["slots"] == [
+        {"start": "07:00", "mode": "photos", "brightness": 40},
+        {"start": "22:30", "mode": "black"},
+    ]
+
+
+async def test_options_bad_schedule_yaml_reshows(hass_setup, server, hub, session, paired):
+    """YAML that is not a list of objects reshows on the slots field."""
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"device_id": paired.ha_device_id}
+    )
+    schema = SettingsSchema()
+    result = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], form_values(schema, schedule_slots="07:00 photos\n")
+    )
+    assert result["type"] == "form", result
+    assert result["step_id"] == "device"
+    assert result["errors"].get("schedule_slots") == "invalid_settings", result["errors"]
+
+    runtime = TabulaHub.get(hass_setup)
+    assert runtime is not None
+    assert runtime.settings.get(paired.device_id) is None
+
+
+async def test_options_schedule_item_error_maps_to_the_slots_field(
+    hass_setup, server, hub, session, paired
+):
+    """An error inside a slot (bad start) lands on the list's field, not base."""
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"device_id": paired.ha_device_id}
+    )
+    schema = SettingsSchema()
+    result = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], form_values(schema, schedule_slots="- start: 7:5\n")
+    )
+    assert result["type"] == "form", result
+    assert result["errors"].get("schedule_slots") == "invalid_settings", result["errors"]
+    assert "base" not in result["errors"], result["errors"]
 
 
 async def test_options_unknown_device_aborts(hass_setup, server, hub, session, paired):

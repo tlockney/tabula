@@ -42,7 +42,14 @@ def schema() -> SettingsSchema:
 def test_bundled_settings_schema_matches_repo():
     """The shipped copy is the repo's source of truth, byte for byte."""
     assert BUNDLED_SCHEMA.read_bytes() == REPO_SCHEMA.read_bytes()
-    assert schema().version == SCHEMA_VERSION == 1
+    assert schema().version == SCHEMA_VERSION == 2
+
+
+def test_bundled_frozen_v1_schema_matches_repo():
+    """The frozen v1 copy (down-translation, migrations/) is the repo's."""
+    bundled_v1 = BUNDLED_SCHEMA.parent / "settings.schema.v1.json"
+    repo_v1 = REPO_SCHEMA.parent / "settings.schema.v1.json"
+    assert bundled_v1.read_bytes() == repo_v1.read_bytes()
 
 
 def test_defaults_cover_every_leaf_with_a_default():
@@ -51,12 +58,9 @@ def test_defaults_cover_every_leaf_with_a_default():
     schema().validate(defaults)
     assert defaults["screen"]["brightness"] == 60
     assert defaults["screen"]["keep_screen_on"] is True
-    assert defaults["screensaver"] == {
-        "enabled": True,
-        "idle_timeout": 300,
-        "mode": "clock",
-        "brightness": 20,
-    }
+    assert defaults["screensaver"]["enabled"] is True
+    assert defaults["screensaver"]["brightness"] == 20
+    assert defaults["screensaver"]["mode"] == "clock"
     assert defaults["notifications"]["chime_by_level"] == {
         "info": False,
         "success": False,
@@ -68,37 +72,45 @@ def test_defaults_cover_every_leaf_with_a_default():
     # model or device id (schema: identity.name).
     assert "identity" not in defaults
     assert "connection" not in defaults
+    # settings v2: nested groups under screensaver get their own defaults
+    assert defaults["screensaver"]["dim_brightness"] == 10
+    assert defaults["screensaver"]["clock"]["face"] == "digital"
+    assert defaults["screensaver"]["night_mode"]["enabled"] is False
+    assert defaults["screensaver"]["photos"]["slide_interval"] == 300
+    # every defaults() call is an independent document (array defaults are
+    # mutable and shared as schema constants otherwise)
+    again = schema().defaults()
+    assert again == defaults
+    assert again["at_a_glance"]["entities"] is not defaults["at_a_glance"]["entities"]
+    assert again["schedule"]["slots"] == []
 
 
 def test_editable_fields_come_from_the_schema_tags():
     """One field per non-hardware leaf, in schema order, each with a feature tag."""
     fields = schema().editable_fields()
     keys = [f.key for f in fields]
-    assert keys == [
-        "identity_name",
-        "connection_ha_url",
-        "screen_brightness",
-        "screen_adaptive_brightness",
-        "screen_keep_screen_on",
-        "screensaver_enabled",
-        "screensaver_idle_timeout",
-        "screensaver_mode",
-        "screensaver_brightness",
-        "notifications_default_duration",
-        "notifications_default_level",
-        "notifications_chime_by_level_info",
-        "notifications_chime_by_level_success",
-        "notifications_chime_by_level_warning",
-        "notifications_chime_by_level_error",
-        "notifications_max_visible",
-        "audio_media_volume",
-        "audio_announce_volume_boost",
-    ]
+    # identity and connection come first, then the v1 keys, then the v2 groups
+    assert keys[:2] == ["identity_name", "connection_ha_url"]
+    assert "screensaver_dim_brightness" in keys
+    assert "screensaver_clock_face" in keys
+    assert "at_a_glance_entities" in keys
+    assert "widgets_entity_visible_values" in keys
+    # the two v2 list leaves and the schedule close the form, schema order
+    assert keys[-1] == "schedule_slots"
     assert all(f.feature for f in fields)
     assert all(f.role != "hardware" for f in fields)
-    # Every leaf is editable in v1 (no hardware members yet), but the walk must
+    # Every leaf is editable (no hardware members yet), but the walk must
     # still honor the tag: a hardware leaf would be missing from this list.
     assert [f.key for f in schema().fields()] == keys
+    # list leaves know what their items are, which picks the flow's editor
+    arrays = {f.key: f for f in fields if f.type == "array"}
+    assert set(arrays) == {
+        "at_a_glance_entities",
+        "widgets_entity_visible_values",
+        "schedule_slots",
+    }
+    assert arrays["at_a_glance_entities"].array_items == "scalar"
+    assert arrays["schedule_slots"].array_items == "object"
 
 
 def test_validate_rejects_bad_documents():
@@ -185,6 +197,78 @@ async def test_store_drops_corrupt_entries(hass, hass_storage):
     assert kept is not None
     assert kept.revision == 1
     assert kept.settings["screen"]["brightness"] == 10
+
+
+# --- schema v2 loads and merges -----------------------------------------------------
+
+
+async def test_stored_v1_document_loads_as_v2_without_revision_bump(hass, hass_storage):
+    """A v1 document upgrades on load: recursive defaults fill the v2 keys.
+
+    Loading fills defaults (a schema change, not a data change), so the
+    revision does not move and nothing is written back.
+    """
+    hass_storage["tabula.settings"] = {
+        "version": 1,
+        "data": {
+            "devices": {
+                DEVICE_ID: {
+                    "revision": 5,
+                    "settings": {
+                        "screen": {"brightness": 42},
+                        "screensaver": {"enabled": False, "idle_timeout": 60},
+                    },
+                }
+            }
+        },
+    }
+    store = SettingsStore(hass)
+    await store.async_load()
+    loaded = store.get(DEVICE_ID)
+    assert loaded is not None
+    assert loaded.revision == 5
+    settings = loaded.settings
+    # kept v1 values
+    assert settings["screen"]["brightness"] == 42
+    assert settings["screensaver"]["enabled"] is False
+    # nested v2 groups filled at every depth
+    assert settings["screensaver"]["clock"]["face"] == "digital"
+    assert settings["screensaver"]["night_mode"]["light_threshold"] == 10
+    assert settings["widgets"]["small_clock"]["corner"] == "tl"
+    assert settings["schedule"] == {"enabled": False, "slots": []}
+    schema().validate(settings)
+
+
+async def test_partial_nested_save_merges_into_defaults(hass, hass_storage):
+    """A partial nested document merges into the defaults at every depth.
+
+    The options flow and entity writes save leaf-by-leaf; omitted nested
+    keys must keep their defaults instead of being dropped. Arrays and nulls
+    (the schedule's "inherit") are values: they replace, not merge.
+    """
+    store = SettingsStore(hass)
+    await store.async_load()
+    saved = await store.async_save(
+        DEVICE_ID,
+        {
+            "screensaver": {"clock": {"face": "analog"}},
+            "widgets": {"battery": {"enabled": True}},
+            "schedule": {"slots": [{"start": "07:00", "brightness": None}]},
+        },
+    )
+    settings = saved.settings
+    assert settings["screensaver"]["clock"]["face"] == "analog"
+    # sibling keys inside the nested group survive
+    assert settings["screensaver"]["clock"]["size"] == 100
+    assert settings["screensaver"]["mode"] == "clock"
+    # sibling groups survive the partial widget object
+    assert settings["widgets"]["battery"]["enabled"] is True
+    assert settings["widgets"]["battery"]["corner"] == "bl"
+    assert settings["widgets"]["shown"] is True
+    # arrays replace, not merge; a slot's nulls (inherit) are kept as values
+    assert settings["schedule"]["enabled"] is False
+    assert settings["schedule"]["slots"] == [{"start": "07:00", "brightness": None}]
+    schema().validate(settings)
 
 
 # --- the push -----------------------------------------------------------------------

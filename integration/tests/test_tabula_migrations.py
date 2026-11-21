@@ -1,18 +1,41 @@
 """Translate-down migrations (plan 5.4, PROTOCOL.md 4.5).
 
-The registry is empty at SCHEMA_VERSION 1, so these tests drive hypothetical
-future steps to prove the chain walk: each step sees the document version above
-it, a missing step is a hard error, and the input document is never mutated.
+SCHEMA_VERSION is 2, so DOWNS[2] is real: it prunes every v2-only key,
+nested ones included, and the result validates strictly against the frozen
+v1 schema (schema/settings.schema.v1.json). The chain-walk tests drive
+hypothetical future steps on top, to prove the walk itself keeps working
+past v2: each step sees the document version above it, a missing step is a
+hard error, and the input document is never mutated.
 """
 
 from __future__ import annotations
+
+import json
+from functools import lru_cache
+from pathlib import Path
 
 import pytest
 from custom_components.tabula import migrations
 from custom_components.tabula.const import SCHEMA_VERSION
 from custom_components.tabula.settings import SettingsSchema
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+V1_SCHEMA_PATH = REPO_ROOT / "schema" / "settings.schema.v1.json"
+V2_FULL_FIXTURE = REPO_ROOT / "schema" / "fixtures" / "settings" / "v2" / "full.json"
 
 DOC = {"screen": {"brightness": 42, "keep_screen_on": True}, "v3only": {"x": 1}}
+
+
+@lru_cache(maxsize=1)
+def v1_validator() -> Draft202012Validator:
+    """Strict validation against the frozen v1 schema."""
+    doc = json.loads(V1_SCHEMA_PATH.read_text(encoding="utf-8"))
+    registry = Registry().with_resource(doc["$id"], Resource.from_contents(doc))
+    return Draft202012Validator(
+        doc, registry=registry, format_checker=Draft202012Validator.FORMAT_CHECKER
+    )
 
 
 async def test_current_version_returns_a_copy():
@@ -79,12 +102,50 @@ async def test_target_below_one_is_rejected():
         migrations.translate(DOC, 0)
 
 
-async def test_translated_documents_still_validate_today():
-    """A translate-down result is a valid document of the older schema.
+async def test_v2_document_translates_down_to_strict_v1():
+    """The populated v2 fixture prunes to a document v1 validates strictly.
 
-    The v1 schema has no removed keys yet, so the identity translation is the
-    only honest check available; the invariant is what matters (PROTOCOL.md
-    4.5: the device validates against its own version).
+    A device's strict codec rejects unknown keys (plan 5.4), so every v2-only
+    key must go - the new top-level groups and the new keys nested inside
+    existing groups alike. Kept values pass through unchanged.
+    """
+    document = json.loads(V2_FULL_FIXTURE.read_text(encoding="utf-8"))
+    out = migrations.translate(document, 1)
+    assert not list(v1_validator().iter_errors(out))
+    # the new top-level groups are gone
+    assert set(out) == {"identity", "connection", "screen", "screensaver", "notifications", "audio"}
+    # the keys nested inside existing groups are gone too
+    assert set(out["screensaver"]) == {"enabled", "idle_timeout", "mode", "brightness"}
+    # v1 values pass through unchanged
+    assert out["screen"]["brightness"] == document["screen"]["brightness"]
+    assert out["screensaver"]["mode"] == document["screensaver"]["mode"]
+    assert out["notifications"]["chime_by_level"] == document["notifications"]["chime_by_level"]
+
+
+async def test_v2_defaults_translate_down_to_strict_v1():
+    """The v2 defaults document alone is a valid v1 document."""
+    schema = SettingsSchema()
+    out = migrations.translate(schema.defaults(), 1)
+    assert not list(v1_validator().iter_errors(out))
+
+
+async def test_down_translation_never_mutates_the_input():
+    document = json.loads(V2_FULL_FIXTURE.read_text(encoding="utf-8"))
+    snapshot = json.loads(V2_FULL_FIXTURE.read_text(encoding="utf-8"))
+    migrations.translate(document, 1)
+    assert document == snapshot
+
+
+async def test_down_translation_is_registered_for_every_step():
+    """Every version above the floor has a step, or the walk is a bug."""
+    assert set(migrations.DOWNS) == set(range(2, SCHEMA_VERSION + 1))
+
+
+async def test_translated_documents_still_validate_today():
+    """A translate-down result is also a valid current-schema document:
+    the bump is additive (plan 5.4), so pruning v2-only keys removes nothing
+    v2 requires (PROTOCOL.md 4.5: the device validates against its own
+    version).
     """
     schema = SettingsSchema()
     schema.validate(migrations.translate(schema.defaults(), 1))

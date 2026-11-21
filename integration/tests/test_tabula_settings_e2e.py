@@ -141,12 +141,16 @@ async def test_options_flow_save_reaches_the_device(
     flow = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], {"device_id": paired.ha_device_id}
     )
+    from custom_components.tabula.options_flow import array_to_text
     from custom_components.tabula.settings import NO_DEFAULT, SettingsSchema
 
-    values = {
-        f.key: ("" if f.default is NO_DEFAULT else f.default)
-        for f in SettingsSchema().editable_fields()
-    }
+    values = {}
+    for f in SettingsSchema().editable_fields():
+        # list leaves are multi-line text fields on the form (settings v2)
+        if f.type == "array":
+            values[f.key] = array_to_text(f, f.default)
+        else:
+            values[f.key] = "" if f.default is NO_DEFAULT else f.default
     values["screen_brightness"] = 23
     values["identity_name"] = "Kitchen Tablet"
     result = await hass_setup.config_entries.options.async_configure(flow["flow_id"], values)
