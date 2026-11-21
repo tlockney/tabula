@@ -13,7 +13,6 @@ import asyncio
 
 import aiohttp
 from custom_components.tabula import TabulaHub
-from helpers import pair_device, uid
 from homeassistant.core import Event
 from mockdevice.client import TLPClient
 from mockdevice.device import ALL_CAPABILITIES, MockDevice
@@ -90,9 +89,7 @@ async def test_options_flow_save_reaches_the_device(
     }
     values["screen_brightness"] = 23
     values["identity_name"] = "Kitchen Tablet"
-    result = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], values
-    )
+    result = await hass_setup.config_entries.options.async_configure(flow["flow_id"], values)
     assert result["type"] == "create_entry", result
 
     try:
@@ -129,14 +126,10 @@ async def test_subscription_reconciles_revision_drift(
     """A device behind HA's revision converges when it subscribes (4.2)."""
     runtime = TabulaHub.get(hass_setup)
     assert runtime is not None
-    stored = await runtime.settings.async_save(
-        paired.device_id, {"screen": {"brightness": 77}}
-    )
+    stored = await runtime.settings.async_save(paired.device_id, {"screen": {"brightness": 77}})
     assert stored.revision == 1
 
-    device, client, task = await _connect(
-        hass_setup, server, paired, tmp_path, settings_revision=0
-    )
+    device, client, task = await _connect(hass_setup, server, paired, tmp_path, settings_revision=0)
     try:
         for _ in range(200):
             if device.settings_revision == 1:
@@ -160,9 +153,7 @@ async def test_device_ahead_of_ha_still_converges(
     assert runtime is not None
     await runtime.settings.async_save(paired.device_id, {"screen": {"brightness": 55}})
 
-    device, client, task = await _connect(
-        hass_setup, server, paired, tmp_path, settings_revision=7
-    )
+    device, client, task = await _connect(hass_setup, server, paired, tmp_path, settings_revision=7)
     try:
         for _ in range(200):
             if device.settings_revision == 1:
@@ -183,9 +174,7 @@ async def test_no_push_when_the_device_is_current(
     assert runtime is not None
     await runtime.settings.async_save(paired.device_id, {"screen": {"brightness": 88}})
 
-    device, client, task = await _connect(
-        hass_setup, server, paired, tmp_path, settings_revision=1
-    )
+    device, client, task = await _connect(hass_setup, server, paired, tmp_path, settings_revision=1)
     try:
         await asyncio.sleep(0.5)
         await hass_setup.async_block_till_done()
@@ -197,9 +186,7 @@ async def test_no_push_when_the_device_is_current(
         await asyncio.wait_for(task, 10)
 
 
-async def test_device_events_reach_the_ha_bus(
-    hass_setup, server, hub, paired, tmp_path
-):
+async def test_device_events_reach_the_ha_bus(hass_setup, server, hub, paired, tmp_path):
     """A real device's events ride the subscription onto the HA bus (plan 5.5)."""
     device, client, task = await _connect(hass_setup, server, paired, tmp_path)
     notifications = _listen(hass_setup, "tabula_notification")

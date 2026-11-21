@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import pytest
 import voluptuous as vol
-
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
 from custom_components.tabula.settings import NO_DEFAULT, SettingsSchema
-from helpers import Paired, frame_fixture, ws_connect
+from helpers import frame_fixture, ws_connect
 from homeassistant.data_entry_flow import InvalidData
 from homeassistant.helpers import device_registry as dr
 
@@ -45,9 +44,7 @@ async def test_options_aborts_without_devices(hass_setup, hub):
     assert result["reason"] == "no_devices"
 
 
-async def test_options_form_is_generated_from_the_schema(
-    hass_setup, server, hub, session, paired
-):
+async def test_options_form_is_generated_from_the_schema(hass_setup, server, hub, session, paired):
     """One field per editable leaf, schema order, schema defaults."""
     result = await hass_setup.config_entries.options.async_init(hub.entry_id)
     assert result["type"] == "form"
@@ -86,9 +83,7 @@ async def test_options_submit_saves_renames_and_preserves_options(
     )
     schema = SettingsSchema()
     values = form_values(schema, screen_brightness=23, identity_name="Kitchen")
-    result = await hass_setup.config_entries.options.async_configure(
-        result["flow_id"], values
-    )
+    result = await hass_setup.config_entries.options.async_configure(result["flow_id"], values)
     assert result["type"] == "create_entry", result
     await hass_setup.async_block_till_done()
 
@@ -182,9 +177,7 @@ async def test_options_submit_pushes_to_a_connected_device(
     assert pushed["args"]["settings"]["screen"]["brightness"] == 31
 
 
-async def test_options_invalid_input_reshows_the_form(
-    hass_setup, server, hub, session, paired
-):
+async def test_options_invalid_input_reshows_the_form(hass_setup, server, hub, session, paired):
     """Out-of-range values never reach the flow; nothing is stored.
 
     The frontend enforces bounds while typing; the vol schema is a hard guard,

@@ -36,6 +36,7 @@ def _steps(monkeypatch, version: int, downs: dict) -> None:
 
 async def test_chain_walk_applies_every_step_in_order(monkeypatch):
     """Each step maps version n to n-1; the walk visits all of them."""
+
     def three_to_two(doc: dict) -> dict:
         assert doc["v3only"], "the step above sees the newer document"
         return {k: v for k, v in doc.items() if k != "v3only"}
@@ -53,6 +54,7 @@ async def test_chain_walk_applies_every_step_in_order(monkeypatch):
 
 async def test_partial_chain_walk(monkeypatch):
     """Translating to an intermediate version stops there."""
+
     def three_to_two(doc: dict) -> dict:
         return {k: v for k, v in doc.items() if k != "v3only"}
 

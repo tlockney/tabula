@@ -38,7 +38,7 @@ from . import commands, migrations
 from .const import DOMAIN, SCHEMA_VERSION
 
 if TYPE_CHECKING:
-    from . import DeviceRecord, DeviceSession, TabulaHub
+    from . import DeviceRecord, TabulaHub
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -91,12 +91,13 @@ def _validator() -> Draft202012Validator:
     doc = _document()
     if doc.get("x-tabula-schema-version") != SCHEMA_VERSION:
         # Programming error: the bundled schema and const.py must move together.
-        raise SettingsError(
-            [f"bundled schema is version {doc.get('x-tabula-schema-version')}, const says {SCHEMA_VERSION}"]
-        )
+        bundled = doc.get("x-tabula-schema-version")
+        raise SettingsError([f"bundled schema is version {bundled}, const says {SCHEMA_VERSION}"])
     Draft202012Validator.check_schema(doc)
     registry = Registry().with_resource(doc["$id"], Resource.from_contents(doc))
-    return Draft202012Validator(doc, registry=registry, format_checker=Draft202012Validator.FORMAT_CHECKER)
+    return Draft202012Validator(
+        doc, registry=registry, format_checker=Draft202012Validator.FORMAT_CHECKER
+    )
 
 
 @lru_cache(maxsize=1)
@@ -116,7 +117,8 @@ def _fields() -> tuple[SettingsField, ...]:
                     path=(*path, name),
                     role=prop["x-tabula-role"],
                     feature=prop["x-tabula-feature"],
-                    type=prop.get("type") or ("string" if "enum" in prop else "string"),
+                    # Enum-only leaves carry no "type"; every v1 enum is strings.
+                    type=prop.get("type", "string"),
                     enum=tuple(prop["enum"]) if "enum" in prop else None,
                     minimum=prop.get("minimum"),
                     maximum=prop.get("maximum"),

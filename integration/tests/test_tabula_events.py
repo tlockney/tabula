@@ -38,10 +38,14 @@ async def test_notification_events_relay_to_the_bus(hass_setup, server, hub, ses
     client = await _registered_subscribed(session, server, paired)
     seen = _listen(hass_setup, ["tabula_notification"])
 
-    shown = await client.reply(frame_fixture("event", id=9, event="notification_shown", data={"tag": "door"}))
+    shown = await client.reply(
+        frame_fixture("event", id=9, event="notification_shown", data={"tag": "door"})
+    )
     assert shown["success"], shown
     dismissed = await client.reply(
-        frame_fixture("event", id=10, event="notification_dismissed", data={"tag": "door", "reason": "touch"})
+        frame_fixture(
+            "event", id=10, event="notification_dismissed", data={"tag": "door", "reason": "touch"}
+        )
     )
     assert dismissed["success"], dismissed
 

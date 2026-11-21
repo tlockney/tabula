@@ -37,7 +37,7 @@ from .settings import (
 )
 
 if TYPE_CHECKING:
-    from . import DeviceRecord
+    pass
 
 
 def _validator(field: SettingsField) -> Any:
@@ -106,7 +106,7 @@ def _form_errors(problems: list[str], schema: SettingsSchema) -> dict[str, str]:
     errors: dict[str, str] = {}
     editable = {f.key for f in schema.editable_fields()}
     for problem in problems:
-        path, _, message = problem.partition(": ")
+        path = problem.partition(": ")[0]
         key = path.replace("/", "_")
         errors[key if key in editable else "base"] = "invalid_settings"
     return errors or {"base": "invalid_settings"}
@@ -118,9 +118,7 @@ class TabulaOptionsFlow(OptionsFlow):
     def __init__(self) -> None:
         self._device_id: str | None = None
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Pick which paired tablet to edit."""
         hub = TabulaHub.get(self.hass)
         if hub is None:
@@ -147,9 +145,7 @@ class TabulaOptionsFlow(OptionsFlow):
             ),
         )
 
-    async def async_step_device(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_device(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Edit one device's settings; save and push on submit."""
         hub = TabulaHub.get(self.hass)
         device_id = self._device_id

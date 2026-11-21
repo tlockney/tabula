@@ -12,9 +12,10 @@ import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 import custom_components.tabula as tabula_pkg
+import pytest
 from custom_components.tabula import DeviceRecord, DeviceSession, TabulaHub
+from custom_components.tabula.commands import DeviceNotConnected
 from custom_components.tabula.const import SCHEMA_VERSION
 from custom_components.tabula.settings import (
     SettingsError,
@@ -23,7 +24,6 @@ from custom_components.tabula.settings import (
     async_push_settings,
     schedule_settings_push,
 )
-from custom_components.tabula.commands import DeviceNotConnected
 from helpers import uid
 
 REPO_SCHEMA = Path(__file__).resolve().parents[2] / "schema" / "settings.schema.json"
@@ -219,7 +219,7 @@ async def test_push_sends_set_settings_and_takes_the_ack(hass_setup, hub, hass_s
     """A drift between revisions sends the full document and resolves on ACK."""
     runtime = TabulaHub.get(hass_setup)
     assert runtime is not None
-    record, session, connection = _device_with_session(revision=0)
+    record, _session, connection = _device_with_session(revision=0)
     runtime.devices[record.device_id] = record
     saved = await runtime.settings.async_save(record.device_id, {"screen": {"brightness": 42}})
     assert saved.revision == 1
@@ -279,7 +279,7 @@ async def test_push_skipped_without_a_document(hass_setup, hub, hass_storage):
     """Nothing is authoritative without a document; the device keeps its own."""
     runtime = TabulaHub.get(hass_setup)
     assert runtime is not None
-    record, session, connection = _device_with_session(revision=5)
+    record, _session, connection = _device_with_session(revision=5)
     runtime.devices[record.device_id] = record
 
     schedule_settings_push(runtime, record)
