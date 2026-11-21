@@ -35,6 +35,18 @@ from mockdevice.store import DeviceStore
 UPLOAD = "/api/tabula/screenshot"
 
 
+@pytest.fixture
+def expected_lingering_timers(request) -> bool:
+    """Allow the reload test on HA 2026.10+ (aiohttp 3.14).
+
+    aiohttp 3.14 stopped cancelling prior heartbeat handles ("TimerHandle
+    churn"): the entry teardown closes the tablet's live WebSocket (#97,
+    ADR 0019), which leaves its heartbeat timer scheduled. The socket is
+    websocket_api's; tabula only asks for the close.
+    """
+    return request.node.name == "test_last_capture_survives_a_reload"
+
+
 def entity_id(hass: HomeAssistant, platform: str, paired: Paired, key: str) -> str:
     eid = er.async_get(hass).async_get_entity_id(platform, DOMAIN, f"{paired.device_id}_{key}")
     assert eid is not None, (platform, key)
@@ -391,9 +403,9 @@ async def test_last_capture_survives_a_reload(hass_setup, tablet, hub):
     hub_runtime = TabulaHub.get(hass)
     assert hub_runtime is not None
     assert hub_runtime.devices[paired.device_id].last_capture is not None
-    # A hub reload does not cut the device's socket (PROTOCOL.md 4.9), so the
-    # app would reconnect on its next restart: drop the client's connection
-    # and let the mock re-register on the reloaded hub.
+    # The reload closed the client's socket (#97, ADR 0019), so the mock
+    # re-registers on its own; the close below only covers a mock that is
+    # still mid-backoff when we get here.
     conn = tablet.client._conn
     if conn is not None:
         await conn.ws.close()

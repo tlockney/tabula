@@ -151,3 +151,4 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A playlist in which every photo fails to decode (e.g. HEIC on an old build) falls back to the clock stand-in too, not a black screen | F-SSV-12; ADR 0016 item 1 | P3.8 |
 | The slideshow pauses while Tabula's window is not in front (a powered-off panel included) and resumes where it was, so no decode or fetch runs against a dark screen | F-SSV-02; ADR 0016 item 9 | P3.8 |
 | The pairing screen asks for the device name HA will show. The default is the tablet's own name (or model) plus the first four characters of its device id, so identical tablets pair under different names | F-MGT-03 | #79 |
+| Unloading or reloading the Tabula entry closes every device's WebSocket, so the tablet reconnects through its backoff and re-registers within the reconnect bound instead of sitting on a dead session (ADR 0019) | independent design (#97) | #97 |

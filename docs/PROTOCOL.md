@@ -201,6 +201,7 @@ HA itself may also return its own codes (`unauthorized`, `unknown_command`, …)
 
 - The device keeps one WebSocket. On close or error it reconnects after a delay: attempt *n* (from 0) waits a uniformly random time in [d/2, d], d = min(`BACKOFF_MAX`, `BACKOFF_BASE` × 2ⁿ). *n* resets once a connection has stayed registered for `BACKOFF_RESET_AFTER`.
 - A reconnect repeats the whole session order (register, subscribe). Registration is idempotent.
+- If the integration's config entry unloads or reloads, the server closes the device's sockets; the device reconnects as above (ADR 0019).
 - Commands in flight when a connection drops are lost; the integration's wait times out and the HA service call fails. The device never replays results on a new connection.
 - The device's keepalive is the `ping` command (section 4); a missing `pong` ends the connection.
 - While disconnected, the device keeps working from cached settings (plan 5.6) and buffers nothing except the latest full state, which it sends with `register`.
