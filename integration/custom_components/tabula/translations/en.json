@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tabula",
+        "description": "Set up the Tabula hub. Tablets pair to it from the Tabula app on the tablet."
+      },
+      "device": {
+        "title": "Tabula tablet wants to pair",
+        "description": "Enter the code shown on {name} (device {device_id})."
+      }
+    },
+    "error": {
+      "invalid_code": "That is not the code shown on the tablet. Try again."
+    },
+    "abort": {
+      "already_configured": "The Tabula hub is already set up.",
+      "already_in_progress": "Configuration for this tablet is already in progress.",
+      "expired": "The pairing attempt expired or was replaced. Start pairing again on the tablet.",
+      "paired": "Tablet paired.",
+      "too_many_attempts": "Too many wrong codes. Start pairing again on the tablet.",
+      "hub_not_loaded": "The Tabula hub is not loaded."
+    }
+  },
+  "issues": {
+    "unsupported_protocol": {
+      "title": "Tabula tablet speaks a newer protocol",
+      "description": "The tablet {device} tried to register with Tabula protocol {protocol_version}, which this Home Assistant's Tabula integration does not support (it supports {supported}). Update the Tabula integration, or install an older build of the tablet app. The tablet will keep retrying until then."
+    }
+  }
+}

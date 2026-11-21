@@ -22,7 +22,7 @@ package = false
 default-groups = ["dev"]
 
 [tool.uv.workspace]
-members = ["mockdevice"]
+members = ["mockdevice", "integration"]
 
 [tool.uv.sources]
 tabula-mockdevice = { workspace = true }
@@ -36,8 +36,8 @@ extend-exclude = ["build", "website/node_modules"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.pytest.ini_options]
-testpaths = ["tools/tests", "mockdevice/tests", "mockdevice/conformance"]
+testpaths = ["tools/tests", "mockdevice/tests", "mockdevice/conformance", "integration/tests"]
 addopts = "-q"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-pythonpath = ["."]
+pythonpath = [".", "integration"]

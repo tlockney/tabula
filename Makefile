@@ -46,8 +46,14 @@ fmt: ## Apply formatting and auto-fixable lint
 	$(UV) run ruff check --fix .
 
 .PHONY: test
-test: ## Run tests
+test: ## Run tests (repo, mock device, integration incl. conformance against it)
 	$(UV) run pytest
+
+# --- Integration ---
+
+.PHONY: integration-test
+integration-test: ## Custom integration tests (P1.2+), including the mock e2e pair
+	$(UV) run pytest integration/tests
 
 # --- Mock device ---
 
