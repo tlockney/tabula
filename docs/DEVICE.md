@@ -229,6 +229,20 @@ optional (it enables the offline curve step); so are
 `TABULA_SAVER_BRIGHTNESS_PCT` and `TABULA_CONNECTIVITY`. Set
 `TABULA_SKIP_REBOOT=1` only when the reboot step is being checked by itself.
 
+**USB adb.** Option B and step 8 disable the tablet's Wi-Fi through adb,
+so the adb connection must be over **USB**. With adb connected over
+Wi-Fi/TCP (`adb connect host:port`), the script refuses those steps
+rather than cutting the line adb itself rides on — a Wi-Fi cut would
+strand the tablet with no remote way back. Use option A (stop HA) for
+step 3 with Wi-Fi adb; step 8 cannot run without USB. (The older
+`check_p21.sh` and `check_p23.sh` cut Wi-Fi the same way without this
+guard; plug in USB before running them too.)
+
+**Cleanup.** The script puts back whatever it took down, on any failure,
+Ctrl-C and normal exit: a stopped HA is started again, the tablet's Wi-Fi
+is re-enabled, and the screen settings step 2 changed (the manual 60 %
+level and adaptive brightness) are restored to their original values.
+
 **Taking HA down — two options.** The script checks the same offline
 behavior either way; the first is the truer test.
 

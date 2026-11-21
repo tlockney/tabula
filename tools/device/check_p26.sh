@@ -38,6 +38,15 @@
 #      the tablet is offline entirely, and HA-side evidence (unavailable
 #      entities) is read from the Mac instead.
 #
+# The script cleans up after itself: a trap puts HA back (option A), the
+# tablet's Wi-Fi back (option B and step 8) and the screen settings step 2
+# changed back, on any failure, Ctrl-C and normal exit.
+#
+# USB note: option B and step 8 disable the tablet's Wi-Fi through adb, so
+# the adb connection must be over USB. With adb over Wi-Fi the script
+# refuses those steps - cutting the tablet's Wi-Fi would also cut adb and
+# strand the tablet (use option A for step 3; step 8 needs USB either way).
+#
 # The script never touches the tablet's pairing or app data. Paste the whole
 # output into the packet Result section.
 
@@ -113,23 +122,56 @@ wait_for_log() { # wait_for_log <pattern> <timeout seconds>
         sleep 5; waited=$((waited + 5))
     done
 }
-network() { # network <down|up> on the tablet itself (check_p21.sh's fallback)
-    if [[ "$1" == down ]]; then
-        adb shell cmd connectivity airplane-mode enable 2>/dev/null \
-            && echo "-- airplane mode on" || { adb shell svc wifi disable; echo "-- wifi disabled"; }
-    else
-        adb shell cmd connectivity airplane-mode disable 2>/dev/null \
-            && echo "-- airplane mode off" || { adb shell svc wifi enable; echo "-- wifi enabled"; }
-    fi
-}
 device_id() {
     adb shell run-as "$pkg" cat shared_prefs/tabula_device.xml 2>/dev/null \
         | sed -n 's/.*name="device_id">\([0-9a-f-]\{36\}\)<.*/\1/p' | head -1
 }
 
+# --- what the script must restore on any exit (PR review, must-fix 1) -------
+# Flags for what this script took down; restore() puts each back. They are
+# cleared by the matching "up" call, so a normal run's exit trap is a no-op.
+ha_is_down_by_us=0   # option A: this script stopped HA
+net_down_by_us=0     # option B / step 8: this script cut the tablet's Wi-Fi
+settings_touched=0   # step 2 changed the tablet's stored screen settings
+orig_light="on None" # the light's state and brightness, as found
+orig_adaptive="unset"  # the adaptive switch's state, as found (or "unset")
+
+usb_adb() { # true when the adb transport is USB; Wi-Fi adb would be cut with the tablet
+    local serialno devpath line
+    serialno="$(adb get-serialno 2>/dev/null | tr -d '\r')"
+    devpath="$(adb get-devpath 2>/dev/null | tr -d '\r')"
+    if [[ "$serialno" =~ :[0-9]+$ ]]; then
+        echo "-- adb transport: $serialno is a host:port form (not USB)" >&2
+        return 1
+    fi
+    if [[ "$devpath" == usb:* ]]; then return 0; fi
+    line="$(adb devices -l | grep -F "$serialno" | head -1)"
+    if [[ "$line" == *" usb:"* ]]; then return 0; fi
+    echo "-- adb devices line for $serialno: ${line:-<none>}" >&2
+    return 1
+}
+require_usb_adb() { # before anything that disables the tablet's Wi-Fi (must-fix 3)
+    usb_adb && return 0
+    fail "adb is not over USB, so disabling the tablet's Wi-Fi would also cut adb and strand the tablet. Connect the tablet over USB, or use option A (TABULA_HA_STOP_CMD) for step 3; step 8 needs USB either way."
+}
+
+network() { # network <down|up> on the tablet itself (check_p21.sh's fallback)
+    if [[ "$1" == down ]]; then
+        require_usb_adb # Wi-Fi adb would be cut with the tablet (must-fix 3)
+        net_down_by_us=1
+        adb shell cmd connectivity airplane-mode enable 2>/dev/null \
+            && echo "-- airplane mode on" || { adb shell svc wifi disable; echo "-- wifi disabled"; }
+    else
+        net_down_by_us=0
+        adb shell cmd connectivity airplane-mode disable 2>/dev/null \
+            && echo "-- airplane mode off" || { adb shell svc wifi enable; echo "-- wifi enabled"; }
+    fi
+}
+
 ha_down() {
     if [[ -n "${TABULA_HA_STOP_CMD:-}" ]]; then
         echo "-- stopping HA with: $TABULA_HA_STOP_CMD"
+        ha_is_down_by_us=1
         bash -c "$TABULA_HA_STOP_CMD"
         echo "-- HA stop command returned; HA should be down now"
     else
@@ -138,6 +180,7 @@ ha_down() {
     fi
 }
 ha_up() {
+    ha_is_down_by_us=0
     if [[ -n "${TABULA_HA_START_CMD:-}" ]]; then
         echo "-- starting HA with: $TABULA_HA_START_CMD"
         bash -c "$TABULA_HA_START_CMD"
@@ -145,22 +188,91 @@ ha_up() {
         network up
     fi
 }
+ha_http_code() { # HA's HTTP status for /api/; 000 means it did not answer at all
+    curl -s -o /dev/null -m 5 -w '%{http_code}' "${TABULA_HA_URL%/}/api/" || true
+}
+ha_answers() { # the Mac reached HA's API at all; a 401 without a token still means HA is up (must-fix 2)
+    [[ "$(ha_http_code)" != 000 ]]
+}
 ha_is_down() { # the Mac's own check that HA is really unreachable (option A) or the tablet is (B)
     if [[ -n "${TABULA_HA_STOP_CMD:-}" ]]; then
-        if curl -fsS -m 5 "${TABULA_HA_URL%/}/api/" > /dev/null 2>&1; then
-            return 1
-        else
-            return 0
-        fi
+        if ha_answers; then return 1; else return 0; fi
     else
         # option B: HA is up but the tablet has no route; HA's entities read unavailable
         ha_state "$TABULA_SCREENSAVER" | grep -qx unavailable
     fi
 }
-ha_answers() { # the Mac can reach HA's API (meaningful in option A; trivial in B)
-    curl -fsS -m 5 "${TABULA_HA_URL%/}/api/" > /dev/null 2>&1
-}
 boot_completed() { [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]; }
+
+ha_light_state() { # a light's state and brightness attribute, e.g. "on 153"
+    curl -fsS -H "Authorization: Bearer ${TABULA_HA_TOKEN}" "${TABULA_HA_URL%/}/api/states/$1" \
+        | python3 -c 'import json,sys; s=json.load(sys.stdin); print(s["state"], s["attributes"].get("brightness"))'
+}
+
+restore_settings() { # put back what step 2 changed (PR review, should-fix)
+    (( settings_touched )) || return 0
+    settings_touched=0
+    echo "-- restore: putting the tablet's screen settings back (was light='$orig_light', adaptive='$orig_adaptive')" >&2
+    # the service calls need HA answering and the tablet re-registered
+    local waited=0
+    until ha_answers && ha_available "$TABULA_LIGHT"; do
+        (( waited >= 240 )) && {
+            echo "-- restore: HA or the tablet did not come back within 240s;" >&2
+            echo "   set the screen light and the adaptive brightness switch back by hand: light='$orig_light', adaptive='$orig_adaptive'" >&2
+            return 0
+        }
+        sleep 5; waited=$((waited + 5))
+    done
+    local state brightness body
+    read -r state brightness <<< "$orig_light"
+    if [[ "$state" == "off" ]]; then
+        ha_call light turn_off "{\"entity_id\": \"$TABULA_LIGHT\"}" \
+            || echo "-- restore: light.turn_off failed; set it back by hand" >&2
+    else
+        body="{\"entity_id\": \"$TABULA_LIGHT\""
+        [[ "$brightness" != "None" ]] && body+=", \"brightness\": $brightness"
+        body+="}"
+        ha_call light turn_on "$body" \
+            || echo "-- restore: light.turn_on failed; set it back by hand" >&2
+    fi
+    if [[ "$orig_adaptive" != "unset" ]]; then
+        if [[ "$orig_adaptive" == "on" ]]; then
+            ha_call switch turn_on "{\"entity_id\": \"$TABULA_ADAPTIVE\"}" \
+                || echo "-- restore: switch.turn_on failed; set it back by hand" >&2
+        else
+            ha_call switch turn_off "{\"entity_id\": \"$TABULA_ADAPTIVE\"}" \
+                || echo "-- restore: switch.turn_off failed; set it back by hand" >&2
+        fi
+    fi
+    echo "-- restore: screen settings back" >&2
+}
+
+restore() { # on any exit: bring back what this script took down (idempotent)
+    local restored=()
+    if (( ha_is_down_by_us )); then
+        ha_is_down_by_us=0
+        ha_up || true
+        restored+=("HA")
+    fi
+    if (( net_down_by_us )); then
+        net_down_by_us=0
+        network up || true
+        restored+=("the tablet's Wi-Fi")
+    fi
+    if (( settings_touched )); then
+        restore_settings || true
+        restored+=("the tablet's screen settings")
+    fi
+    if (( ${#restored[@]} )); then
+        echo "-- restore: restored ${restored[*]}" >&2
+    fi
+    return 0
+}
+# EXIT restores after any failure; INT/TERM (Ctrl-C) restore and then exit -
+# a bare INT trap would run restore and leave the script running.
+trap restore EXIT
+trap 'restore; exit 130' INT
+trap 'restore; exit 143' TERM
 
 step "1. boot check (Phase 2 exit: the service starts on boot)"
 if [[ "${TABULA_SKIP_REBOOT:-0}" == "1" ]]; then
@@ -187,6 +299,17 @@ adb devices -l
 echo "-- device_id: $(device_id)"
 wait_for_log "registered with HA device" 120
 wait_for_log "phase: CONNECTED" 30
+# Step 2 changes the stored screen settings (a manual level writes
+# screen.brightness and adaptive off, ADR 0011); remember the originals so
+# the exit trap can put them back (PR review, should-fix).
+orig_light="$(ha_light_state "$TABULA_LIGHT")"
+if [[ -n "${TABULA_ADAPTIVE:-}" ]]; then
+    orig_adaptive="$(ha_state "$TABULA_ADAPTIVE")"
+else
+    orig_adaptive="unset"
+fi
+settings_touched=1
+echo "-- screen settings as found (restored on exit): light='$orig_light', adaptive='$orig_adaptive'"
 ha_call light turn_on "{\"entity_id\": \"$TABULA_LIGHT\", \"brightness_pct\": 60}"
 wait_for "system brightness $(expected_level 60) (60 %)" 15 test "x$(system_level)" = "x$(expected_level 60)"
 # the manual level turns adaptive off (ADR 0010 item 5); turning it on now
