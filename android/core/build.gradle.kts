@@ -14,6 +14,15 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Both compilers target 17 explicitly: Gradle defaults compileJava to the
+// running JDK, and the Kotlin plugin fails the build when that differs from
+// jvmTarget (issue #56). No toolchain: it would need a local JDK 17 on every
+// machine, and auto-provisioning is a release download (AGENTS.md rule 7).
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
