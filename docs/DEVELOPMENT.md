@@ -20,6 +20,8 @@ ADR [0004](decisions/0004-build-and-toolchain.md) records the reasoning.
 
 `make setup` runs `tools/bootstrap.sh`, which installs uv from PyPI if it is missing and checks the Node version, then installs locked dependencies.
 
+The Makefile isolates uv from your own uv settings. It points `UV_CONFIG_FILE` at `tools/uv.toml` (which holds no settings) and unsets `UV_EXCLUDE_NEWER`, so a user- or system-level `uv.toml` cannot change resolution. Without this, a global setting such as a rolling `exclude-newer` makes `uv sync --locked` reject `uv.lock`. Project settings stay in `pyproject.toml` (`[tool.uv]`). If you run `uv` directly instead of through `make`, set `UV_CONFIG_FILE=tools/uv.toml` yourself or you may see the same lockfile error.
+
 ## Common tasks
 
 Work happens in a git worktree, one per branch (AGENTS.md, "Git"):

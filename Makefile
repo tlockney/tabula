@@ -8,6 +8,11 @@ SHELL := bash
 MAKEFLAGS += --no-print-directory
 
 UV  := uv
+# Isolate uv from user- and system-level config: a global uv.toml (such as a
+# rolling exclude-newer) would otherwise make `uv sync --locked` fail. See
+# tools/uv.toml and docs/DEVELOPMENT.md.
+export UV_CONFIG_FILE := $(CURDIR)/tools/uv.toml
+unexport UV_EXCLUDE_NEWER
 NPM := npm --prefix website
 
 .PHONY: help
