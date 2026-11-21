@@ -21,6 +21,7 @@ class ScriptedServer : WsTransportFactory {
     val registered = mutableListOf<JsonObject>()
     val states = mutableListOf<JsonObject>()
     val results = mutableListOf<JsonObject>()
+    val events = mutableListOf<JsonObject>()
     val pings = mutableListOf<Int>()
 
     /** Per-frame override for scenario scripting; runs after the default reply. */
@@ -81,6 +82,7 @@ class ScriptedServer : WsTransportFactory {
                 }
                 "tabula/state" -> states.add(frame)
                 "tabula/result" -> results.add(frame)
+                "tabula/event" -> events.add(frame)
             }
             onFrame?.invoke(this, frame)
         }

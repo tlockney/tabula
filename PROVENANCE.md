@@ -94,3 +94,9 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A fresh install leaves the system brightness alone until HA has sent settings | F-SCR-02 (default chosen in ADR 0011) | P2.3 |
 | A manual level from the screen light is also written to HA's stored settings (brightness and adaptive off), so later settings pushes keep adaptive off | independent design (ADR 0011) | P2.3 |
 | A swipe-only lock screen is cleared when the panel wakes; a secured one stays | F-SCR-13 (unsecured case only) | P2.3 |
+| After the idle timeout with no touch the tablet shows a full-screen clock; the timer pauses while the panel is off or Tabula is not in front, and a master switch turns the idle start off | F-SSV-01, F-SSV-02 | P2.4 |
+| Touch or a key press dismisses the screensaver and restarts the idle timer; the dismissing touch does not reach the dashboard | F-SSV-04 | P2.4 |
+| Screensaver modes on the tablet: a digital clock with the date (following the system 12/24-hour setting and language), black at the lowest backlight, and dim (backlight lowered over the live dashboard); modes not built yet show the clock | F-SSV-05, F-SSV-06, F-SSV-07, F-SSV-08 (digital face only); stand-in from ADR 0013 | P2.4 |
+| The screensaver brightness holds the backlight while it shows, and the previous level returns on dismissal, including levels HA set meanwhile | F-SSV-17 (dim level from ADR 0013) | P2.4 |
+| HA can start the screensaver while the idle start is switched off | independent design (ADR 0013) | P2.4 |
+| Each start and stop is sent to HA as a `tabula_screensaver` event with mode and cause, and the next idle start time is reported to HA | F-SSV-26, F-SSV-01 | P2.4 |

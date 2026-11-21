@@ -7,6 +7,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -28,6 +29,7 @@ import net.lockney.tabula.core.tlp.CommandFrame
 import net.lockney.tabula.core.tlp.CommandResultFrame
 import net.lockney.tabula.core.tlp.Commands
 import net.lockney.tabula.core.tlp.ErrorCode
+import net.lockney.tabula.core.tlp.EventFrame
 import net.lockney.tabula.core.tlp.PingFrame
 import net.lockney.tabula.core.tlp.RegisterFrame
 import net.lockney.tabula.core.tlp.RegisterResultData
@@ -73,6 +75,13 @@ class TlpClient(
         val refreshToken: () -> String,
         val state: StateSource,
         val commands: CommandHandler,
+        /**
+         * Device events to send (PROTOCOL 4.7), each built for the frame id
+         * it is sent with. Events raised while no session is registered are
+         * dropped when the next one starts: they describe a moment HA did not
+         * see, and the registration state already carries the outcome.
+         */
+        val events: ReceiveChannel<(Int) -> EventFrame>? = null,
     )
 
     /** Session lifecycle callbacks; called from the client's coroutines. */
@@ -248,7 +257,9 @@ class TlpClient(
                 }
                 val pingJob = launch { pingLoop(conn) }
                 val stateJob = launch { stateLoop(conn) }
+                val eventJob = launch { eventLoop(conn) }
                 readJob.join()
+                eventJob.cancelAndJoin()
                 stableJob.cancelAndJoin()
                 pingJob.cancelAndJoin()
                 stateJob.cancelAndJoin()
@@ -474,6 +485,25 @@ class TlpClient(
                 throw IOException("no pong within PONG_TIMEOUT", e)
             }
             if (reply.str("type") != "pong") throw IOException("ping answered with $reply")
+        }
+    }
+
+    /**
+     * Send device events in order. Events queued before this loop starts are
+     * dropped: they describe moments the register frame's state already
+     * covers. An event raised in the short gap between the register snapshot
+     * and this loop's start is dropped with them; state still converges
+     * through the next delta, but an HA automation keyed on the event misses
+     * that one edge (a known gap, ADR 0013).
+     */
+    private suspend fun eventLoop(conn: Connection) {
+        val events = config.events ?: return
+        while (events.tryReceive().isSuccess) {
+            // drop it
+        }
+        while (true) {
+            val build = events.receive()
+            conn.send { id -> Tlp.encodeFrame("event", build(id)) }
         }
     }
 

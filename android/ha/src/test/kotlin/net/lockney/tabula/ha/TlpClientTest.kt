@@ -15,6 +15,9 @@ import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.tlp.Capability
 import net.lockney.tabula.core.tlp.CommandResultFrame
 import net.lockney.tabula.core.tlp.ErrorCode
+import net.lockney.tabula.core.tlp.EventFrame
+import net.lockney.tabula.core.tlp.ScreensaverMode
+import net.lockney.tabula.core.tlp.ScreensaverStartTrigger
 import net.lockney.tabula.core.tlp.NetworkType
 import net.lockney.tabula.core.tlp.RegisterFrame
 import net.lockney.tabula.core.tlp.StateDelta
@@ -42,6 +45,7 @@ class TlpClientTest {
         server: ScriptedServer,
         tokens: TokenRefresher,
         commands: CommandHandler = FakeCommands(),
+        deviceEvents: kotlinx.coroutines.channels.ReceiveChannel<(Int) -> EventFrame>? = null,
     ) = TlpClient(
         TlpClient.Config(
             haUrl = "http://ha:8123",
@@ -55,6 +59,7 @@ class TlpClientTest {
             refreshToken = { refreshToken },
             state = state,
             commands = commands,
+            events = deviceEvents,
         ),
         tokens,
         server,
@@ -188,6 +193,26 @@ class TlpClientTest {
         assertEquals(ErrorCode.UNSUPPORTED_COMMAND, nack1.error!!.code)
         assertEquals(false, nack2.ok)
         assertEquals(ErrorCode.INVALID_ARGS, nack2.error!!.code)
+        job.cancel()
+    }
+
+    @Test
+    fun `device events go out immediately once registered, earlier ones are dropped`() = runTest {
+        val server = ScriptedServer()
+        val events = RecordingEvents()
+        val queue = kotlinx.coroutines.channels.Channel<(Int) -> EventFrame>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        queue.trySend { id -> EventFrame.screensaverStarted(id, ScreensaverMode.BLACK, ScreensaverStartTrigger.IDLE) }
+        val job = launch { client(FakeState(), server, tokens(granted("access-1")), deviceEvents = queue).run(events) }
+        runCurrent()
+        assertEquals(0, server.events.size, "an event from before the connection is stale")
+
+        queue.trySend { id -> EventFrame.screensaverStarted(id, ScreensaverMode.CLOCK, ScreensaverStartTrigger.COMMAND) }
+        runCurrent()
+        val frame = server.events.single()
+        assertEquals("screensaver_started", frame["event"]?.jsonPrimitive?.content)
+        val data = frame["data"]!!.jsonObject
+        assertEquals("clock", data["mode"]?.jsonPrimitive?.content)
+        assertEquals("command", data["trigger"]?.jsonPrimitive?.content)
         job.cancel()
     }
 
