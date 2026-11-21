@@ -153,4 +153,5 @@ New rows go in `docs/provenance/`, one file per packet, not in this table; see `
 | A playlist in which every photo fails to decode (e.g. HEIC on an old build) falls back to the clock stand-in too, not a black screen | F-SSV-12; ADR 0016 item 1 | P3.8 |
 | The slideshow pauses while Tabula's window is not in front (a powered-off panel included) and resumes where it was, so no decode or fetch runs against a dark screen | F-SSV-02; ADR 0016 item 9 | P3.8 |
 | The pairing screen asks for the device name HA will show. The default is the tablet's own name (or model) plus the first four characters of its device id, so identical tablets pair under different names | F-MGT-03 | #79 |
+| On re-pairing, the name field prefills the name HA last set in the settings, else the name typed at the last pairing | F-MGT-03 | #100 |
 | The integration imports and runs on every supported HA release: target extraction prefers `homeassistant.helpers.target` (from HA 2026.1) and falls back to `homeassistant.helpers.service` below it, so the floor 2025.1.0 through the latest release all load (ADR 0001 item 8) | independent design (ADR 0001 item 8) | #83 |

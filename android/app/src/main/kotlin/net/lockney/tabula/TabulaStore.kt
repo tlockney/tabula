@@ -57,6 +57,28 @@ class TabulaStore(
             ?: Settings()
         set(value) = prefs.edit().putString(KEY_SETTINGS, SettingsCodec.encode(value)).apply()
 
+    /**
+     * The name last typed on the pairing screen (F-MGT-03, issue #100). Kept in
+     * its own key because HA's set_settings replaces the whole settings document,
+     * and HA keeps the pairing name on its device record, not in identity.name.
+     */
+    var pairingName: String?
+        get() = prefs.getString(KEY_PAIRING_NAME, null)
+        set(value) {
+            val edit = prefs.edit()
+            if (value == null) edit.remove(KEY_PAIRING_NAME) else edit.putString(KEY_PAIRING_NAME, value)
+            edit.apply()
+        }
+
+    /**
+     * The name to prefill and send at pairing: identity.name when HA's settings
+     * set one (a rename in the settings editor), else the last pairing name,
+     * else [fallback]. HA's identity.name wins even over a newer typed name:
+     * HA's next push would bring it back, and it is the name HA shows.
+     */
+    fun nameForPairing(fallback: String): String =
+        settings.identity.name ?: pairingName ?: fallback
+
     /** The pairing credential, or null while the device is unpaired. */
     var refreshToken: String?
         get() = prefs.getString(KEY_REFRESH_TOKEN, null)?.let { blob ->
@@ -97,6 +119,7 @@ class TabulaStore(
         internal const val KEY_SETTINGS = "settings"
         internal const val KEY_SETTINGS_REVISION = "settings_revision"
         internal const val KEY_REFRESH_TOKEN = "refresh_token_encrypted"
+        internal const val KEY_PAIRING_NAME = "pairing_name"
     }
 }
 
