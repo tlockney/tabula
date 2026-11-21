@@ -1,0 +1,169 @@
+{
+  "identity": {
+    "name": "Hall tablet"
+  },
+  "connection": {
+    "ha_url": "https://ha.example.com:8123"
+  },
+  "screen": {
+    "brightness": 80,
+    "adaptive_brightness": true,
+    "keep_screen_on": true
+  },
+  "screensaver": {
+    "enabled": true,
+    "idle_timeout": 600,
+    "mode": "photos",
+    "brightness": 30,
+    "dim_brightness": 7,
+    "clock": {
+      "face": "analog",
+      "font_family": "serif",
+      "font_weight": 700,
+      "hour_24": true,
+      "show_seconds": true,
+      "show_am_pm": false,
+      "show_date": false,
+      "size": 150,
+      "text_color": "#FFEEEEEE",
+      "background_color": "#FF102030",
+      "background_source": "https://cdn.example.com/sky.jpg",
+      "background_refresh": 1800,
+      "background_darken": 25
+    },
+    "night_mode": {
+      "enabled": true,
+      "light_threshold": 15,
+      "hysteresis_lux": 3,
+      "hide_background": true,
+      "hide_overlays": false,
+      "power_off_delay": 30,
+      "black_screen_alternative": true
+    },
+    "weather": {
+      "entity_id": "weather.home",
+      "place_name": "Corvallis",
+      "clock_overlay": true,
+      "info_bar": true,
+      "lightning": true
+    },
+    "photos": {
+      "source": "url",
+      "folder_path": "/sdcard/Pictures",
+      "image_url": "https://frame.example.com/today.jpg",
+      "slide_interval": 900,
+      "transition": "pan_zoom",
+      "fit": "fill",
+      "shuffle": true,
+      "include_subfolders": true,
+      "edge_taps": false,
+      "exif_details": true
+    },
+    "website": {
+      "url": "https://news.example.com",
+      "zoom": 125,
+      "double_tap_dismiss": true
+    },
+    "pixel_shift": {
+      "enabled": true,
+      "interval": 120,
+      "amplitude": 6
+    },
+    "fade": {
+      "enabled": true
+    }
+  },
+  "notifications": {
+    "default_duration": 0,
+    "default_level": "warning",
+    "chime_by_level": {
+      "info": false,
+      "success": true,
+      "warning": true,
+      "error": true
+    },
+    "max_visible": 2
+  },
+  "audio": {
+    "media_volume": 80,
+    "announce_volume_boost": "none"
+  },
+  "at_a_glance": {
+    "entities": [
+      "binary_sensor.front_door",
+      "lock.garage",
+      "cover.shop"
+    ],
+    "style": "plain",
+    "hide_names": true,
+    "monochrome_icons": true,
+    "scale": 120,
+    "font": "sans-serif-light"
+  },
+  "widgets": {
+    "shown": true,
+    "scale": 110,
+    "font": "serif",
+    "vignette": 40,
+    "small_clock": {
+      "enabled": true,
+      "corner": "tl",
+      "show_date": false,
+      "hour_24": true,
+      "color": "#FFFFFFCC"
+    },
+    "weather": {
+      "enabled": true,
+      "corner": "tr",
+      "entity_id": "weather.home",
+      "place_name": "Home"
+    },
+    "forecast": {
+      "enabled": true,
+      "corner": "br",
+      "entity_id": "weather.home",
+      "days": 3,
+      "include_today": false
+    },
+    "battery": {
+      "enabled": true,
+      "corner": "bl",
+      "show_percent": false,
+      "only_when_low": true
+    },
+    "entity": {
+      "enabled": true,
+      "corner": "bl",
+      "entity_id": "sensor.shed_temperature",
+      "attribute": "temperature",
+      "name": "Shed",
+      "visible_values": [
+        "open",
+        "opening"
+      ]
+    }
+  },
+  "schedule": {
+    "enabled": true,
+    "slots": [
+      {
+        "start": "07:00",
+        "mode": "photos",
+        "brightness": 40,
+        "power_off_delay": 0,
+        "presence_dismiss": true,
+        "widgets": true,
+        "at_a_glance": false
+      },
+      {
+        "start": "22:30",
+        "mode": "black",
+        "brightness": null,
+        "power_off_delay": null,
+        "presence_dismiss": null,
+        "widgets": null,
+        "at_a_glance": null
+      }
+    ]
+  }
+}

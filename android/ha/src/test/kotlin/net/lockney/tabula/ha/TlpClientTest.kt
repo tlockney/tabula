@@ -20,6 +20,7 @@ import net.lockney.tabula.core.tlp.EventFrame
 import net.lockney.tabula.core.tlp.ScreensaverMode
 import net.lockney.tabula.core.tlp.ScreensaverStartTrigger
 import net.lockney.tabula.core.tlp.NetworkType
+import net.lockney.tabula.core.settings.SCHEMA_VERSION
 import net.lockney.tabula.core.tlp.RegisterFrame
 import net.lockney.tabula.core.tlp.StateDelta
 import net.lockney.tabula.core.tlp.StateFrame
@@ -92,7 +93,7 @@ class TlpClientTest {
         )
         assertEquals(deviceId, register.deviceId)
         assertEquals(Constants.PROTOCOL_VERSION, register.protocolVersion)
-        assertEquals(1, register.schemaVersion)
+        assertEquals(SCHEMA_VERSION, register.schemaVersion)
         assertEquals("0.1.0", register.appVersion)
         assertEquals(listOf("battery"), register.capabilities)
         assertEquals(0, register.settingsRevision)

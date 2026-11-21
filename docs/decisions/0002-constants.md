@@ -118,6 +118,109 @@ Manual brightness from HA (the light entity, the `screen` command) is applied at
 
 The idle timeout, mode and brightness defaults are in "Phase 1–2 behavior defaults" below.
 
+### Settings schema v2 (P3.1)
+
+Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as above: bounds and defaults live here only. Every value is a round number chosen from the feature's own text (docs/FEATURES.md) and the Office Kiosk's panel (plan 3). All keys are `shared` role. `media_browser` is in the photos source enum from day one so P3.9 adds no schema bump.
+
+**Clock mode (`screensaver.clock`, F-SSV-08/F-SSV-09).** Nothing is bundled: font family and weight name system fonts only.
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| face | `digital` \| `analog`, default `digital` | The two faces F-SSV-08 settles; the digital clock reads best from across a room and is what the first milestone idles to. |
+| font_family | 1–64 chars, default `sans-serif` | A system font family name; `sans-serif` is Android's default family and always resolves. |
+| font_weight | 100–900, default 400 | Android's font-weight axis; 400 is the system's "normal", so nothing changes until the user asks. |
+| hour_24 | default false | 12-hour with an AM/PM marker (below) is the wall-clock reading in the kiosk's locale. |
+| show_seconds | default false | Seconds tick every frame on a low-RAM panel; off unless asked for. |
+| show_am_pm | default true | Pair with 12-hour: the marker is what makes 12-hour legible. |
+| show_date | default true | A wall clock wants the date; F-SSV-08 lists it as an option. |
+| size | 25–400 %, default 100 | Percent of the mode's base size; the floor keeps a misconfigured tiny clock visible, the ceiling keeps it on the panel. |
+| text_color, background_color | `#RRGGBB` or `#AARRGGBB` (Android order), defaults `#FFFFFFFF` (white) / `#FF000000` (black) | Android's `Color.parseColor` forms; alpha-first 8-digit matches what the device parses without translation. White on black is the readable-from-across-the-room pair. |
+| background_source | 0–2048 chars, default "" (none) | Empty, a local file path, or a URL; 2048 is the common URL limit used elsewhere (ADR 0002). |
+| background_refresh | 0–86400 s, default 0 (never) | F-SSV-09's re-fetch interval; a day is the longest sensible periodic refresh, 0 disables it. |
+| background_darken | 0–100 %, default 40 | The readability layer's darkening strength; 40 keeps the face readable over a mid-tone photo without hiding it. |
+
+**Clock night mode (`screensaver.night_mode`, F-SSV-10).** Reads the tablet's own light sensor only.
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| enabled | default false | Needs a light sensor many panels lack (F-SSV-10); off until the user opts in. |
+| light_threshold | 0–10000 lux, default 10 | 10 lx is a dim evening room — dark enough that a full-brightness clock lights the room. The bound is the ambient range Android reports. |
+| hysteresis_lux | 0–1000 lux, default 2 | Small against the threshold so flicker at the boundary does not toggle night mode every few seconds. |
+| hide_background | default true | The background image defeats the night scheme's dark background (F-SSV-10). |
+| hide_overlays | default true | Widgets and At a Glance in full color would light the room (F-SSV-10). |
+| power_off_delay | 0–1440 minutes, default 0 (never) | Minutes of night mode before the panel turns off (F-SSV-10); a day bounds it, 0 keeps the panel on. The countdown itself is F-SSV-19 (later phase); the key no-ops until then. |
+| black_screen_alternative | default false | The alternative in F-SSV-10 for sensors that stop reporting at panel-off; opt-in. |
+
+**Photo slideshow (`screensaver.photos`, F-SSV-12).** The `media_browser` note at the top of this section applies to `source`: it is a value now so P3.9 adds no schema bump.
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| source | `folder` \| `picker` \| `url` \| `media_browser`, default `folder` | F-SSV-12's four sources. A folder is the zero-setup default: it needs only a path — no on-device picker interaction, no HA round trip. |
+| folder_path | 0–2048 chars, default "" | The device-local folder for the folder source (F-SSV-12); 2048 is the URL-length bound used elsewhere in ADR 0002 and far beyond any real path. Empty with any other source. |
+| image_url | empty or `http(s)://`, 0–4096 chars, default "" | The single-image URL source (F-SSV-12), fetched fresh for each slide; the scheme and length bounds match `play_media.url` (ADR 0002). |
+| slide_interval | 5–3600 s, default 300 | Five seconds is the shortest a photo registers on a wall panel; an hour makes the slideshow effectively one static photo. Five minutes is the digital-frame rhythm. |
+| transition | `none` \| `crossfade` \| `slide` \| `zoom` \| `pan_zoom` \| `random`, default `crossfade` | F-SSV-12's list; `pan_zoom` is the slow pan-and-zoom (stills only). Crossfade never fully covers either photo, so nothing pops mid-change on a slow panel. |
+| fit | `letterbox` \| `smart_fill` \| `fill`, default `smart_fill` | F-SSV-12's three fits. Smart fill is the least-lossy default on a mixed collection: the full photo with only a small crop when shapes nearly match, blurred darkened bars when they differ a lot. |
+| shuffle | default false | In-order is the neutral default; shuffle suits curated frames and is one switch away (F-SSV-12). |
+| include_subfolders | default false | Explicit scope by default: a stray subfolder of screenshots never joins the playlist unnoticed (F-SSV-12). |
+| edge_taps | default true | The edge zones are the slideshow's only remote-free control on a wall tablet (F-SSV-12); on by default, and a tap elsewhere still dismisses. |
+| exif_details | default false | The EXIF overlay is for curating a collection, not for reading across a room (F-SSV-12); off unless asked for. |
+
+**Weather scene (`screensaver.weather`, F-SSV-11), website (`screensaver.website`, F-SSV-13/14), dim level, pixel shift, fade.**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| weather.entity_id | HA entity id or empty, default "" | Empty is F-SSV-11's "pick an entity" prompt state. |
+| weather.place_name | 0–64 chars, default "" | An optional label; 64 is the identifiers bound (ADR 0002). |
+| weather.clock_overlay, weather.info_bar | defaults false / true | The scene alone is the default view; the info bar carries what the scene alone cannot (temperature, wind), the clock is an extra overlay. |
+| weather.lightning | default false | F-SSV-11's optional lightning; a flashy effect is opt-in. |
+| website.url | empty or `http(s)://`, 0–4096 chars, default "" | A WebView loads http(s); 4096 matches `play_media.url` (ADR 0002). |
+| website.zoom | 25–500 %, default 100 | The range the WebView accepts without layout breaking; 100 is no zoom. |
+| website.double_tap_dismiss | default false | Single-tap dismissal is the default everywhere (F-SSV-04); double-tap is the option (F-SSV-14). |
+| dim_brightness | 0–100 %, default 10 | Dim mode's own level (F-SSV-07), replacing its borrow of `screensaver.brightness` (ADR 0013 item 4). 10 % keeps a dashboard outline visible in a dim room. |
+| pixel_shift.enabled / interval / amplitude | default false / 10–86400 s, default 300 / 1–64 px, default 4 | Image-retention shift (F-SSV-22). Five minutes moves content often enough to prevent burn-in and rarely enough to be invisible; 4 px is under what an across-the-room viewer resolves. |
+| fade.enabled | default false | In/out fade (F-SSV-23) as an option; its duration is P3.14's to add with its own reasoning if it needs one. |
+
+**At a Glance (`at_a_glance`, F-AAG-01/F-AAG-02).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| entities | 0–6 entity ids, default [] | F-AAG-01's "small bounded number": six one-line pills fill a 1920-wide panel's row (two lines wrapped) without becoming a dashboard. |
+| style | `pill` \| `plain`, default `pill` | F-AAG-02's two styles; the pill is the readable default on photo and scene backgrounds. |
+| hide_names | default false | Names are the row's context (F-AAG-02); hiding them is the large-value variant. |
+| monochrome_icons | default false | HA's icon colors carry state; monochrome is the flat-style option. |
+| scale | 50–200 %, default 100 | Half to double; the same range as the widgets' scale below. |
+| font | 1–64 chars, default `sans-serif` | Same reasoning as the clock's font family. |
+
+**Corner widgets (`widgets`, F-WGT-01, F-WGT-03–06, F-WGT-09).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| shown | default true | The global switch hides all widgets (F-WGT-01); shown is the natural state once any widget is configured. |
+| scale | 50–200 %, default 100 | Half to double; matches At a Glance. |
+| font | 1–64 chars, default `sans-serif` | The global font with per-widget override later (F-WGT-01). |
+| vignette | 0–100 %, default 0 | The adjustable dark vignette behind widgets (F-WGT-01) defaults off: it is a legibility fix for photo backgrounds, not a look every dashboard wants. |
+| per-widget `enabled` | default false each | Widgets are opt-in; a corner assignment survives a disabled widget (F-WGT-01). |
+| corners | `tl` \| `tr` \| `bl` \| `br`; defaults: small_clock `tl`, weather `tr`, forecast `br`, battery `bl`, entity `tr` | Five widgets, four corners: the defaults cannot be collision-free, and it does not matter — only enabled widgets draw, the device resolves a shared corner (F-WGT-01), and the defaults spread the common set as widely as possible. |
+| small_clock: show_date / hour_24 / color | defaults true / false / `#FFFFFFFF` (white) | Mirrors the big clock's date and 12-hour defaults (F-WGT-03). |
+| weather: entity_id, place_name | default "" | Same shapes as the weather scene's fields (F-WGT-04); hidden until an entity is chosen. |
+| forecast: entity_id / days / include_today | default "" / 1–10, default 5 / default true | A work week of rows at the default (F-WGT-05); ten is every day a panel can fit with day name, icon and high/low. |
+| battery: show_percent / only_when_low | defaults true / false | F-WGT-06's options; the percentage is the widget's point. |
+| entity: entity_id / attribute / name | defaults "" / 0–64 chars, default "" (the state) / 0–64 chars, default "" (the entity's name) | F-WGT-09; empty strings mean "not overridden", which the device reads as state, own name. 64 chars is the identifiers-and-labels bound (ADR 0002): an attribute key and a widget label are labels. |
+| entity.visible_values | 0–10 strings of 0–64 chars each, default [] | F-WGT-09's show-only-for-these-values list; ten distinct values covers every practical binary/multi state without becoming a table, and 64 chars per value is the identifiers-and-labels bound (ADR 0002). |
+
+**Schedule (`schedule`, F-SSV-18).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| enabled | default false | Off until slots are configured (F-SSV-18). |
+| slots | 0–12 items, default [] | A slot lasts until the next starts and the last wraps past midnight (F-SSV-18); 12 start times spread finer than every other waking hour, and more would make the options-flow list unreadable. |
+| slot.start | `HH:MM` (24-hour), required | Local time, minute resolution: F-SSV-18 is daily time slots, nothing finer. |
+| slot.mode | the screensaver mode enum, default `clock` | Same values as `screensaver.mode` (F-SSV-05). |
+| slot.brightness / power_off_delay / presence_dismiss / widgets / at_a_glance | nullable (`null` = inherit), bounds as the global keys (0–100 %, 0–1440 min, booleans) | F-SSV-18's "null/absent means inherit": the schema carries nulls so a partial slot inherits the global values, and a set value overrides. Overrides can only turn off globally configured overlays, which the device enforces. `power_off_delay` is carried now and no-ops until F-SSV-19's countdown ships. |
+
+**NightState (pre-committed interface).** The night-mode flag is a plain-JVM interface in `android/core`, `net.lockney.tabula.core.screensaver.NightState` with two members — `isNight: Boolean` and `addListener`, a listener registration that returns a removal function — plus a never-night default (`NightState.NEVER`, false, whose listeners never fire). P3.4 implements it from the light sensor against `screensaver.night_mode`'s threshold and hysteresis, firing listeners on each transition; P3.6 (At a Glance) and P3.11 (widgets) consume it for the night color. Landing the interface in P3.1 — before the hardware-dependent P3.4 — lets those packets compile against the contract; the never-night default is the honest pre-P3.4 behavior: night mode never engages, so consumers render their day colors. The interface is observable, not polled: consumers register a listener and re-render on each transition instead of re-reading the flag every frame. The observation seam is a plain listener rather than a coroutine flow because `android/core` carries no coroutine dependency; P3.4 owns the threading guarantees.
+
 ### Phase 1–2 behavior defaults
 
 Defaults for the settings schema (P0.5) and the device's behavior before HA has sent any settings.

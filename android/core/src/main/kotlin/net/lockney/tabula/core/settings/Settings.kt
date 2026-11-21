@@ -11,10 +11,25 @@ import kotlinx.serialization.Serializable
  * Same value as the schema's x-tabula-schema-version; the integration and
  * the device compare it via register and set_settings (PROTOCOL 4.2, 4.5).
  */
-const val SCHEMA_VERSION: Int = 1
+const val SCHEMA_VERSION: Int = 2
 
 /** Schema pattern for ConnectionHaUrlPattern: ^https?://[^/@\s?#]+(/[^\s?#]*)?$ */
 private val ConnectionHaUrlPattern: Regex = Regex("^https?://[^/@\\s?#]+(/[^\\s?#]*)?\$")
+
+/** Schema pattern for ScreensaverClockTextColorPattern: ^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$ */
+private val ScreensaverClockTextColorPattern: Regex = Regex("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\$")
+
+/** Schema pattern for ScreensaverWeatherEntityIdPattern: ^(?:$|[a-z_][a-z0-9_]*\.[a-z0-9_]+)$ */
+private val ScreensaverWeatherEntityIdPattern: Regex = Regex("^(?:\$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)\$")
+
+/** Schema pattern for ScreensaverPhotosImageUrlPattern: ^(?:$|https?://\S+)$ */
+private val ScreensaverPhotosImageUrlPattern: Regex = Regex("^(?:\$|https?://\\S+)\$")
+
+/** Schema pattern for AtAGlanceEntitiesPattern: ^[a-z_][a-z0-9_]*\.[a-z0-9_]+$ */
+private val AtAGlanceEntitiesPattern: Regex = Regex("^[a-z_][a-z0-9_]*\\.[a-z0-9_]+\$")
+
+/** Schema pattern for ScheduleSlotsStartPattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$ */
+private val ScheduleSlotsStartPattern: Regex = Regex("^([01][0-9]|2[0-3]):[0-5][0-9]\$")
 
 /** Schema enum for screensaver.mode. */
 @Serializable
@@ -27,6 +42,41 @@ enum class ScreensaverMode {
     @SerialName("calendar") Calendar,
     @SerialName("dim") Dim,
     @SerialName("black") Black,
+}
+
+/** Schema enum for screensaver.clock.face. */
+@Serializable
+enum class ScreensaverClockFace {
+    @SerialName("digital") Digital,
+    @SerialName("analog") Analog,
+}
+
+/** Schema enum for screensaver.photos.source. */
+@Serializable
+enum class ScreensaverPhotosSource {
+    @SerialName("folder") Folder,
+    @SerialName("picker") Picker,
+    @SerialName("url") Url,
+    @SerialName("media_browser") MediaBrowser,
+}
+
+/** Schema enum for screensaver.photos.transition. */
+@Serializable
+enum class ScreensaverPhotosTransition {
+    @SerialName("none") None,
+    @SerialName("crossfade") Crossfade,
+    @SerialName("slide") Slide,
+    @SerialName("zoom") Zoom,
+    @SerialName("pan_zoom") PanZoom,
+    @SerialName("random") Random,
+}
+
+/** Schema enum for screensaver.photos.fit. */
+@Serializable
+enum class ScreensaverPhotosFit {
+    @SerialName("letterbox") Letterbox,
+    @SerialName("smart_fill") SmartFill,
+    @SerialName("fill") Fill,
 }
 
 /** Schema enum for notifications.default_level. */
@@ -42,6 +92,71 @@ enum class NotificationsDefaultLevel {
 @Serializable
 enum class AudioAnnounceVolumeBoost {
     @SerialName("none") None,
+}
+
+/** Schema enum for at_a_glance.style. */
+@Serializable
+enum class AtAGlanceStyle {
+    @SerialName("pill") Pill,
+    @SerialName("plain") Plain,
+}
+
+/** Schema enum for widgets.small_clock.corner. */
+@Serializable
+enum class WidgetsSmallClockCorner {
+    @SerialName("tl") Tl,
+    @SerialName("tr") Tr,
+    @SerialName("bl") Bl,
+    @SerialName("br") Br,
+}
+
+/** Schema enum for widgets.weather.corner. */
+@Serializable
+enum class WidgetsWeatherCorner {
+    @SerialName("tl") Tl,
+    @SerialName("tr") Tr,
+    @SerialName("bl") Bl,
+    @SerialName("br") Br,
+}
+
+/** Schema enum for widgets.forecast.corner. */
+@Serializable
+enum class WidgetsForecastCorner {
+    @SerialName("tl") Tl,
+    @SerialName("tr") Tr,
+    @SerialName("bl") Bl,
+    @SerialName("br") Br,
+}
+
+/** Schema enum for widgets.battery.corner. */
+@Serializable
+enum class WidgetsBatteryCorner {
+    @SerialName("tl") Tl,
+    @SerialName("tr") Tr,
+    @SerialName("bl") Bl,
+    @SerialName("br") Br,
+}
+
+/** Schema enum for widgets.entity.corner. */
+@Serializable
+enum class WidgetsEntityCorner {
+    @SerialName("tl") Tl,
+    @SerialName("tr") Tr,
+    @SerialName("bl") Bl,
+    @SerialName("br") Br,
+}
+
+/** Schema enum for schedule.slots.[].mode. */
+@Serializable
+enum class ScheduleSlotsMode {
+    @SerialName("clock") Clock,
+    @SerialName("weather") Weather,
+    @SerialName("photos") Photos,
+    @SerialName("website") Website,
+    @SerialName("dashboard") Dashboard,
+    @SerialName("calendar") Calendar,
+    @SerialName("dim") Dim,
+    @SerialName("black") Black,
 }
 
 /** Who the device is. Never shared by profiles (F-MGT-03). */
@@ -81,7 +196,166 @@ data class Screen(
     }
 }
 
-/** Idle screensaver (FEATURES F-SSV). */
+/** Clock mode (F-SSV-08, F-SSV-09): face, typography, layout, colors and the optional background image. Fonts name system families only; nothing is bundled in this phase. */
+@Serializable
+data class ScreensaverClock(
+    /** The clock face (F-SSV-08). Default per ADR 0002 (settings v2). */
+    val face: ScreensaverClockFace = ScreensaverClockFace.Digital,
+    /** System font family name (F-SSV-08); the device falls back to its default family when the name does not resolve. Default per ADR 0002 (settings v2). */
+    @SerialName("font_family") val fontFamily: String = "sans-serif",
+    /** Font weight on Android's 100-900 axis (F-SSV-08); 400 is the system's normal. Default per ADR 0002 (settings v2). */
+    @SerialName("font_weight") val fontWeight: Int = 400,
+    /** 24-hour time when true, 12-hour with the AM/PM marker when false (F-SSV-08). Default per ADR 0002 (settings v2). */
+    @SerialName("hour_24") val hour24: Boolean = false,
+    /** Show a seconds display (F-SSV-08). Default per ADR 0002 (settings v2). */
+    @SerialName("show_seconds") val showSeconds: Boolean = false,
+    /** Show the AM/PM marker in 12-hour time (F-SSV-08). Default per ADR 0002 (settings v2). */
+    @SerialName("show_am_pm") val showAmPm: Boolean = true,
+    /** Show a date line under the time, in the app language (F-SSV-08). Default per ADR 0002 (settings v2). */
+    @SerialName("show_date") val showDate: Boolean = true,
+    /** Clock size, percent of the mode's base size (F-SSV-08). Default per ADR 0002 (settings v2). */
+    val size: Int = 100,
+    /** Clock text color, #RRGGBB or #AARRGGBB (Android order). Default per ADR 0002 (settings v2). */
+    @SerialName("text_color") val textColor: String = "#FFFFFFFF",
+    /** Solid background color when no background image is set, #RRGGBB or #AARRGGBB. Default per ADR 0002 (settings v2). */
+    @SerialName("background_color") val backgroundColor: String = "#FF000000",
+    /** Background image source (F-SSV-09): empty for none, a local file path on the device, or a URL the tablet downloads directly. Every write triggers a fresh load, identical value or not (F-SSV-09). Default per ADR 0002 (settings v2). */
+    @SerialName("background_source") val backgroundSource: String = "",
+    /** Seconds between re-fetches of a URL background (F-SSV-09); 0 never re-fetches. Default per ADR 0002 (settings v2). */
+    @SerialName("background_refresh") val backgroundRefresh: Int = 0,
+    /** Darkening strength, percent, of the readability layer over the background image (F-SSV-09). Default per ADR 0002 (settings v2). */
+    @SerialName("background_darken") val backgroundDarken: Int = 40
+) {
+    init {
+        require(fontFamily.codePointCount(0, fontFamily.length) in 1..64) { "screensaver.clock.font_family must be 1-64 characters" }
+        require(fontWeight in 100..900) { "screensaver.clock.font_weight must be 100..900" }
+        require(size in 25..400) { "screensaver.clock.size must be 25..400" }
+        require(ScreensaverClockTextColorPattern.matches(textColor)) { "screensaver.clock.text_color does not match the schema pattern" }
+        require(ScreensaverClockTextColorPattern.matches(backgroundColor)) { "screensaver.clock.background_color does not match the schema pattern" }
+        require(backgroundSource.codePointCount(0, backgroundSource.length) in 0..2048) { "screensaver.clock.background_source must be 0-2048 characters" }
+        require(backgroundRefresh in 0..86400) { "screensaver.clock.background_refresh must be 0..86400" }
+        require(backgroundDarken in 0..100) { "screensaver.clock.background_darken must be 0..100" }
+    }
+}
+
+/** Clock night mode (F-SSV-10): a dark color scheme below a light threshold, from the tablet's own light sensor only (an HA illuminance entity is never used here). */
+@Serializable
+data class ScreensaverNightMode(
+    /** Night mode is off unless the device has a light sensor and the user opts in (F-SSV-10). Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** Below this ambient light, lux, the clock switches to the night scheme (F-SSV-10). Default per ADR 0002 (settings v2). */
+    @SerialName("light_threshold") val lightThreshold: Int = 10,
+    /** Lux above the threshold the light must rise before night mode ends (F-SSV-10). Default per ADR 0002 (settings v2). */
+    @SerialName("hysteresis_lux") val hysteresisLux: Int = 2,
+    /** Hide the background image at night so the scheme's dark background shows (F-SSV-10). Default per ADR 0002 (settings v2). */
+    @SerialName("hide_background") val hideBackground: Boolean = true,
+    /** Hide the corner widgets and the At a Glance row at night (F-SSV-10). Default per ADR 0002 (settings v2). */
+    @SerialName("hide_overlays") val hideOverlays: Boolean = true,
+    /** Minutes of night mode before the panel powers off, 0 = never (F-SSV-10). The countdown is F-SSV-19's, later phase: until it ships the key no-ops. Default per ADR 0002 (settings v2). */
+    @SerialName("power_off_delay") val powerOffDelay: Int = 0,
+    /** Show a plain black screen instead of powering the panel off, for sensors that stop reporting while the panel is off (F-SSV-10). Default per ADR 0002 (settings v2). */
+    @SerialName("black_screen_alternative") val blackScreenAlternative: Boolean = false
+) {
+    init {
+        require(lightThreshold in 0..10000) { "screensaver.night_mode.light_threshold must be 0..10000" }
+        require(hysteresisLux in 0..1000) { "screensaver.night_mode.hysteresis_lux must be 0..1000" }
+        require(powerOffDelay in 0..1440) { "screensaver.night_mode.power_off_delay must be 0..1440" }
+    }
+}
+
+/** Weather scene mode (F-SSV-11): an animated sky following one HA weather entity. */
+@Serializable
+data class ScreensaverWeather(
+    /** The HA weather entity the scene follows (F-SSV-11); empty shows the mode's pick-an-entity prompt. Default per ADR 0002 (settings v2). */
+    @SerialName("entity_id") val entityId: String = "",
+    /** Optional place name in the info bar (F-SSV-11). Default per ADR 0002 (settings v2). */
+    @SerialName("place_name") val placeName: String = "",
+    /** Draw a clock over the scene (F-SSV-11). Default per ADR 0002 (settings v2). */
+    @SerialName("clock_overlay") val clockOverlay: Boolean = false,
+    /** Draw the weather information bar: temperature, condition, daily high/low, humidity, wind, visibility, apparent temperature (F-SSV-11). Default per ADR 0002 (settings v2). */
+    @SerialName("info_bar") val infoBar: Boolean = true,
+    /** Lightning effect for storm conditions (F-SSV-11). Default per ADR 0002 (settings v2). */
+    val lightning: Boolean = false
+) {
+    init {
+        require(ScreensaverWeatherEntityIdPattern.matches(entityId)) { "screensaver.weather.entity_id does not match the schema pattern" }
+        require(placeName.codePointCount(0, placeName.length) in 0..64) { "screensaver.weather.place_name must be 0-64 characters" }
+    }
+}
+
+/** Photo slideshow modes (F-SSV-12). media_browser is a source value now so adding its device side (P3.9) needs no schema change. */
+@Serializable
+data class ScreensaverPhotos(
+    /** Where photos come from (F-SSV-12): a folder on the device, photos picked with the system picker, a single image URL, or HA's media browser. Default per ADR 0002 (settings v2). */
+    val source: ScreensaverPhotosSource = ScreensaverPhotosSource.Folder,
+    /** Device folder for the folder source (F-SSV-12). Default per ADR 0002 (settings v2). */
+    @SerialName("folder_path") val folderPath: String = "",
+    /** The single image URL for the URL source (F-SSV-12), fetched fresh for each slide; the previous photo stays until the next loads. Default per ADR 0002 (settings v2). */
+    @SerialName("image_url") val imageUrl: String = "",
+    /** Seconds each photo shows (F-SSV-12). Default per ADR 0002 (settings v2). */
+    @SerialName("slide_interval") val slideInterval: Int = 300,
+    /** Transition between slides (F-SSV-12): none, crossfade, slide, zoom, slow pan-and-zoom (stills only), or random per slide. Default per ADR 0002 (settings v2). */
+    val transition: ScreensaverPhotosTransition = ScreensaverPhotosTransition.Crossfade,
+    /** How a photo fits the panel (F-SSV-12): letterbox, smart fill (crop a little when shapes nearly match, else fill the bars with a blurred, darkened enlargement), or always fill. Default per ADR 0002 (settings v2). */
+    val fit: ScreensaverPhotosFit = ScreensaverPhotosFit.SmartFill,
+    /** Shuffle the playlist for folder sources (F-SSV-12). Default per ADR 0002 (settings v2). */
+    val shuffle: Boolean = false,
+    /** Include subfolders for folder sources (F-SSV-12). Default per ADR 0002 (settings v2). */
+    @SerialName("include_subfolders") val includeSubfolders: Boolean = false,
+    /** Edge zones: tapping near a side edge steps one slide and restarts the interval; a tap elsewhere dismisses (F-SSV-12). Default per ADR 0002 (settings v2). */
+    @SerialName("edge_taps") val edgeTaps: Boolean = true,
+    /** Photo details overlay from EXIF: date taken, camera details; no location lookup (F-SSV-12). Default per ADR 0002 (settings v2). */
+    @SerialName("exif_details") val exifDetails: Boolean = false
+) {
+    init {
+        require(folderPath.codePointCount(0, folderPath.length) in 0..2048) { "screensaver.photos.folder_path must be 0-2048 characters" }
+        require(imageUrl.codePointCount(0, imageUrl.length) in 0..4096) { "screensaver.photos.image_url must be 0-4096 characters" }
+        require(ScreensaverPhotosImageUrlPattern.matches(imageUrl)) { "screensaver.photos.image_url does not match the schema pattern" }
+        require(slideInterval in 5..3600) { "screensaver.photos.slide_interval must be 5..3600" }
+    }
+}
+
+/** Website mode (F-SSV-13, F-SSV-14): a full-screen web view of any URL. */
+@Serializable
+data class ScreensaverWebsite(
+    /** The page to show (F-SSV-13); empty leaves the mode without content. Default per ADR 0002 (settings v2). */
+    val url: String = "",
+    /** Zoom level, percent, of the website view (F-SSV-13). Default per ADR 0002 (settings v2). */
+    val zoom: Int = 100,
+    /** Require a double tap to dismiss so single taps reach the page (F-SSV-14). Default per ADR 0002 (settings v2). */
+    @SerialName("double_tap_dismiss") val doubleTapDismiss: Boolean = false
+) {
+    init {
+        require(url.codePointCount(0, url.length) in 0..4096) { "screensaver.website.url must be 0-4096 characters" }
+        require(ScreensaverPhotosImageUrlPattern.matches(url)) { "screensaver.website.url does not match the schema pattern" }
+        require(zoom in 25..500) { "screensaver.website.zoom must be 25..500" }
+    }
+}
+
+/** Pixel shift (F-SSV-22): periodic small shifts of screensaver content to avoid image retention. Not applied in black mode. */
+@Serializable
+data class ScreensaverPixelShift(
+    /** Shift screensaver content periodically (F-SSV-22). Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** Seconds between shifts (F-SSV-22). Default per ADR 0002 (settings v2). */
+    val interval: Int = 300,
+    /** Shift distance, pixels (F-SSV-22). Default per ADR 0002 (settings v2). */
+    val amplitude: Int = 4
+) {
+    init {
+        require(interval in 10..86400) { "screensaver.pixel_shift.interval must be 10..86400" }
+        require(amplitude in 1..64) { "screensaver.pixel_shift.amplitude must be 1..64" }
+    }
+}
+
+/** Fade in and out (F-SSV-23). Modes that show the live page itself (dim, HA dashboard view) and web content switch without a fade. */
+@Serializable
+data class ScreensaverFade(
+    /** Fade the screensaver in and out (F-SSV-23). Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false
+)
+
+/** Idle screensaver (FEATURES F-SSV): the engine keys and one nested group per mode. */
 @Serializable
 data class Screensaver(
     /** Master switch for the idle screensaver (F-SSV-01). Default per ADR 0002. */
@@ -90,18 +364,35 @@ data class Screensaver(
     @SerialName("idle_timeout") val idleTimeout: Int = 300,
     /** The screensaver mode used next time it starts (F-SSV-05). Values match the screensaver_mode state key (PROTOCOL 4.4). Default per ADR 0002. */
     val mode: ScreensaverMode = ScreensaverMode.Clock,
-    /** Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Default per ADR 0002. */
-    val brightness: Int = 20
+    /** Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Dim and black have their own levels (dim_brightness; black is always lowest). Default per ADR 0002. */
+    val brightness: Int = 20,
+    /** Dim mode's own backlight level, percent (F-SSV-07): the dashboard stays visible at a low level. Dim no longer borrows screensaver.brightness (ADR 0013 item 4). Default per ADR 0002 (settings v2). */
+    @SerialName("dim_brightness") val dimBrightness: Int = 10,
+    /** Clock mode (F-SSV-08, F-SSV-09): face, typography, layout, colors and the optional background image. Fonts name system families only; nothing is bundled in this phase. */
+    val clock: ScreensaverClock = ScreensaverClock(),
+    /** Clock night mode (F-SSV-10): a dark color scheme below a light threshold, from the tablet's own light sensor only (an HA illuminance entity is never used here). */
+    @SerialName("night_mode") val nightMode: ScreensaverNightMode = ScreensaverNightMode(),
+    /** Weather scene mode (F-SSV-11): an animated sky following one HA weather entity. */
+    val weather: ScreensaverWeather = ScreensaverWeather(),
+    /** Photo slideshow modes (F-SSV-12). media_browser is a source value now so adding its device side (P3.9) needs no schema change. */
+    val photos: ScreensaverPhotos = ScreensaverPhotos(),
+    /** Website mode (F-SSV-13, F-SSV-14): a full-screen web view of any URL. */
+    val website: ScreensaverWebsite = ScreensaverWebsite(),
+    /** Pixel shift (F-SSV-22): periodic small shifts of screensaver content to avoid image retention. Not applied in black mode. */
+    @SerialName("pixel_shift") val pixelShift: ScreensaverPixelShift = ScreensaverPixelShift(),
+    /** Fade in and out (F-SSV-23). Modes that show the live page itself (dim, HA dashboard view) and web content switch without a fade. */
+    val fade: ScreensaverFade = ScreensaverFade()
 ) {
     init {
         require(idleTimeout in 1..86400) { "screensaver.idle_timeout must be 1..86400" }
         require(brightness in 0..100) { "screensaver.brightness must be 0..100" }
+        require(dimBrightness in 0..100) { "screensaver.dim_brightness must be 0..100" }
     }
 }
 
 /** Whether a card chimes, per severity (F-NTF-09): sound only for what needs attention. Defaults per ADR 0002: chime for warning and error, silent otherwise. */
 @Serializable
-data class ChimeByLevel(
+data class NotificationsChimeByLevel(
     val info: Boolean = false,
     val success: Boolean = false,
     val warning: Boolean = true,
@@ -116,7 +407,7 @@ data class Notifications(
     /** Severity used when a card's level is missing or unknown (F-NTF-02). Values match the notify command's level (PROTOCOL 4.5). Default per ADR 0002. */
     @SerialName("default_level") val defaultLevel: NotificationsDefaultLevel = NotificationsDefaultLevel.Info,
     /** Whether a card chimes, per severity (F-NTF-09): sound only for what needs attention. Defaults per ADR 0002: chime for warning and error, silent otherwise. */
-    @SerialName("chime_by_level") val chimeByLevel: ChimeByLevel = ChimeByLevel(),
+    @SerialName("chime_by_level") val chimeByLevel: NotificationsChimeByLevel = NotificationsChimeByLevel(),
     /** Cards shown at once; overflow evicts the oldest (F-NTF-07). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002. */
     @SerialName("max_visible") val maxVisible: Int = 3
 ) {
@@ -139,6 +430,191 @@ data class Audio(
     }
 }
 
+/** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
+@Serializable
+data class AtAGlance(
+    /** The entities in the row, in display order (F-AAG-01); the bound is per ADR 0002 (settings v2). Default per ADR 0002 (settings v2). */
+    val entities: List<String> = emptyList(),
+    /** Contrasting pill per entity, or plain floating text (F-AAG-02). Default per ADR 0002 (settings v2). */
+    val style: AtAGlanceStyle = AtAGlanceStyle.Pill,
+    /** Hide entity names for larger values (F-AAG-02). Default per ADR 0002 (settings v2). */
+    @SerialName("hide_names") val hideNames: Boolean = false,
+    /** Render icons in one color instead of HA's state colors (F-AAG-02). Default per ADR 0002 (settings v2). */
+    @SerialName("monochrome_icons") val monochromeIcons: Boolean = false,
+    /** Row scale, percent (F-AAG-02). Default per ADR 0002 (settings v2). */
+    val scale: Int = 100,
+    /** System font family for the row (F-AAG-02). Default per ADR 0002 (settings v2). */
+    val font: String = "sans-serif"
+) {
+    init {
+        require(entities.size <= 6) { "at_a_glance.entities. must have at most 6 items" }
+        require(entities.all { AtAGlanceEntitiesPattern.matches(it) }) { "at_a_glance.entities.[] items do not match the schema pattern" }
+        require(scale in 50..200) { "at_a_glance.scale must be 50..200" }
+        require(font.codePointCount(0, font.length) in 1..64) { "at_a_glance.font must be 1-64 characters" }
+    }
+}
+
+/** Small clock widget (F-WGT-03): time with optional date; never shown over the clock mode. */
+@Serializable
+data class WidgetsSmallClock(
+    /** Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val corner: WidgetsSmallClockCorner = WidgetsSmallClockCorner.Tl,
+    /** Show the date under the time (F-WGT-03). Default per ADR 0002 (settings v2). */
+    @SerialName("show_date") val showDate: Boolean = true,
+    /** 24-hour time when true, 12-hour when false (F-WGT-03). Default per ADR 0002 (settings v2). */
+    @SerialName("hour_24") val hour24: Boolean = false,
+    /** Text color, #RRGGBB or #AARRGGBB (F-WGT-03). Default per ADR 0002 (settings v2). */
+    val color: String = "#FFFFFFFF"
+) {
+    init {
+        require(ScreensaverClockTextColorPattern.matches(color)) { "widgets.small_clock.color does not match the schema pattern" }
+    }
+}
+
+/** Weather widget (F-WGT-04): from an HA weather entity; hidden until an entity is chosen. */
+@Serializable
+data class WidgetsWeather(
+    /** Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val corner: WidgetsWeatherCorner = WidgetsWeatherCorner.Tr,
+    /** The HA weather entity (F-WGT-04); empty hides the widget. Default per ADR 0002 (settings v2). */
+    @SerialName("entity_id") val entityId: String = "",
+    /** Optional place name line (F-WGT-04). Default per ADR 0002 (settings v2). */
+    @SerialName("place_name") val placeName: String = ""
+) {
+    init {
+        require(ScreensaverWeatherEntityIdPattern.matches(entityId)) { "widgets.weather.entity_id does not match the schema pattern" }
+        require(placeName.codePointCount(0, placeName.length) in 0..64) { "widgets.weather.place_name must be 0-64 characters" }
+    }
+}
+
+/** Forecast widget (F-WGT-05): one row per day from an HA weather entity's daily forecast. */
+@Serializable
+data class WidgetsForecast(
+    /** Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val corner: WidgetsForecastCorner = WidgetsForecastCorner.Br,
+    /** The HA weather entity whose daily forecast is shown (F-WGT-05); the widget shows nothing without a daily forecast. Default per ADR 0002 (settings v2). */
+    @SerialName("entity_id") val entityId: String = "",
+    /** How many days to show (F-WGT-05). Default per ADR 0002 (settings v2). */
+    val days: Int = 5,
+    /** Include today's forecast (F-WGT-05). Default per ADR 0002 (settings v2). */
+    @SerialName("include_today") val includeToday: Boolean = true
+) {
+    init {
+        require(ScreensaverWeatherEntityIdPattern.matches(entityId)) { "widgets.forecast.entity_id does not match the schema pattern" }
+        require(days in 1..10) { "widgets.forecast.days must be 1..10" }
+    }
+}
+
+/** Battery widget (F-WGT-06): from the device directly (works offline); hidden on devices without a battery. */
+@Serializable
+data class WidgetsBattery(
+    /** Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val corner: WidgetsBatteryCorner = WidgetsBatteryCorner.Bl,
+    /** Show the battery percentage (F-WGT-06). Default per ADR 0002 (settings v2). */
+    @SerialName("show_percent") val showPercent: Boolean = true,
+    /** Show only when the battery is low; hidden while charging (F-WGT-06). Default per ADR 0002 (settings v2). */
+    @SerialName("only_when_low") val onlyWhenLow: Boolean = false
+)
+
+/** Entity widget (F-WGT-09): one HA entity's icon and value. */
+@Serializable
+data class WidgetsEntity(
+    /** Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val corner: WidgetsEntityCorner = WidgetsEntityCorner.Tr,
+    /** The entity shown (F-WGT-09); empty hides the widget. Default per ADR 0002 (settings v2). */
+    @SerialName("entity_id") val entityId: String = "",
+    /** Show this attribute's value instead of the state (F-WGT-09); empty means the state. Default per ADR 0002 (settings v2). */
+    val attribute: String = "",
+    /** Custom name for the widget (F-WGT-09); empty uses the entity's name. Default per ADR 0002 (settings v2). */
+    val name: String = "",
+    /** Show the widget only for these values, case-insensitive, matching the displayed or raw value (F-WGT-09); empty shows always. Default per ADR 0002 (settings v2). */
+    @SerialName("visible_values") val visibleValues: List<String> = emptyList()
+) {
+    init {
+        require(ScreensaverWeatherEntityIdPattern.matches(entityId)) { "widgets.entity.entity_id does not match the schema pattern" }
+        require(attribute.codePointCount(0, attribute.length) in 0..64) { "widgets.entity.attribute must be 0-64 characters" }
+        require(name.codePointCount(0, name.length) in 0..64) { "widgets.entity.name must be 0-64 characters" }
+        require(visibleValues.size <= 10) { "widgets.entity.visible_values. must have at most 10 items" }
+        require(visibleValues.all { it.codePointCount(0, it.length) in 0..64 }) { "widgets.entity.visible_values.[] items must be 0-64 characters" }
+    }
+}
+
+/** Corner widgets (F-WGT-01): overlays anchored to the four screen corners, at most one per corner, each individually disabled without losing its corner. */
+@Serializable
+data class Widgets(
+    /** Global switch: hide or show all widgets (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val shown: Boolean = true,
+    /** Global widget scale, percent (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val scale: Int = 100,
+    /** Global system font family (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val font: String = "sans-serif",
+    /** Dark vignette strength, percent, behind widgets for legibility (F-WGT-01). Default per ADR 0002 (settings v2). */
+    val vignette: Int = 0,
+    /** Small clock widget (F-WGT-03): time with optional date; never shown over the clock mode. */
+    @SerialName("small_clock") val smallClock: WidgetsSmallClock = WidgetsSmallClock(),
+    /** Weather widget (F-WGT-04): from an HA weather entity; hidden until an entity is chosen. */
+    val weather: WidgetsWeather = WidgetsWeather(),
+    /** Forecast widget (F-WGT-05): one row per day from an HA weather entity's daily forecast. */
+    val forecast: WidgetsForecast = WidgetsForecast(),
+    /** Battery widget (F-WGT-06): from the device directly (works offline); hidden on devices without a battery. */
+    val battery: WidgetsBattery = WidgetsBattery(),
+    /** Entity widget (F-WGT-09): one HA entity's icon and value. */
+    val entity: WidgetsEntity = WidgetsEntity()
+) {
+    init {
+        require(scale in 50..200) { "widgets.scale must be 50..200" }
+        require(font.codePointCount(0, font.length) in 1..64) { "widgets.font must be 1-64 characters" }
+        require(vignette in 0..100) { "widgets.vignette must be 0..100" }
+    }
+}
+
+@Serializable
+data class ScheduleSlots(
+    /** Local start time, HH:MM 24-hour (F-SSV-18). Required: a slot without a start is meaningless. */
+    val start: String,
+    /** The mode this slot starts (F-SSV-18); same values as screensaver.mode. Default per ADR 0002 (settings v2). */
+    val mode: ScheduleSlotsMode = ScheduleSlotsMode.Clock,
+    /** Fixed backlight level for this slot, percent; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2). */
+    val brightness: Int? = null,
+    /** Panel power-off delay for this slot, minutes, 0 = never; null inherits the global value (F-SSV-18). Carried now; the countdown is F-SSV-19's and the key no-ops until it ships. Default per ADR 0002 (settings v2). */
+    @SerialName("power_off_delay") val powerOffDelay: Int? = null,
+    /** Presence-sensor dismissal for this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2). */
+    @SerialName("presence_dismiss") val presenceDismiss: Boolean? = null,
+    /** Corner widgets during this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2). */
+    val widgets: Boolean? = null,
+    /** At a Glance row during this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2). */
+    @SerialName("at_a_glance") val atAGlance: Boolean? = null
+) {
+    init {
+        require(ScheduleSlotsStartPattern.matches(start)) { "schedule.slots.[].start does not match the schema pattern" }
+        brightness?.let { require(it in 0..100) { "schedule.slots.[].brightness must be 0..100" } }
+        powerOffDelay?.let { require(it in 0..1440) { "schedule.slots.[].power_off_delay must be 0..1440" } }
+    }
+}
+
+/** Screensaver schedule (F-SSV-18): daily time slots; a slot lasts until the next starts and the last wraps past midnight. A slot's overrides can only turn off overlays that are configured globally, never invent them. */
+@Serializable
+data class Schedule(
+    /** Turn the schedule on or off (F-SSV-18). Default per ADR 0002 (settings v2). */
+    val enabled: Boolean = false,
+    /** The schedule's slots in start-time order (F-SSV-18); the bound is per ADR 0002 (settings v2). Default per ADR 0002 (settings v2). */
+    val slots: List<ScheduleSlots> = emptyList()
+) {
+    init {
+        require(slots.size <= 12) { "schedule.slots. must have at most 12 items" }
+    }
+}
+
 /**
  * Per-device settings, generated from schema/settings.schema.json.
  * Every property carries its role in x-tabula-role (profiles manage only
@@ -152,10 +628,16 @@ data class Settings(
     val connection: Connection = Connection(),
     /** Panel brightness and power behavior (FEATURES F-SCR). Brightness levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04). */
     val screen: Screen = Screen(),
-    /** Idle screensaver (FEATURES F-SSV). */
+    /** Idle screensaver (FEATURES F-SSV): the engine keys and one nested group per mode. */
     val screensaver: Screensaver = Screensaver(),
     /** Defaults for on-screen notification cards (FEATURES F-NTF). Per-card fields override these (F-NTF-01). */
     val notifications: Notifications = Notifications(),
     /** Volume levels (FEATURES F-TTS). Volume levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04). */
-    val audio: Audio = Audio()
+    val audio: Audio = Audio(),
+    /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
+    @SerialName("at_a_glance") val atAGlance: AtAGlance = AtAGlance(),
+    /** Corner widgets (F-WGT-01): overlays anchored to the four screen corners, at most one per corner, each individually disabled without losing its corner. */
+    val widgets: Widgets = Widgets(),
+    /** Screensaver schedule (F-SSV-18): daily time slots; a slot lasts until the next starts and the last wraps past midnight. A slot's overrides can only turn off overlays that are configured globally, never invent them. */
+    val schedule: Schedule = Schedule()
 )
