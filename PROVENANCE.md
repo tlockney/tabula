@@ -38,3 +38,10 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Device settings: media volume | F-TTS-07 | P0.5 |
 | Default values for every v1 setting | independent design (ADR 0002) | P0.5 |
 | Announcements play at the current volume; no volume boost | independent design (ADR 0002) | P0.5 |
+| Pairing flow: unauthenticated pair and claim HTTP endpoints, the user confirms a code shown on the tablet, the tablet receives a per-device credential | independent design (ADR 0001, PROTOCOL.md section 2) | P1.2 |
+| One HA device per paired tablet; re-pairing after a reset creates a new device and the old entry stays until the user deletes it | F-HA-01 | P1.2 |
+| The tablet signs in with its pairing credential only; credentials are per device and never shared | F-DSH-01, F-MGT-03 | P1.2 |
+| The device reports its capabilities at registration and HA adopts the reported set (entities arrive in P1.3) | F-HA-02 | P1.2 |
+| Deleting the HA device revokes that tablet's credential and user | F-HA-01, ADR 0001 item 4 | P1.2 |
+| Registering with an unsupported protocol major is refused and raises a repair issue for that device | independent design (ADR 0001, PROTOCOL.md 4.2) | P1.2 |
+| Diagnostics report device summaries and pending pairing state, never credentials | independent design (ADR 0001) | P1.2 |

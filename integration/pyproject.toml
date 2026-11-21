@@ -1,0 +1,18 @@
+[project]
+name = "tabula-integration"
+version = "0.1.0"
+description = "Tabula Home Assistant custom integration and its test suite"
+# homeassistant 2026.2.3 (ADR 0001 item 8) needs at least this Python.
+requires-python = ">=3.13.2"
+license = "Apache-2.0"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "homeassistant==2026.2.3",
+  "pytest-homeassistant-custom-component==0.13.316",
+  "tabula-mockdevice",
+]
+
+[tool.uv]
+package = false

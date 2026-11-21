@@ -25,6 +25,9 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "tlp-v1.schema.json"
 FIXTURES = ROOT / "schema" / "fixtures" / "tlp" / "v1"
+# The integration ships its own copy of the schema and validates every frame
+# against it (integration/custom_components/tabula/tlp.py).
+BUNDLED = ROOT / "integration" / "custom_components" / "tabula" / "tlp-v1.schema.json"
 
 
 SHARED_DEFS = {"device_id", "command_id", "capability", "error_code", "error", "state", "log_line"}
@@ -118,9 +121,19 @@ def validate(schema: dict[str, Any], fixtures: Path = FIXTURES) -> tuple[list[st
     return report, errors
 
 
+def check_bundled_copy() -> list[str]:
+    """The integration's bundled schema must match the repo schema byte for byte."""
+    if not BUNDLED.is_file():
+        return [f"{BUNDLED.relative_to(ROOT)} is missing (copy it from schema/)"]
+    if BUNDLED.read_bytes() != SCHEMA.read_bytes():
+        return [f"{BUNDLED.relative_to(ROOT)} differs from {SCHEMA.relative_to(ROOT)}; re-copy it"]
+    return []
+
+
 def main() -> int:
     schema = load_schema()
     report, errors = validate(schema)
+    errors += check_bundled_copy()
     for line in report:
         print(line)
     for e in errors:
