@@ -137,18 +137,23 @@ class TabulaEntity(Entity):
             )
         return await self.hub.async_command(record, command, args)
 
-    async def async_set_setting(self, key: str, value: Any) -> None:
-        """Change one device setting.
+    async def async_set_setting(self, settings_key: str, value: Any) -> None:
+        """Change one device setting through HA's settings store (plan 5.6).
 
-        Settings travel as whole documents with revisions from HA's settings
-        store (plan 5.6, PROTOCOL.md 4.5), which arrives with P1.5. Until then
-        these entities are read-only and say so.
+        The store bumps the revision and pushes the whole document; an offline
+        tablet is reconciled when it next registers. ``settings_key`` is the
+        schema's flat key (settings.SettingsField.key).
         """
-        raise HomeAssistantError(
-            translation_domain=DOMAIN,
-            translation_key="settings_unavailable",
-            translation_placeholders={"setting": key},
-        )
+        from .settings import SettingsError, async_set_setting
+
+        try:
+            await async_set_setting(self.hub, self.device_id, settings_key, value)
+        except SettingsError as e:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="setting_invalid",
+                translation_placeholders={"setting": settings_key, "problem": str(e)[:200]},
+            ) from e
 
 
 def declared(record: DeviceRecord, description: TabulaEntityDescription) -> bool:

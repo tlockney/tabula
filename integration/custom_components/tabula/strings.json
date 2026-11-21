@@ -22,6 +22,46 @@
       "hub_not_loaded": "The Tabula hub is not loaded."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tabula devices",
+        "description": "Choose the tablet whose settings you want to edit."
+      },
+      "device": {
+        "title": "Settings for {name}",
+        "description": "Saved changes are sent to the tablet when it is connected, and again the next time it connects.",
+        "data": {
+          "identity_name": "Device name",
+          "connection_ha_url": "Home Assistant URL",
+          "screen_brightness": "Screen brightness (%)",
+          "screen_adaptive_brightness": "Adaptive brightness",
+          "screen_keep_screen_on": "Keep screen on",
+          "screensaver_enabled": "Enable screensaver",
+          "screensaver_idle_timeout": "Screensaver idle timeout (s)",
+          "screensaver_mode": "Screensaver mode",
+          "screensaver_brightness": "Screensaver brightness (%)",
+          "notifications_default_duration": "Notification duration (s)",
+          "notifications_default_level": "Notification level",
+          "notifications_chime_by_level_info": "Chime for info notifications",
+          "notifications_chime_by_level_success": "Chime for success notifications",
+          "notifications_chime_by_level_warning": "Chime for warning notifications",
+          "notifications_chime_by_level_error": "Chime for error notifications",
+          "notifications_max_visible": "Maximum visible notifications",
+          "audio_media_volume": "Media volume (%)",
+          "audio_announce_volume_boost": "Announcement volume boost"
+        }
+      }
+    },
+    "error": {
+      "invalid_settings": "A value is invalid. Check the highlighted field."
+    },
+    "abort": {
+      "no_devices": "No tablets are paired yet. Pair one from the Tabula app on the tablet.",
+      "unknown_device": "That tablet is no longer paired.",
+      "hub_not_loaded": "The Tabula hub is not loaded."
+    }
+  },
   "issues": {
     "unsupported_protocol": {
       "title": "Tabula tablet speaks a newer protocol",
@@ -128,9 +168,6 @@
     "command_failed": {
       "message": "The tablet refused the {command} command ({code}): {message}"
     },
-    "settings_unavailable": {
-      "message": "The {setting} setting cannot be changed from Home Assistant yet; device settings arrive in a later release."
-    },
     "no_target_devices": {
       "message": "The action did not target any paired Tabula tablet."
     },
@@ -139,6 +176,9 @@
     },
     "invalid_screensaver_mode": {
       "message": "Unknown screensaver mode {mode}. Valid modes: {modes}."
+    },
+    "setting_invalid": {
+      "message": "The {setting} setting was not changed: {problem}"
     }
   },
   "services": {

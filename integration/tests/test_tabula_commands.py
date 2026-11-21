@@ -316,10 +316,16 @@ async def test_manual_brightness_turns_adaptive_off(hass_setup, tablet):
     assert tablet.device.state["brightness"] == 50
 
 
-async def test_settings_entities_say_settings_are_not_available_yet(hass_setup, tablet):
+async def test_settings_entities_write_through_the_store(hass_setup, tablet):
+    """Settings entities save a new revision and push it with set_settings (P1.5)."""
     eid = entity_id(hass_setup, "switch", tablet.paired, "adaptive_brightness")
-    with pytest.raises(HomeAssistantError, match="cannot be changed"):
-        await hass_setup.services.async_call("switch", "turn_on", {"entity_id": eid}, blocking=True)
+    await hass_setup.services.async_call("switch", "turn_on", {"entity_id": eid}, blocking=True)
+    await wait_until(
+        lambda: tablet.device.settings.get("screen", {}).get("adaptive_brightness") is True
+    )
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert tablet.device.settings_revision == hub_runtime.settings.revision(tablet.paired.device_id)
 
 
 # --- media player and TTS (ADR 0001 item 5) -----------------------------------

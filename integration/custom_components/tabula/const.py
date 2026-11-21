@@ -13,7 +13,7 @@ HUB_UNIQUE_ID = "tabula-hub"
 # v1 is the only major, so both are 1).
 PROTOCOL_VERSION = 1
 SUPPORTED_PROTOCOL_VERSIONS = {1}
-SCHEMA_VERSION = 1  # settings schema (P0.5); HA has no settings store until P1.5
+SCHEMA_VERSION = 1  # settings schema (P0.5); documents are stored at this version
 
 # Pairing (ADR 0002)
 PAIR_CODE_DIGITS = 6
@@ -28,7 +28,7 @@ PAIR_MAX_BODY = 4096  # bytes
 
 # WebSocket session (ADR 0002)
 FRAME_MAX_BYTES = 256 * 1024
-COMMAND_TIMEOUT = 10.0  # s
+COMMAND_TIMEOUT = 10.0  # s; awaiting a command's tabula/result (PROTOCOL.md 4.6)
 SCREENSHOT_TIMEOUT = 30.0  # s
 
 # Command -> capabilities, any of which allows it (PROTOCOL.md 4.5); empty means
