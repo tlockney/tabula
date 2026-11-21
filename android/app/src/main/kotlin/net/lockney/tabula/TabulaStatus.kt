@@ -89,15 +89,19 @@ object TabulaStatus {
 class StartedWindows(private val onChange: (Boolean) -> Unit) {
     private var started = 0
 
+    // onChange fires only when the answer flips, so a consumer whose pauses
+    // nest (ScreensaverController.setPaused) never sees a repeated resume
+
     @Synchronized
     fun onStart() {
         started += 1
-        onChange(true)
+        if (started == 1) onChange(true)
     }
 
     @Synchronized
     fun onStop() {
-        started = (started - 1).coerceAtLeast(0)
-        onChange(started > 0)
+        if (started == 0) return
+        started -= 1
+        if (started == 0) onChange(false)
     }
 }

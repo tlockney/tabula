@@ -30,7 +30,9 @@
 
         <!-- singleTask: the kiosk has exactly one window. A wake from the
              service, a launcher tap or the ongoing notification brings that
-             window forward instead of stacking a new instance (issue #96). -->
+             window forward instead of stacking a new instance (issue #96). It
+             also closes anything above it in the task, such as an open photo
+             picker; acceptable on a kiosk. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -16,16 +16,16 @@ class StartedWindowsTest {
         // order Android uses when an activity opens over another (issue #96)
         windows.onStart()
         windows.onStop()
-        assertEquals(true, seen.last(), "a started window is still in front")
+        assertEquals(listOf(true), seen, "one change: the app came to the front and stayed there")
         windows.onStop()
-        assertEquals(false, seen.last())
+        assertEquals(listOf(true, false), seen)
     }
 
     @Test
     fun `an unmatched stop never goes below zero`() {
         windows.onStop()
         windows.onStart()
-        assertEquals(true, seen.last())
+        assertEquals(listOf(true), seen, "a stray stop is ignored, and the start still counts")
     }
 
     @Test
@@ -42,5 +42,9 @@ class StartedWindowsTest {
         tracked.onStart()
         tracked.onStop()
         assertEquals(true, controller.deadlineMs(now) != null, "the timer runs while a window is in front")
+        // and a panel-off pause is not undone by a second window starting
+        controller.setPaused(true, now)
+        tracked.onStart()
+        assertEquals(null, controller.deadlineMs(now), "the panel-off pause still holds")
     }
 }
