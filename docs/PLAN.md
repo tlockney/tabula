@@ -574,7 +574,7 @@ Hooks to preserve, not build:
 
 ### 7.5 Packets and dependencies (Phase 3)
 
-Written by the architect in issue #21's breakdown (`docs/packets/P3.*`; issue numbers are filled in when the packet issues open). The settings schema bumps to v2 (P3.1); the only TLP change is P3.9's capability-gated `slide` command, which is additive and does not bump the protocol major (PROTOCOL 8). Device facts the Phase 2 hardware checks (#15–#20) have not verified yet are handled inside the packets: P3.4 (light sensor at panel-off), P3.7 (animation CPU headroom) and P3.10 (the on-device dashboard WebView — external-auth bootstrap and link handling, settled by #16's run or a 1-working-day spike) each start with a timeboxed device spike. The night-mode flag (`NightState`, never-night default) is pre-committed in P3.1's ADR 0002 extension, so P3.6 and P3.11 do not wait on P3.4's hardware-dependent work.
+Written by the architect in issue #21's breakdown (`docs/packets/P3.*`, issues #59–#72). The settings schema bumps to v2 (P3.1); the only TLP change is P3.9's capability-gated `slide` command, which is additive and does not bump the protocol major (PROTOCOL 8). Device facts the Phase 2 hardware checks (#15–#20) have not verified yet are handled inside the packets: P3.4 (light sensor at panel-off), P3.7 (animation CPU headroom) and P3.10 (the on-device dashboard WebView — external-auth bootstrap and link handling, settled by #16's run or a 1-working-day spike) each start with a timeboxed device spike. The night-mode flag (`NightState`, never-night default) is pre-committed in P3.1's ADR 0002 extension, so P3.6 and P3.11 do not wait on P3.4's hardware-dependent work.
 
 | Packet | Side, tier | Depends on | Verification |
 | --- | --- | --- | --- |
@@ -593,7 +593,7 @@ Written by the architect in issue #21's breakdown (`docs/packets/P3.*`; issue nu
 | P3.13 Screenshots (capture, upload, image entity) | build, standard | none | hardware |
 | P3.14 Engine polish (pixel shift, fade, dim level) | build, standard | P3.1 | hardware |
 
-Parallel tracks after P3.1: the clock track (P3.3 → P3.4), the entity-data track (P3.5 → P3.6 → P3.7/P3.11), the gallery track (P3.8 → P3.9), and P3.10, P3.12, P3.13 and P3.14 independently. P3.13 has no Phase 3 dependency and can run immediately. Night wiring lands in whichever of P3.4, P3.6 and P3.11 merges last, against the pre-committed `NightState` contract. Integration-side work (P3.1, P3.2, P3.13's view and entities, P3.9's buttons) is separated from Android rendering wherever the sides can move at their own pace.
+Parallel tracks after P3.1: the clock track (P3.3 → P3.4), the entity-data track (P3.5 → P3.6 → P3.11, and P3.5 → P3.7), the gallery track (P3.8 → P3.9), and P3.10, P3.12, P3.13 and P3.14 independently. P3.13 has no Phase 3 dependency and can run immediately. Night wiring lands in whichever of P3.4, P3.6 and P3.11 merges last, against the pre-committed `NightState` contract. Integration-side work (P3.1, P3.2, P3.13's view and entities, P3.9's buttons) is separated from Android rendering wherever the sides can move at their own pace.
 
 Out of Phase 3 scope, recorded for later: F-SSV-15 (HA dashboard view mode), F-SSV-19/F-SSV-20 (panel off after a while, wake behavior), F-SSV-24 (HA presence source), the postpone action, and F-WGT-07/F-WGT-08 (alarm and calendar widgets, Phase 6).
 
