@@ -75,10 +75,11 @@ class ScreensaverControllerTest {
 
     @Test
     fun `modes not built yet show the clock but the configured mode is reported`() {
-        val c = controller(mode = SettingsMode.Photos)
+        // WEATHER is still unbuilt; PHOTOS joined the built modes in P3.8
+        val c = controller(mode = SettingsMode.Weather)
         val out = c.onTick(t0 + 60_000)
         assertEquals(listOf(Started(ScreensaverMode.CLOCK, ScreensaverStartTrigger.IDLE)), out.transitions)
-        assertEquals(ScreensaverMode.PHOTOS, c.current(t0 + 60_000).screensaverMode)
+        assertEquals(ScreensaverMode.WEATHER, c.current(t0 + 60_000).screensaverMode)
     }
 
     @Test

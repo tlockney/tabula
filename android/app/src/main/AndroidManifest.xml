@@ -37,6 +37,13 @@
             </intent-filter>
         </activity>
 
+        <!-- The picker source's SAF photo picker (P3.8, F-SSV-12), launched
+             from the service's ongoing notification. -->
+        <activity
+            android:name=".PhotoPickActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
         <service
             android:name=".TabulaService"
             android:exported="false"

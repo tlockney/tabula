@@ -62,7 +62,7 @@ trap 'restore; exit 130' INT TERM
 wait_for_log() { # wait_for_log <pattern> <timeout seconds>
     local pattern="$1" timeout="$2" waited=0
     while (( waited < timeout )); do
-        if adb shell logcat -d -s "$log_tag:I" "$log_tag:W" 2>/dev/null \
+        if adb shell logcat -d -s "$log_tag:I" 2>/dev/null \
             | grep -F "$pattern" | tail -1 | tee /dev/stderr; then
             return 0
         fi
@@ -128,7 +128,7 @@ UV_CONFIG_FILE="$here/../uv.toml" \
     --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$device_id"
 
 step "6. full service log for the record"
-adb shell logcat -d -s "$log_tag:I" "$log_tag:W"
+adb shell logcat -d -s "$log_tag:I"
 
 echo
 echo "P2.1 hardware check complete; paste everything above into the packet Result."
