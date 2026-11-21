@@ -422,7 +422,7 @@ class TlpClient(
                 CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "unknown command $command")
             } else {
                 validateArgs(frame.event) // schema-invalid args NACK as invalid_args (mock parity)
-                runCatching { config.commands.handle(frame.event.command, frame.event.args) }
+                runCatching { config.commands.handle(frame.event) }
                     .getOrElse {
                         CommandHandler.Reply.Error(ErrorCode.FAILED, it.message ?: "command failed")
                     }

@@ -26,6 +26,15 @@ class DashboardBus {
 
         /** The current page's path, without query or fragment (PROTOCOL 4.4). */
         fun currentPage(): String?
+
+        /**
+         * Screenshot (P3.13): draw the dashboard into a bitmap and JPEG-encode
+         * it, or return null when the dashboard has nothing to show (no view
+         * yet, zero size). [quality] is the command's JPEG quality hint.
+         * The result must be produced before the command's result is sent
+         * (PROTOCOL 5), so this suspends instead of posting.
+         */
+        suspend fun capture(quality: Int?): ByteArray?
     }
 
     @Volatile
@@ -54,6 +63,13 @@ class DashboardBus {
 
     /** The path to report as current_page; null while no dashboard is up. */
     fun currentPage(): String? = handle?.currentPage()
+
+    /**
+     * The dashboard's capture, or null when no dashboard is showing (P3.13).
+     * Unlike reload/clear_cache there is no error reply here: the screenshot
+     * control decides what a missing capture means.
+     */
+    suspend fun capture(quality: Int?): ByteArray? = handle?.capture(quality)
 
     /**
      * Called by the dashboard whenever the page changes, so the state source

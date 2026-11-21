@@ -10,6 +10,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import net.lockney.tabula.core.tlp.CommandEvent
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.NetworkType
 import net.lockney.tabula.core.tlp.RegisterResultData
@@ -157,14 +158,14 @@ class FakeCommands : CommandHandler {
         connections++
     }
 
-    override fun handle(command: String, args: JsonObject): CommandHandler.Reply = when (command) {
+    override suspend fun handle(event: CommandEvent): CommandHandler.Reply = when (event.command) {
         "set_settings" -> CommandHandler.Reply.Ok(
-            buildJsonObject { put("revision", args["revision"]!!.jsonPrimitive.intOrNull) },
+            buildJsonObject { put("revision", event.args["revision"]!!.jsonPrimitive.intOrNull) },
         )
-        "reload", "clear_cache", "restart_app" -> CommandHandler.Reply.Ok()
-        else -> CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        "reload", "clear_cache", "restart_app", "screenshot" -> CommandHandler.Reply.Ok()
+        else -> CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: ${event.command}")
     }
-        .also { handled.add(command to args) }
+        .also { handled.add(event.command to event.args) }
 }
 
 class RecordingEvents : TlpClient.Events {

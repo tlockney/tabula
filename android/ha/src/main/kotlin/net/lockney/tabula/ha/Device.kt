@@ -2,6 +2,7 @@ package net.lockney.tabula.ha
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonObject
+import net.lockney.tabula.core.tlp.CommandEvent
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.StateDelta
 
@@ -20,13 +21,17 @@ interface StateSource {
  * Runs one TLP command. Called once per incoming command event; the client
  * turns the reply into exactly one tabula/result (docs/PROTOCOL.md 4.5-4.6).
  *
+ * [handle] suspends so a command can finish slow work before it replies:
+ * the screenshot capture uploads its image inside the call, because the
+ * result must not arrive before the upload does (docs/PROTOCOL.md 5).
+ *
  * [onNewConnection] resets per-connection state (the set_settings revision
  * floor, PROTOCOL 4.5) after each successful registration.
  */
 interface CommandHandler {
     fun onNewConnection()
 
-    fun handle(command: String, args: JsonObject): Reply
+    suspend fun handle(event: CommandEvent): Reply
 
     sealed interface Reply {
         data class Ok(val data: JsonObject? = null) : Reply

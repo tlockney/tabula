@@ -19,8 +19,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import net.lockney.tabula.core.Constants
 import net.lockney.tabula.ha.BridgeAnswer
 import net.lockney.tabula.ha.DashboardLinks
 import net.lockney.tabula.ha.ExternalAuthBridge
@@ -116,6 +118,36 @@ class DashboardView(
     }
 
     override fun currentPage(): String? = currentUrl?.let(DashboardLinks::pagePath)
+
+    // --- screenshot (P3.13, F-HA-12) ----------------------------------------------
+
+    /**
+     * Draw the WebView on the main thread and JPEG-encode the bitmap on a
+     * worker: the draw must happen on the thread that owns the view, and the
+     * encode is the slow half, so it must not hold the main thread. A view
+     * with no size yet (the dashboard never laid out) captures nothing.
+     */
+    override suspend fun capture(quality: Int?): ByteArray? {
+        val bitmap = withContext(Dispatchers.Main) {
+            val w = view.width
+            val h = view.height
+            if (w <= 0 || h <= 0) return@withContext null
+            android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888).also {
+                view.draw(android.graphics.Canvas(it))
+            }
+        } ?: return null
+        return withContext(Dispatchers.Default) {
+            java.io.ByteArrayOutputStream().use { out ->
+                val ok = bitmap.compress(
+                    android.graphics.Bitmap.CompressFormat.JPEG,
+                    quality ?: Constants.SCREENSHOT_JPEG_QUALITY,
+                    out,
+                )
+                bitmap.recycle()
+                if (ok) out.toByteArray() else null
+            }
+        }
+    }
 
     // --- the V1 JavaScript interface -------------------------------------------
 
