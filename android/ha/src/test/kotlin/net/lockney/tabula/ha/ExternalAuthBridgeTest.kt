@@ -49,6 +49,44 @@ class ExternalAuthBridgeTest {
     )
 
     @Test
+    fun `a token fetch that fails answers false instead of throwing`() = runTest {
+        // issue #117: DNS fails while the radio comes back
+        val failing = ExternalAuthBridge(
+            access = { throw java.net.UnknownHostException("Unable to resolve host \"ha\"") },
+            externalConfig = buildJsonObject {},
+        )
+        val answer = failing.getExternalAuth("""{"callback":"externalAuthSetToken"}""", origin, onOrigin)
+        assertEquals("externalAuthSetToken(false)", answer!!.script)
+        assertTrue(answer.deliverTo(onOrigin))
+
+        val revoked = ExternalAuthBridge(
+            access = { throw CredentialRevoked("refresh token rejected") },
+            externalConfig = buildJsonObject {},
+        )
+        assertEquals(
+            "externalAuthSetToken(false)",
+            revoked.getExternalAuth("""{"callback":"externalAuthSetToken"}""", origin, onOrigin)!!.script,
+        )
+
+        val unpaired = ExternalAuthBridge(access = { error("not paired") }, externalConfig = buildJsonObject {})
+        assertEquals(
+            "externalAuthSetToken(false)",
+            unpaired.getExternalAuth("""{"callback":"externalAuthSetToken"}""", origin, onOrigin)!!.script,
+        )
+    }
+
+    @Test
+    fun `cancellation still propagates from the token fetch`() = runTest {
+        val cancelled = ExternalAuthBridge(
+            access = { throw kotlinx.coroutines.CancellationException("left") },
+            externalConfig = buildJsonObject {},
+        )
+        kotlin.test.assertFailsWith<kotlinx.coroutines.CancellationException> {
+            cancelled.getExternalAuth("""{"callback":"externalAuthSetToken"}""", origin, onOrigin)
+        }
+    }
+
+    @Test
     fun `answers getExternalAuth with token and remaining life`() = runTest {
         val answer = bridge().getExternalAuth(
             """{"callback":"externalAuthSetToken"}""",

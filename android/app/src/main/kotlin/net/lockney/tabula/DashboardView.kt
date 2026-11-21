@@ -53,7 +53,12 @@ class DashboardView(
     val view: WebView
 
     private val main = Handler(Looper.getMainLooper())
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // the bridge calls fetch tokens over the network; a failure the bridge
+    // misses is logged, never fatal (issue #117)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            net.lockney.tabula.ha.lastResortHandler { Log.e(TAG, "dashboard: uncaught failure in a bridge call", it) },
+    )
     private val bridge: ExternalAuthBridge
 
     /** The main-frame URL as of the last navigation start; read from any thread. */
