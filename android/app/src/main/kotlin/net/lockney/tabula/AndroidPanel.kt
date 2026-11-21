@@ -114,7 +114,10 @@ class AndroidPanel(
             }
         }
         val intent = Intent(appContext, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            // the one existing window comes forward (singleTask in the
+            // manifest); REORDER_TO_FRONT from the application context
+            // stacked a new instance on every wake (issue #96)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         runCatching { appContext.startActivity(intent) }
             .onFailure { Log.w(TAG, "could not bring the dashboard to the front", it) }
     }

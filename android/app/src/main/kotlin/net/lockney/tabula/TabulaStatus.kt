@@ -74,5 +74,30 @@ object TabulaStatus {
     /** Whether the app's window is in front; the idle timer stops while it is not (F-SSV-02). */
     val foreground = MutableStateFlow(false)
 
+    /** Counts the started windows behind [foreground]; MainActivity's onStart and onStop drive it. */
+    val windows = StartedWindows { foreground.value = it }
+
     data class PairingView(val code: String, val deviceIdShort: String)
+}
+
+/**
+ * Whether any of the app's windows is started (between onStart and onStop).
+ * A count, not a flag: when one window opens over another, the new one's
+ * onStart runs before the old one's onStop, and a flag would end false with
+ * a window in front, pausing the idle timer for good (issue #96).
+ */
+class StartedWindows(private val onChange: (Boolean) -> Unit) {
+    private var started = 0
+
+    @Synchronized
+    fun onStart() {
+        started += 1
+        onChange(true)
+    }
+
+    @Synchronized
+    fun onStop() {
+        started = (started - 1).coerceAtLeast(0)
+        onChange(started > 0)
+    }
 }
