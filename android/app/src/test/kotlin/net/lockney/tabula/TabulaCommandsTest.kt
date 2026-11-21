@@ -33,7 +33,7 @@ class TabulaCommandsTest {
 
         assertTrue(first is CommandHandler.Reply.Ok)
         assertTrue(resent is CommandHandler.Reply.Ok)
-        assertEquals(5, (resent as CommandHandler.Reply.Ok).data?.get("revision")?.toString()?.toInt())
+        assertEquals(5, resent.data?.get("revision")?.toString()?.toInt())
         assertEquals(5, store.settingsRevision)
     }
 
@@ -45,7 +45,7 @@ class TabulaCommandsTest {
 
         val stale = commands.handle("set_settings", setSettingsArgs(6))
         assertTrue(stale is CommandHandler.Reply.Error)
-        assertEquals(ErrorCode.STALE_REVISION, (stale as CommandHandler.Reply.Error).code)
+        assertEquals(ErrorCode.STALE_REVISION, stale.code)
         // the floor did not move, and the stale push did not apply anything
         assertEquals(7, store.settingsRevision)
 

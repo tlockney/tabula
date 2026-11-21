@@ -136,6 +136,11 @@ class TabulaService : Service() {
                 TabulaStatus.phase.value = Phase.UNPAIRED
                 TabulaStatus.pairing.value = null
             } catch (e: Exception) {
+                // A restart cancels the running pairing job, and that surfaces
+                // here as CancellationException; rethrow it (the block below is
+                // for environment failures) or the restart leaves a stale
+                // pairing error behind.
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 // Anything else escaping pair() is an environment failure or a bug;
                 // it must surface as a pairing error, never an uncaught exception
                 // in a coroutine that kills the app process.

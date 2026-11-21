@@ -43,15 +43,9 @@ class TabulaStore(
         get() = prefs.getString(KEY_HA_URL, null)
         set(value) = prefs.edit().putString(KEY_HA_URL, value).apply()
 
-    var haDeviceId: String?
+    /** HA's device id for this tablet, written once at pairing (see [savePairing]). */
+    val haDeviceId: String?
         get() = prefs.getString(KEY_HA_DEVICE_ID, null)
-        set(value) {
-            // commit, not apply: written once at pairing, when it must be on
-            // disk before the claim is treated as complete (see savePairing)
-            val edit = prefs.edit()
-            if (value == null) edit.remove(KEY_HA_DEVICE_ID) else edit.putString(KEY_HA_DEVICE_ID, value)
-            edit.commit()
-        }
 
     var settingsRevision: Int
         get() = prefs.getInt(KEY_SETTINGS_REVISION, 0)

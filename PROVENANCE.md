@@ -77,3 +77,4 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A foreground service with an ongoing notification keeps the HA connection alive, holds a Wi-Fi wake lock, and starts on boot after one manual launch | F-KSK-09 | P2.1 |
 | Diagnostic state reported to HA while connected: battery level, charging, network type, Wi-Fi signal strength, app version | F-HA-05, F-HA-09 | P2.1 |
 | A credential revoked in HA returns the tablet to its pairing screen | independent design (ADR 0001 item 2) | P2.1 |
+| A terminal pairing failure (refused request, bad nonce, unreachable server) shows an error on the pairing screen instead of failing silently | independent design (PROTOCOL.md section 2.5) | P2.1 |
