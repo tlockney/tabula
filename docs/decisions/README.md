@@ -14,3 +14,4 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0006](0006-work-tracking.md) | Work tracking and attribution | accepted |
 | [0007](0007-echo-show-8-feasibility.md) | Echo Show 8 (2nd gen) feasibility (P0.6); supersedes the Echo Show sentence in ADR 0001 | proposed; provisional no-go, device check pending |
 | [0008](0008-android-toolchain-and-targetsdk.md) | Android toolchain and targetSdk (P2.0) | accepted |
+| [0009](0009-entity-model-p1.md) | Phase 1 entity model choices (P1.3) | accepted |

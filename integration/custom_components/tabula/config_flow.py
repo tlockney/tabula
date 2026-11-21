@@ -93,4 +93,9 @@ class TabulaConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         pending.confirmed_token = token
         pending.confirmed_ha_device_id = ha_device_id
+        if hub.pending.get(device_id) is not pending:
+            # The entry expired while the credential was being created, so no
+            # claim can collect it: revoke it now rather than leave it live.
+            await hub.revoke_unclaimed(pending)
+            return self.async_abort(reason="expired")
         return self.async_abort(reason="paired")

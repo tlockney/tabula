@@ -123,7 +123,7 @@ def ws_state(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, A
     if (frame := _frame(hub, connection, msg, "state_delta")) is None:
         return
     assert session.device is not None
-    session.device.state.update(frame["state"])
+    hub.apply_state(session.device, frame["state"])
     connection.send_result(msg["id"])
 
 

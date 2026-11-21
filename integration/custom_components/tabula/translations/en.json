@@ -27,5 +27,91 @@
       "title": "Tabula tablet speaks a newer protocol",
       "description": "The tablet {device} tried to register with Tabula protocol {protocol_version}, which this Home Assistant's Tabula integration does not support (it supports {supported}). Update the Tabula integration, or install an older build of the tablet app. The tablet will keep retrying until then."
     }
+  },
+  "entity": {
+    "light": {
+      "screen": {
+        "name": "Screen"
+      }
+    },
+    "switch": {
+      "screensaver": {
+        "name": "Screensaver"
+      },
+      "keep_screen_on": {
+        "name": "Keep screen on"
+      },
+      "adaptive_brightness": {
+        "name": "Adaptive brightness"
+      }
+    },
+    "number": {
+      "screensaver_brightness": {
+        "name": "Screensaver brightness"
+      }
+    },
+    "select": {
+      "screensaver_mode": {
+        "name": "Screensaver mode",
+        "state": {
+          "clock": "Clock",
+          "weather": "Weather",
+          "photos": "Photos",
+          "website": "Website",
+          "dashboard": "Dashboard",
+          "calendar": "Calendar",
+          "dim": "Dim",
+          "black": "Black"
+        }
+      }
+    },
+    "button": {
+      "reload": {
+        "name": "Reload dashboard"
+      },
+      "restart_app": {
+        "name": "Restart app"
+      },
+      "clear_cache": {
+        "name": "Clear cache"
+      }
+    },
+    "sensor": {
+      "next_screensaver": {
+        "name": "Next screensaver"
+      },
+      "current_page": {
+        "name": "Current page"
+      },
+      "network": {
+        "name": "Network",
+        "state": {
+          "wifi": "Wi-Fi",
+          "ethernet": "Ethernet",
+          "none": "None"
+        }
+      },
+      "wifi_signal": {
+        "name": "Wi-Fi signal"
+      },
+      "app_version": {
+        "name": "App version"
+      }
+    },
+    "media_player": {
+      "speaker": {
+        "name": "Speaker"
+      }
+    },
+    "notify": {
+      "notifications": {
+        "name": "Notifications"
+      }
+    }
+  },
+  "exceptions": {
+    "commands_unavailable": {
+      "message": "Tabula cannot send the {command} command to the tablet yet. Commands arrive in a later release."
+    }
   }
 }
