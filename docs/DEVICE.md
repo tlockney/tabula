@@ -348,6 +348,45 @@ screensaver start/stop events never reach HA by design (ADR 0013): the
 register frame carries the current state, which is what step 7 checks
 instead.
 
+## Hardware check (P3.13, screenshots)
+
+Install a P3.13 build (or later), provision and pair, leave Tabula in
+front with the panel on, then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREEN=light.<tablet>_screen \
+TABULA_BUTTON=button.<tablet>_capture_screenshot \
+TABULA_IMAGE=image.<tablet>_screenshot \
+TABULA_LAST_CAPTURE=sensor.<tablet>_last_capture \
+TABULA_HA_STOP_CMD='ssh ha@homeassistant "ha core stop"' \
+TABULA_HA_START_CMD='ssh ha@homeassistant "ha core start"' \
+ANDROID_SERIAL=<serial> tools/device/check_p313.sh
+```
+
+The entity ids are on the tablet's device page in HA. The stop/start
+commands are required — the check restarts HA to prove the timestamp
+persists (F-HA-12) — and the exit trap starts HA again on any failure or
+Ctrl-C, and puts the panel back on.
+
+The check runs, in order: the baseline (entities live), a **panel-off
+capture** (the command ACKs, nothing uploads, the image entity shows the
+placeholder — a dark slate with a power-off glyph, not a black frame;
+F-MGT-07, ADR 0014), a **panel-on capture** (the image entity shows the
+tablet's current screen within `SCREENSHOT_TIMEOUT`, and its state — the
+last capture's time — matches the timestamp sensor), a re-read after the
+verifier has opened the image in the UI (**ordinary fetches do not move
+the timestamp**), and an **HA restart** (the timestamp and the stored
+screenshot survive). Two steps are visual and the script stops to ask:
+whether the entity shows the placeholder, and whether it shows the
+current screen. Paste the whole output into the packet Result.
+
+Fire OS note (review): the panel-on ask checks the capture is not blank.
+Some Fire OS WebView builds draw their hardware-accelerated layers to a
+blank bitmap via `View.draw` (`DashboardView.capture`); if the check
+reports a blank image, the fallback is `PixelCopy` on the window — note
+what you saw in the packet Result either way.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:

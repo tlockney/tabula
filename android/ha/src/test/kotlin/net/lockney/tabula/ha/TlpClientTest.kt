@@ -4,6 +4,7 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -344,5 +345,37 @@ class TlpClientTest {
         runCurrent()
         assertEquals(2, server.connections.size)
         job.cancel()
+    }
+
+    @Test
+    fun `a connection that dies mid-command sends no result and cancels cleanly`() = runTest {
+        // The handler suspends mid-upload: cancelling the client while it runs
+        // is the closing-connection case (review must-fix). Cancellation must
+        // reach the command's launch: no result frame may be written, and the
+        // client must end cancelled, not failed on a dead-socket IOException.
+        val entered = kotlinx.coroutines.channels.Channel<Unit>()
+        val commands = object : CommandHandler {
+            override fun onNewConnection() {}
+
+            override suspend fun handle(event: net.lockney.tabula.core.tlp.CommandEvent): CommandHandler.Reply {
+                entered.send(Unit)
+                kotlinx.coroutines.awaitCancellation()
+            }
+        }
+        val server = ScriptedServer()
+        val events = RecordingEvents()
+        val job = launch { client(FakeState(), server, tokens(granted("access-1")), commands).run(events) }
+        runCurrent()
+        val conn = server.connections.single()
+        val subscribeId = server.registered.single().int("id") + 1
+        server.sendCommand(conn, subscribeId, "cmd-00001", "screenshot", """{"quality":80}""")
+        entered.receive()
+
+        var completion: Throwable? = null
+        job.invokeOnCompletion { completion = it }
+        job.cancelAndJoin()
+
+        assertTrue(server.results.isEmpty(), "a dying connection must not be answered: ${server.results}")
+        assertTrue(completion is kotlinx.coroutines.CancellationException, "job ended by: $completion")
     }
 }

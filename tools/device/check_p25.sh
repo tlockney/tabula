@@ -66,13 +66,13 @@ ask() { # ask <question> -> fails unless the verifier answers y
 
 events_log="$(mktemp)"
 UV_CONFIG_FILE="$here/../uv.toml" \
-    uv run --directory "$here/.." python tools/device/ha_events.py \
+    uv run --directory "$here/../.." python tools/device/ha_events.py \
     --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" --event tabula_notification --seconds 900 \
     > "$events_log" &
 listener=$!
 media_log="$(mktemp)"
 UV_CONFIG_FILE="$here/../uv.toml" \
-    uv run --directory "$here/.." python tools/device/ha_events.py \
+    uv run --directory "$here/../.." python tools/device/ha_events.py \
     --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" --event tabula_media --seconds 900 \
     > "$media_log" &
 media_listener=$!

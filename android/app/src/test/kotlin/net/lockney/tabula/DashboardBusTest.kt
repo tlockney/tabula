@@ -30,6 +30,13 @@ class DashboardBusTest {
         }
 
         override fun currentPage(): String? = page
+
+        var captured = 0
+
+        override suspend fun capture(quality: Int?): ByteArray? {
+            captured++
+            return byteArrayOf(quality?.toByte() ?: 0)
+        }
     }
 
     @Test
@@ -54,6 +61,18 @@ class DashboardBusTest {
         assertFalse(bus.clearCache())
         assertFalse(bus.load("http://ha:8123/config"))
         assertNull(bus.currentPage())
+    }
+
+    @Test
+    fun `capture reaches the attached dashboard and yields nothing without one`() = kotlinx.coroutines.test.runTest {
+        val bus = DashboardBus()
+        assertNull(bus.capture(quality = 80))
+
+        val dashboard = FakeDashboard()
+        bus.attach(dashboard)
+        val jpeg = bus.capture(quality = 80)
+        assertEquals(1, dashboard.captured)
+        assertEquals(80.toByte(), jpeg!!.first())
     }
 
     @Test

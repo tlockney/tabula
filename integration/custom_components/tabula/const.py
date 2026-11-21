@@ -30,6 +30,8 @@ PAIR_MAX_BODY = 4096  # bytes
 FRAME_MAX_BYTES = 256 * 1024
 COMMAND_TIMEOUT = 10.0  # s; awaiting a command's tabula/result (PROTOCOL.md 4.6)
 SCREENSHOT_TIMEOUT = 30.0  # s
+# PROTOCOL.md 5: the upload body's cap; the view refuses more with 413.
+SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024
 
 # Command -> capabilities, any of which allows it (PROTOCOL.md 4.5); empty means
 # always allowed. The integration never sends a command the device did not declare.
@@ -58,6 +60,9 @@ LOCAL_ONLY = "local_only"  # hub option: False creates device users reachable re
 # device_id).
 SIGNAL_CAPABILITIES = f"{DOMAIN}_capabilities"
 SIGNAL_DEVICE_UPDATE = f"{DOMAIN}_device_update_{{}}"
+# A capture landed (or the stored one was dropped, F-MGT-07); the image entity
+# refreshes (P3.13).
+SIGNAL_SCREENSHOT = f"{DOMAIN}_screenshot_{{}}"
 # A device's stored settings document changed (P3.2: settings entities refresh).
 SIGNAL_SETTINGS_UPDATE = f"{DOMAIN}_settings_update_{{}}"
 

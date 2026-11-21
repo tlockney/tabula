@@ -326,6 +326,16 @@ class TabulaService : Service() {
                         screensaver = screensaver,
                         notifications = notifications,
                         audio = audio,
+                        screenshot = ScreenshotFlow(
+                            bus = (application as TabulaApp).dashboard,
+                            http = OkHttpExchange(),
+                            accessToken = {
+                                (application as TabulaApp).tokens
+                                    .access(haUrl) { refreshToken }
+                            },
+                            haUrl = { haUrl },
+                            screenOn = { screen.current().screenOn ?: true },
+                        ),
                     ),
                     events = deviceEvents.events,
                 ),
@@ -403,7 +413,8 @@ class TabulaService : Service() {
      * navigation (P2.2, the dashboard WebView follows a navigate command and
      * reports the current page), screen and brightness (P2.3),
      * adaptive_brightness only when the tablet has a light sensor,
-     * screensaver (P2.4), and notifications and audio (P2.5).
+     * screensaver (P2.4), notifications and audio (P2.5), and screenshot
+     * (P3.13, the capture-and-upload flow).
      */
     private fun capabilities(): List<String> = buildList {
         add("battery")
@@ -414,6 +425,7 @@ class TabulaService : Service() {
         add("screensaver")
         add("notifications")
         add("audio")
+        add("screenshot")
     }
 
     private fun versionName(): String =

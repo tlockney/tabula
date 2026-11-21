@@ -176,7 +176,7 @@ A device has one current connection. When a newer `tabula/register` succeeds for
 
 ## 5. Screenshot upload (HTTP, authenticated)
 
-`POST /api/tabula/screenshot`, `Authorization: Bearer <access token>`, `Content-Type: image/jpeg`, header `X-Tabula-Command-Id: <command_id>`, body at most `SCREENSHOT_MAX_BYTES`. The device is resolved from the token (no device ID in the path; this replaces the `{device_id}` path in plan 5.1, for connection binding). The integration accepts the upload only if the command ID names a pending `screenshot` command for that device. Responses: `200 http_screenshot_response`, `401`, `403 forbidden` (not a Tabula device user), `409 no_pending_screenshot`, `413 too_large`. The device uploads first, then sends `tabula/result` for the `screenshot` command.
+`POST /api/tabula/screenshot`, `Authorization: Bearer <device user token>`, `Content-Type: image/jpeg`, header `X-Tabula-Command-Id: <command_id>`, body at most `SCREENSHOT_MAX_BYTES`. The device is resolved from the token (no device ID in the path; this replaces the `{device_id}` path in plan 5.1, for connection binding). The integration accepts the upload only if the command ID names a pending `screenshot` command for that device. Responses: `200 http_screenshot_response`, `400 invalid_request` (a non-JPEG `Content-Type` or an empty body; the media type is matched with parameters ignored), `401`, `403 forbidden` (not a Tabula device user), `409 no_pending_screenshot`, `413 too_large`. The device uploads first, then sends `tabula/result` for the `screenshot` command.
 
 ## 6. Errors
 

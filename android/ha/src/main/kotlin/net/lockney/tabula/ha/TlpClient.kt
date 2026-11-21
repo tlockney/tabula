@@ -497,12 +497,20 @@ class TlpClient(
                 CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "unknown command $command")
             } else {
                 validateArgs(frame.event) // schema-invalid args NACK as invalid_args (mock parity)
-                runCatching { config.commands.handle(frame.event.command, frame.event.args) }
+                runCatching { config.commands.handle(frame.event) }
                     .getOrElse {
+                        // A closing connection cancelled the handler mid-command
+                        // (mid-upload for a screenshot): that is not a command
+                        // failure, and writing FAILED to the dead socket is
+                        // wrong - rethrow so the launch ends cancelled (review).
+                        if (it is CancellationException) throw it
                         CommandHandler.Reply.Error(ErrorCode.FAILED, it.message ?: "command failed")
                     }
             }
         }.getOrElse {
+            // Same for the decode/validate scope: cancellation must reach the
+            // command's launch, not become a reply (review must-fix).
+            if (it is CancellationException) throw it
             CommandHandler.Reply.Error(ErrorCode.INVALID_ARGS, (it.message ?: "invalid frame").take(500))
         }
         sendResult(conn, commandId, reply)

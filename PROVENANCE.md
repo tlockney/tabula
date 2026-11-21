@@ -136,3 +136,8 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Daily forecasts for the weather scene and forecast widget come from HA's forecast subscription. A weather entity without a daily forecast yields none | F-SSV-11, F-WGT-05 | P3.5 |
 | States are shown with HA's translations, icons and display precision, falling back as HA's frontend does | F-AAG-03 | P3.5 |
 | Calendar mode opens no entity subscription | F-AAG-01, F-WGT-01 | P3.5 |
+| The screenshot capture action asks the device for a capture; the image entity shows the latest stored capture and refreshes when a new one lands | F-MGT-07, F-HA-12, PROTOCOL 5 | P3.13 |
+| The image entity serves the screen-off placeholder (a designed slate, not a black frame) whenever no capture is stored: with the screen off the device captures and uploads nothing and still ACKs | F-MGT-07, ADR 0014 | P3.13 |
+| The `last_capture` timestamp records when a capture was started by the action, is set only when the capture succeeds, persists across restarts, and is untouched by ordinary image fetches | F-HA-12 | P3.13 |
+| The image entity, the capture button and the last-capture sensor exist only when the tablet declared the screenshot capability | F-HA-02 | P3.13 |
+| Losing the link makes the screenshot entities unavailable with the rest of the device, and a stored capture survives the loss and the restore | F-HA-04 | P3.13 |

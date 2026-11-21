@@ -99,6 +99,10 @@ object Constants {
     /** MEDIA_READ_TIMEOUT: s a media download may wait on one socket read (P2.5). */
     const val MEDIA_READ_TIMEOUT_S = 30.0
 
+    /** SCREENSHOT_JPEG_QUALITY: the capture's JPEG quality when the command
+     * sends none; inside the schema's 10-95 range (P3.13, 0002-constants.md). */
+    const val SCREENSHOT_JPEG_QUALITY = 80
+
     /** CHIME_VOLUME: the notification chime generator's own scale, at the top (P2.5). */
     const val CHIME_VOLUME = 100
 

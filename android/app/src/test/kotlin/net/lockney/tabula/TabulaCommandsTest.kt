@@ -3,9 +3,11 @@ package net.lockney.tabula
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import net.lockney.tabula.core.settings.Settings
+import net.lockney.tabula.core.tlp.CommandEvent
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.ScreensaverMode
 import net.lockney.tabula.ha.CommandHandler
@@ -17,10 +19,14 @@ import net.lockney.tabula.ha.CommandHandler
  * two quick saves schedule two pushes that both read the latest document
  * (PR review item 1).
  *
- * And the P2.2 dashboard commands: reload and clear_cache reach the attached
+ * The P2.2 dashboard commands: reload and clear_cache reach the attached
  * dashboard and fail cleanly when none is showing (PROTOCOL 6), and navigate
  * resolves its path against the HA URL, refusing anything that would leave
  * the origin (PROTOCOL 4.5, ADR 0001 item 3).
+ *
+ * And the P3.13 screenshot dispatch: the command reaches the capture flow
+ * with its quality hint and command id, and is unsupported when the device
+ * did not declare the capability.
  */
 class TabulaCommandsTest {
     private fun setSettingsArgs(revision: Int) = buildJsonObject {
@@ -52,6 +58,8 @@ class TabulaCommandsTest {
         }
 
         override fun currentPage(): String? = page
+
+        override suspend fun capture(quality: Int?): ByteArray? = byteArrayOf(1, 2, 3)
     }
 
     private fun commands(dashboard: DashboardBus): TabulaCommands =
@@ -63,14 +71,27 @@ class TabulaCommandsTest {
         return bus
     }
 
+    /** Every dispatch goes through CommandEvent (PROTOCOL 4.5). */
+    private suspend fun TabulaCommands.run(command: String, args: kotlinx.serialization.json.JsonObject): CommandHandler.Reply =
+        handle(CommandEvent("cmd-0001", command, args))
+
+    private class FakeScreenshot : ScreenshotControl {
+        val captured = mutableListOf<Pair<Int?, String>>()
+
+        override suspend fun capture(quality: Int?, commandId: String): CommandHandler.Reply {
+            captured += quality to commandId
+            return CommandHandler.Reply.Ok()
+        }
+    }
+
     // --- set_settings -----------------------------------------------------------
 
     @Test
-    fun `an equal revision is accepted and ACKed`() {
+    fun `an equal revision is accepted and ACKed`() = runTest {
         val store = store()
         val commands = TabulaCommands(store, onRestartApp = {}, dashboard = DashboardBus())
-        val first = commands.handle("set_settings", setSettingsArgs(5))
-        val resent = commands.handle("set_settings", setSettingsArgs(5))
+        val first = commands.run("set_settings", setSettingsArgs(5))
+        val resent = commands.run("set_settings", setSettingsArgs(5))
 
         assertTrue(first is CommandHandler.Reply.Ok)
         assertTrue(resent is CommandHandler.Reply.Ok)
@@ -79,61 +100,61 @@ class TabulaCommandsTest {
     }
 
     @Test
-    fun `only a strictly lower revision is stale`() {
+    fun `only a strictly lower revision is stale`() = runTest {
         val store = store()
         val commands = TabulaCommands(store, onRestartApp = {}, dashboard = DashboardBus())
-        assertTrue(commands.handle("set_settings", setSettingsArgs(7)) is CommandHandler.Reply.Ok)
+        assertTrue(commands.run("set_settings", setSettingsArgs(7)) is CommandHandler.Reply.Ok)
 
-        val stale = commands.handle("set_settings", setSettingsArgs(6))
+        val stale = commands.run("set_settings", setSettingsArgs(6))
         assertTrue(stale is CommandHandler.Reply.Error)
         assertEquals(ErrorCode.STALE_REVISION, stale.code)
         // the floor did not move, and the stale push did not apply anything
         assertEquals(7, store.settingsRevision)
 
         // the rejected revision floor does not lock out the current one
-        assertTrue(commands.handle("set_settings", setSettingsArgs(7)) is CommandHandler.Reply.Ok)
+        assertTrue(commands.run("set_settings", setSettingsArgs(7)) is CommandHandler.Reply.Ok)
     }
 
     @Test
-    fun `the revision floor resets on a new connection`() {
+    fun `the revision floor resets on a new connection`() = runTest {
         val commands = commands(DashboardBus())
-        assertTrue(commands.handle("set_settings", setSettingsArgs(9)) is CommandHandler.Reply.Ok)
-        assertTrue(commands.handle("set_settings", setSettingsArgs(8)) is CommandHandler.Reply.Error)
+        assertTrue(commands.run("set_settings", setSettingsArgs(9)) is CommandHandler.Reply.Ok)
+        assertTrue(commands.run("set_settings", setSettingsArgs(8)) is CommandHandler.Reply.Error)
 
         commands.onNewConnection()
 
         // the same revision floor is gone: an earlier revision is accepted again
-        assertTrue(commands.handle("set_settings", setSettingsArgs(8)) is CommandHandler.Reply.Ok)
+        assertTrue(commands.run("set_settings", setSettingsArgs(8)) is CommandHandler.Reply.Ok)
     }
 
     // --- reload / clear_cache ------------------------------------------------------
 
     @Test
-    fun `reload reaches the dashboard`() {
+    fun `reload reaches the dashboard`() = runTest {
         val dashboard = FakeDashboard()
-        val reply = commands(busWith(dashboard)).handle("reload", buildJsonObject {})
+        val reply = commands(busWith(dashboard)).run("reload", buildJsonObject {})
         assertTrue(reply is CommandHandler.Reply.Ok)
         assertEquals(1, dashboard.reloads)
     }
 
     @Test
-    fun `reload fails when no dashboard is showing`() {
-        val reply = commands(busWith()).handle("reload", buildJsonObject {})
+    fun `reload fails when no dashboard is showing`() = runTest {
+        val reply = commands(busWith()).run("reload", buildJsonObject {})
         assertTrue(reply is CommandHandler.Reply.Error)
         assertEquals(ErrorCode.FAILED, reply.code)
     }
 
     @Test
-    fun `clear_cache reaches the dashboard`() {
+    fun `clear_cache reaches the dashboard`() = runTest {
         val dashboard = FakeDashboard()
-        val reply = commands(busWith(dashboard)).handle("clear_cache", buildJsonObject {})
+        val reply = commands(busWith(dashboard)).run("clear_cache", buildJsonObject {})
         assertTrue(reply is CommandHandler.Reply.Ok)
         assertEquals(1, dashboard.clears)
     }
 
     @Test
-    fun `clear_cache fails when no dashboard is showing`() {
-        val reply = commands(busWith()).handle("clear_cache", buildJsonObject {})
+    fun `clear_cache fails when no dashboard is showing`() = runTest {
+        val reply = commands(busWith()).run("clear_cache", buildJsonObject {})
         assertTrue(reply is CommandHandler.Reply.Error)
         assertEquals(ErrorCode.FAILED, reply.code)
     }
@@ -143,31 +164,31 @@ class TabulaCommandsTest {
     private fun navigateArgs(path: String) = buildJsonObject { put("path", path) }
 
     @Test
-    fun `navigate loads a resolved frontend path`() {
+    fun `navigate loads a resolved frontend path`() = runTest {
         val dashboard = FakeDashboard()
         val store = store().apply { haUrl = "http://ha:8123" }
         val commands = TabulaCommands(store, onRestartApp = {}, dashboard = busWith(dashboard))
-        val reply = commands.handle("navigate", navigateArgs("/lovelace/1"))
+        val reply = commands.run("navigate", navigateArgs("/lovelace/1"))
         assertTrue(reply is CommandHandler.Reply.Ok)
         assertEquals(listOf("http://ha:8123/lovelace/1"), dashboard.loaded)
     }
 
     @Test
-    fun `navigate refuses a path that leaves the HA origin`() {
+    fun `navigate refuses a path that leaves the HA origin`() = runTest {
         val dashboard = FakeDashboard()
         val store = store().apply { haUrl = "http://ha:8123" }
         val commands = TabulaCommands(store, onRestartApp = {}, dashboard = busWith(dashboard))
-        val reply = commands.handle("navigate", navigateArgs("//example.com/x"))
+        val reply = commands.run("navigate", navigateArgs("//example.com/x"))
         assertTrue(reply is CommandHandler.Reply.Error)
         assertEquals(ErrorCode.INVALID_ARGS, reply.code)
         assertTrue(dashboard.loaded.isEmpty())
     }
 
     @Test
-    fun `navigate fails when no dashboard is showing`() {
+    fun `navigate fails when no dashboard is showing`() = runTest {
         val store = store().apply { haUrl = "http://ha:8123" }
         val commands = TabulaCommands(store, onRestartApp = {}, dashboard = busWith())
-        val reply = commands.handle("navigate", navigateArgs("/lovelace/1"))
+        val reply = commands.run("navigate", navigateArgs("/lovelace/1"))
         assertTrue(reply is CommandHandler.Reply.Error)
         assertEquals(ErrorCode.FAILED, reply.code)
     }
@@ -187,10 +208,10 @@ class TabulaCommandsTest {
     }
 
     @Test
-    fun `the screensaver command and settings reach the screensaver`() {
+    fun `the screensaver command and settings reach the screensaver`() = runTest {
         val saver = FakeScreensaver()
         val commands = TabulaCommands(store(), onRestartApp = {}, screensaver = saver)
-        val reply = commands.handle(
+        val reply = commands.run(
             "screensaver",
             buildJsonObject {
                 put("active", true)
@@ -199,11 +220,11 @@ class TabulaCommandsTest {
         )
         assertTrue(reply is CommandHandler.Reply.Ok)
         assertEquals(listOf<Pair<Boolean, ScreensaverMode?>>(true to ScreensaverMode.BLACK), saver.commands)
-        commands.handle("set_settings", setSettingsArgs(1))
+        commands.run("set_settings", setSettingsArgs(1))
         assertEquals(1, saver.settings.size)
 
         val without = TabulaCommands(store(), onRestartApp = {})
-        val unsupported = without.handle("screensaver", buildJsonObject { put("active", false) })
+        val unsupported = without.run("screensaver", buildJsonObject { put("active", false) })
         assertEquals(ErrorCode.UNSUPPORTED_COMMAND, (unsupported as CommandHandler.Reply.Error).code)
     }
 
@@ -248,12 +269,12 @@ class TabulaCommandsTest {
     }
 
     @Test
-    fun `notify, play_media and media_control reach the managers`() {
+    fun `notify, play_media and media_control reach the managers`() = runTest {
         val notes = FakeNotifications()
         val audio = FakeAudio()
         val commands = TabulaCommands(store(), onRestartApp = {}, notifications = notes, audio = audio)
 
-        val notify = commands.handle(
+        val notify = commands.run(
             "notify",
             buildJsonObject {
                 put("message", "dryer done")
@@ -268,7 +289,7 @@ class TabulaCommandsTest {
         assertEquals("dryer done", notes.shown.single().message)
         assertEquals(net.lockney.tabula.core.tlp.NotificationLevel.SUCCESS, notes.shown.single().level)
 
-        val play = commands.handle(
+        val play = commands.run(
             "play_media",
             buildJsonObject {
                 put("url", "/api/tts_proxy/a.mp3")
@@ -280,7 +301,7 @@ class TabulaCommandsTest {
         assertTrue(play is CommandHandler.Reply.Ok)
         assertEquals(listOf(Triple<String, Boolean, Int?>("/api/tts_proxy/a.mp3", true, 70)), audio.played)
 
-        val control = commands.handle(
+        val control = commands.run(
             "media_control",
             buildJsonObject {
                 put("action", "set_volume")
@@ -290,28 +311,51 @@ class TabulaCommandsTest {
         assertTrue(control is CommandHandler.Reply.Ok)
         assertEquals(listOf(Triple<String, Int?, Double?>("SET_VOLUME", 30, null)), audio.controls)
 
-        commands.handle("set_settings", setSettingsArgs(1))
+        commands.run("set_settings", setSettingsArgs(1))
         assertEquals(1, notes.settings.size)
         assertEquals(1, audio.settings.size)
     }
 
     @Test
-    fun `notify, play_media and media_control are unsupported when not declared`() {
+    fun `notify, play_media and media_control are unsupported when not declared`() = runTest {
         val commands = TabulaCommands(store(), onRestartApp = {})
         assertEquals(
             ErrorCode.UNSUPPORTED_COMMAND,
-            (commands.handle("notify", buildJsonObject { put("message", "x") }) as CommandHandler.Reply.Error).code,
+            (commands.run("notify", buildJsonObject { put("message", "x") }) as CommandHandler.Reply.Error).code,
         )
         assertEquals(
             ErrorCode.UNSUPPORTED_COMMAND,
-            (commands.handle(
+            (commands.run(
                 "play_media",
                 buildJsonObject { put("url", "/a.mp3"); put("media_type", "audio"); put("announce", false) },
             ) as CommandHandler.Reply.Error).code,
         )
         assertEquals(
             ErrorCode.UNSUPPORTED_COMMAND,
-            (commands.handle("media_control", buildJsonObject { put("action", "pause") }) as CommandHandler.Reply.Error).code,
+            (commands.run("media_control", buildJsonObject { put("action", "pause") }) as CommandHandler.Reply.Error).code,
         )
+    }
+
+    // --- screenshot (P3.13) --------------------------------------------------------
+
+    @Test
+    fun `screenshot reaches the capture flow with quality and command id`() = runTest {
+        val shot = FakeScreenshot()
+        val commands = TabulaCommands(store(), onRestartApp = {}, screenshot = shot)
+        val reply = commands.run("screenshot", buildJsonObject { put("quality", 60) })
+        assertTrue(reply is CommandHandler.Reply.Ok)
+        assertEquals(listOf<Pair<Int?, String>>(60 to "cmd-0001"), shot.captured)
+
+        val withoutQuality = commands.run("screenshot", buildJsonObject {})
+        assertTrue(withoutQuality is CommandHandler.Reply.Ok)
+        assertEquals(listOf<Pair<Int?, String>>(60 to "cmd-0001", null to "cmd-0001"), shot.captured)
+    }
+
+    @Test
+    fun `screenshot is unsupported when not declared`() = runTest {
+        val commands = TabulaCommands(store(), onRestartApp = {})
+        val reply = commands.run("screenshot", buildJsonObject {})
+        assertTrue(reply is CommandHandler.Reply.Error)
+        assertEquals(ErrorCode.UNSUPPORTED_COMMAND, reply.code)
     }
 }

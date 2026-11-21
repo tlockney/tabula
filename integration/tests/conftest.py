@@ -31,8 +31,9 @@ async def integration_fixture(hass_setup):
     """
     assert await async_setup_component(hass_setup, DOMAIN, {})
     # Entity platforms whose components register HTTP views (media_player,
-    # and notify via repairs) must also be set up before the server starts.
-    for component in ("media_player", "notify"):
+    # notify via repairs, and image via the image proxy) must also be set up
+    # before the server starts.
+    for component in ("media_player", "notify", "image"):
         assert await async_setup_component(hass_setup, component, {})
     return hass_setup
 

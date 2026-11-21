@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 from mockdevice import __version__
+from mockdevice.constants import SCREENSHOT_JPEG
 
 ALL_CAPABILITIES = [
     "screen",
@@ -22,6 +23,7 @@ ALL_CAPABILITIES = [
     "battery",
     "navigation",
     "logs",
+    "screenshot",
 ]
 
 # Which capability a command needs (docs/PROTOCOL.md 4.5); None = always available.
@@ -103,6 +105,9 @@ class MockDevice:
         self.played: list[dict[str, Any]] = []
         self.log_streaming = False
         self.log_lines: list[dict[str, Any]] = []
+        # The latest capture (P3.13): bytes when the screen was on, None when it
+        # was off (F-MGT-07). The client reads it after the command runs.
+        self.last_screenshot: bytes | None = None
         self._connection_revision: int | None = None
         self.on_change: Callable[[dict[str, Any]], None] = lambda delta: None
         self.on_event: Callable[[str, dict[str, Any]], None] = lambda event, data: None
@@ -247,5 +252,17 @@ class MockDevice:
     def _cmd_log_subscription(self, args: dict[str, Any]) -> None:
         self.log_streaming = args["enabled"]
 
-    def _cmd_screenshot(self, args: dict[str, Any]) -> None:  # pragma: no cover - capability off
-        raise CommandError("unsupported_command", "screenshot not implemented in the mock")
+    def _cmd_screenshot(self, args: dict[str, Any]) -> None:
+        """Capture the screen (P3.13, PROTOCOL.md 4.5).
+
+        The command's `quality` argument is validated against the schema but
+        not applied: the mock has no screen, so a capture is the fixed JPEG in
+        `mockdevice.constants`. The client uploads the capture before it
+        answers the command, exactly as the app does (PROTOCOL.md 5). With the
+        screen off there is nothing to show: the capture is None, no upload
+        happens, and HA falls back to the placeholder (F-MGT-07).
+        """
+        quality = args.get("quality")
+        if quality is not None and not 10 <= int(quality) <= 95:
+            raise CommandError("invalid_args", "quality must be between 10 and 95")
+        self.last_screenshot = SCREENSHOT_JPEG if self.state["screen_on"] else None

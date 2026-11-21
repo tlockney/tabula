@@ -30,6 +30,12 @@ import okhttp3.Response
 interface HttpExchange {
     suspend fun post(url: String, contentType: String, body: String, headers: Map<String, String> = emptyMap()): Result
 
+    /**
+     * A binary POST: the screenshot upload (PROTOCOL 5), which carries JPEG
+     * bytes and the device's bearer token in the headers.
+     */
+    suspend fun postBytes(url: String, contentType: String, body: ByteArray, headers: Map<String, String> = emptyMap()): Result
+
     suspend fun get(url: String, headers: Map<String, String> = emptyMap()): Result
 
     data class Result(val status: Int, val body: String) {
@@ -194,6 +200,20 @@ class OkHttpExchange(private val client: OkHttpClient = noRedirectClient()) : Ht
         url: String,
         contentType: String,
         body: String,
+        headers: Map<String, String>,
+    ): HttpExchange.Result = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(url)
+            .post(body.toRequestBody(contentType.toMediaType()))
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
+            .build()
+        client.newCall(request).execute().use(::toResult)
+    }
+
+    override suspend fun postBytes(
+        url: String,
+        contentType: String,
+        body: ByteArray,
         headers: Map<String, String>,
     ): HttpExchange.Result = withContext(Dispatchers.IO) {
         val request = Request.Builder()

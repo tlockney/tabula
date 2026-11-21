@@ -46,6 +46,19 @@ airplane() { # airplane <enable|disable>
 : "${TABULA_HA_TOKEN:?set TABULA_HA_TOKEN to a long-lived access token}"
 
 step() { echo; echo "== $*"; }
+
+# Any exit (a failed gate, Ctrl-C) turns airplane mode back off, so a failed
+# run never leaves the tablet offline.
+radio_off=0
+restore() {
+    if (( radio_off )); then
+        airplane disable >&2 || true
+        radio_off=0
+        echo "-- restore: airplane mode off" >&2
+    fi
+}
+trap restore EXIT
+trap 'restore; exit 130' INT TERM
 wait_for_log() { # wait_for_log <pattern> <timeout seconds>
     local pattern="$1" timeout="$2" waited=0
     while (( waited < timeout )); do
@@ -76,7 +89,7 @@ step "3. HA knows the tablet (device registry)"
 here="$(cd "$(dirname "$0")" && pwd)"
 reg_output="$(
     UV_CONFIG_FILE="$here/../uv.toml" \
-        uv run --directory "$here/.." python tools/device/ha_query.py \
+        uv run --directory "$here/../.." python tools/device/ha_query.py \
         --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$device_id"
 )"
 echo "$reg_output"
@@ -86,26 +99,32 @@ echo "$reg_output" | grep -F "$device_id" > /dev/null \
     || { echo "the registry output does not mention $device_id" >&2; exit 1; }
 echo "-- the registry entry above is the P2.1 'appears in HA' evidence"
 
+# Registration is gated on HA's live view, not on a log line: the service
+# registered when it connected, possibly long before this script started, and
+# it does not re-register while the connection holds.
+echo "$reg_output" | grep -E '^binary_sensor\.[a-z0-9_]*connectivity: state=on' \
+    || { echo "HA does not show the tablet connected (connectivity sensor not on)" >&2; exit 1; }
+echo "-- HA shows the tablet connected: the P2.1 'registered' evidence"
 adb shell logcat -c
-echo "waiting up to 90s for the 'registered' log line"
-wait_for_log "registered with HA device" 90
 
 step "4. airplane mode ON (device becomes unavailable)"
+radio_off=1
 airplane enable
 echo "waiting up to 60s for the 'connection lost' log line"
 wait_for_log "connection lost" 60
 echo "-- HA side while offline (entities read unavailable; the registry entry stays):"
 UV_CONFIG_FILE="$here/../uv.toml" \
-    uv run --directory "$here/.." python tools/device/ha_query.py \
+    uv run --directory "$here/../.." python tools/device/ha_query.py \
     --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$device_id" || true
 
 step "5. airplane mode OFF (reconnect brings it back)"
 airplane disable
+radio_off=0
 echo "waiting up to 120s for re-registration"
 adb shell logcat -c
 wait_for_log "registered with HA device" 120
 UV_CONFIG_FILE="$here/../uv.toml" \
-    uv run --directory "$here/.." python tools/device/ha_query.py \
+    uv run --directory "$here/../.." python tools/device/ha_query.py \
     --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$device_id"
 
 step "6. full service log for the record"
