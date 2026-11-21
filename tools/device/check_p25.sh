@@ -57,12 +57,8 @@ wait_for() { # wait_for <description> <timeout s> <command...>
     done
     echo "-- $what after ${waited}s"
 }
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 
 events_log="$(mktemp)"
 UV_CONFIG_FILE="$here/../uv.toml" \

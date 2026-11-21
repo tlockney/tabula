@@ -108,12 +108,8 @@ wait_for() { # wait_for <description> <timeout s> <command...>
 seconds_until() { # seconds_until <RFC 3339 time> -> whole seconds from now (0 if past)
     python3 -c 'import sys,datetime as d; t=d.datetime.fromisoformat(sys.argv[1].replace("Z","+00:00")); print(max(0, int((t-d.datetime.now(d.timezone.utc)).total_seconds())))' "$1"
 }
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 tap_centre() { # only while the screensaver shows: the overlay takes the touch
     local size w h
     size="$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tail -1)"
@@ -314,7 +310,7 @@ else
     # the boot receiver starts the service; nobody touches the tablet
     wait_for "the Tabula service to start by itself" 120 adb shell pidof "$pkg"
     echo "-- service pid on boot: $(adb shell pidof "$pkg" | tr -d '\r')"
-    read -r -p "Unlock the tablet if it asks, then press Enter (Tabula is launched next) " _
+    pause "Unlock the tablet if it asks (Tabula is launched next)"
     adb shell am start -n "$pkg/.MainActivity"
     # no logcat clear here: the buffer is fresh after the reboot, and the
     # boot-time registration and phase lines are the evidence step 2 waits
@@ -428,11 +424,11 @@ echo "-- 'dashboard: loaded' lines still: $loaded_now (no reload; the page was n
 
 step "6. the brightness curve works with HA down (F-SCR-05)"
 if [[ -n "${TABULA_ADAPTIVE:-}" ]]; then
-    read -r -p "Cover the tablet's light sensor with a finger, then press Enter " _
+    pause "Cover the tablet's light sensor with a finger"
     sleep 5
     dark="$(system_level)"
     echo "-- covered: system brightness $dark"
-    read -r -p "Uncover it and shine a light (a phone torch) at it, then press Enter " _
+    pause "Uncover it and shine a light (a phone torch) at it"
     sleep 5
     bright="$(system_level)"
     echo "-- lit: system brightness $bright"

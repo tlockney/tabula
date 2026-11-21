@@ -57,12 +57,8 @@ wait_for() { # wait_for <description> <timeout s> <command...>
 seconds_until() { # seconds_until <RFC 3339 time> -> whole seconds from now (0 if past)
     python3 -c 'import sys,datetime as d; t=d.datetime.fromisoformat(sys.argv[1].replace("Z","+00:00")); print(max(0, int((t-d.datetime.now(d.timezone.utc)).total_seconds())))' "$1"
 }
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 tap_centre() { # only while the screensaver shows: the overlay takes the touch
     local size w h
     size="$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tail -1)"
