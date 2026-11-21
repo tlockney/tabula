@@ -491,7 +491,9 @@ class TlpClient(
     /** Send device events in order; stale ones from before registration are dropped. */
     private suspend fun eventLoop(conn: Connection) {
         val events = config.events ?: return
-        while (events.tryReceive().isSuccess) Unit
+        while (events.tryReceive().isSuccess) {
+            // drop it
+        }
         while (true) {
             val build = events.receive()
             conn.send { id -> Tlp.encodeFrame("event", build(id)) }

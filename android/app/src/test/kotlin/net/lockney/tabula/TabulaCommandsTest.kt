@@ -198,7 +198,7 @@ class TabulaCommandsTest {
             },
         )
         assertTrue(reply is CommandHandler.Reply.Ok)
-        assertEquals(listOf(true to ScreensaverMode.BLACK), saver.commands)
+        assertEquals(listOf<Pair<Boolean, ScreensaverMode?>>(true to ScreensaverMode.BLACK), saver.commands)
         commands.handle("set_settings", setSettingsArgs(1))
         assertEquals(1, saver.settings.size)
 
