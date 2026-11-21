@@ -93,6 +93,33 @@ async def revoke_user(hass: HomeAssistant, user_id: str | None) -> None:
     await hass.auth.async_remove_user(user)
 
 
+@callback
+def _close_device_socket(connection: Any) -> None:
+    """Force-close a live device WebSocket (websocket_api's own cancel handle).
+
+    websocket_api keeps one cancel handle per connection and uses it when auth
+    revocation cuts a socket. From HA 2026.11 the handle is stored on the
+    connection; in 2025.1-2026.10 the connection's send_message callable is
+    bound to websocket_api's WebSocketHandler (http.py), whose `_cancel`
+    cancels both of its tasks and closes the socket (ADR 0001 item 8,
+    ADR 0019).
+    """
+    cancel = getattr(connection, "_cancel_ws", None)
+    if cancel is None:
+        owner = getattr(getattr(connection, "send_message", None), "__self__", None)
+        cancel = getattr(owner, "_cancel_ws", None)
+        if cancel is None:
+            cancel = getattr(owner, "_cancel", None)
+    if cancel is not None:
+        cancel()
+    else:
+        # If a future HA moves both handles, #97 comes back silently; keep
+        # the regression visible in the log.
+        _LOGGER.warning(
+            "No cancel handle on a device connection; its socket may stay open after unload (#97)"
+        )
+
+
 @dataclass
 class DeviceSession:
     """Per-WebSocket-connection state (PROTOCOL.md 4.9)."""
@@ -678,6 +705,9 @@ class TabulaHub:
 
     @callback
     def teardown(self) -> None:
+        """Close every device socket (#97, ADR 0019), then drop listeners and timers."""
+        for session in list(self.sessions.values()):
+            _close_device_socket(session.connection)
         for unsub in self._unsub:
             unsub()
         self._unsub.clear()
@@ -723,7 +753,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload the hub: views and listeners go away; credentials stay for a reload."""
+    """Unload the hub: every device socket is closed, so the devices reconnect
+    through their backoff (#97, ADR 0019); views and listeners go away;
+    credentials stay for a reload."""
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     hub = hass.data.pop(DOMAIN, None)
