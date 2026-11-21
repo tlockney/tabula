@@ -6,10 +6,11 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import java.io.File
-import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.coroutineContext
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.screensaver.gallery.PhotoDetails
@@ -89,6 +90,13 @@ object AndroidGallery {
                 } else {
                     rotated
                 }
+            // cancelled mid-decode (a stop or a superseding tap): the caller
+            // will never receive this bitmap, and withContext throws instead
+            // of returning it - release it here, the only place that can
+            if (!coroutineContext.isActive) {
+                bitmap.recycle()
+                return@withContext null
+            }
             GalleryEngine.DecodedPhoto(bitmap, bitmap.width, bitmap.height, exifDetails(path))
         }
 
@@ -126,15 +134,20 @@ object AndroidGallery {
  * the P2.5 media fetch (no credential, redirects within the ADR 0002 bounds,
  * cancellable), landing in a ring of at most
  * [Constants.GALLERY_URL_HISTORY] files in the cache dir, so edge taps can
- * step back through what was fetched (the ring's oldest file leaves as each
- * new one lands). A failed fetch returns null: the current photo stays and
- * the next tick tries again (F-SSV-12).
+ * step back through what was fetched. The ring counts successful fetches,
+ * exactly like the controller's history: the file that leaves the ring is
+ * the one the history evicted, never one it still references (a failed
+ * fetch consumes nothing). A failed fetch returns null: the current photo
+ * stays and the next tick tries again (F-SSV-12).
  */
 class UrlPhotoFetcher(
     private val dir: File,
     private val fetcher: MediaFetcher = MediaFetcher(),
 ) {
-    private val counter = AtomicLong(0)
+    /** The ring's live files, oldest first. */
+    private val ring = ArrayDeque<File>()
+
+    private var counter = 0
 
     init {
         dir.mkdirs()
@@ -142,13 +155,13 @@ class UrlPhotoFetcher(
 
     /** Drop the previous run's ring: a new slideshow rebuilds its own history. */
     fun reset() {
-        counter.set(0)
+        counter = 0
+        ring.clear()
         dir.listFiles().orEmpty().filter { it.isFile }.forEach { it.delete() }
     }
 
     suspend fun fetch(url: String): String? {
-        val n = counter.getAndIncrement()
-        val file = File(dir, "slide-$n.jpg")
+        val file = File(dir, "slide-${counter++}.jpg")
         try {
             fetcher.fetch(url, file)
         } catch (e: CancellationException) {
@@ -157,7 +170,10 @@ class UrlPhotoFetcher(
             file.delete() // no partial file survives a failed fetch (P2.5's rule)
             return null
         }
-        File(dir, "slide-${n - Constants.GALLERY_URL_HISTORY}.jpg").delete()
+        ring.addLast(file)
+        while (ring.size > Constants.GALLERY_URL_HISTORY) {
+            ring.removeFirst().delete()
+        }
         return file.absolutePath
     }
 }

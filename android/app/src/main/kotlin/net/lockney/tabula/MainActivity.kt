@@ -74,7 +74,11 @@ class MainActivity : Activity() {
         ))
         // the photo slideshow sits above the clock overlay and below the
         // notification cards (P3.8; cards draw over every mode, F-SSV-21)
-        gallery = GalleryView(this, scope)
+        gallery = GalleryView(this, scope) {
+            // a playlist with nothing decodable: the clock stand-in
+            // (ADR 0013 item 3, ADR 0016)
+            screensaver.show(net.lockney.tabula.core.tlp.ScreensaverMode.CLOCK)
+        }
         addContentView(gallery, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
         ))
@@ -135,6 +139,11 @@ class MainActivity : Activity() {
     }
 
     private fun observe() {
+        scope.launch {
+            // the slideshow pauses with the window (F-SSV-02): a powered-off
+            // panel stops the activity, so no decode or fetch runs in the dark
+            TabulaStatus.foreground.collect { gallery.setActive(it) }
+        }
         scope.launch {
             TabulaStatus.screensaver.collect { mode ->
                 // photos mode draws through the gallery overlay (P3.8); what

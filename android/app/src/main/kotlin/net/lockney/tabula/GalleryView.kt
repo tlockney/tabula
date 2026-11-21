@@ -14,6 +14,8 @@ import java.io.File
 import java.util.Locale
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.screensaver.gallery.FitPlan
 import net.lockney.tabula.core.screensaver.gallery.GalleryController
@@ -43,10 +45,15 @@ import net.lockney.tabula.core.settings.ScreensaverPhotosSource
  * step slides (F-SSV-04's exception) and the activity dismisses on any other
  * tap. The replaced slide's bitmap is released once its transition has run
  * out (the engine holds it GALLERY_RELEASE_MARGIN_MS past the animation,
- * ADR 0016, so a recycled bitmap is never drawn).
+ * ADR 0016, and renders synchronously before any release applies, so a
+ * recycled bitmap is never drawn).
  */
 @SuppressLint("ViewConstructor")
-class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLayout(context) {
+class GalleryView(
+    context: Context,
+    private val scope: CoroutineScope,
+    private val clockStandIn: () -> Unit,
+) : FrameLayout(context) {
     /** Smart fill's bars: a blurred, darkened enlargement of the photo (F-SSV-12). */
     private val blur = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
@@ -77,6 +84,9 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
     private var engine: GalleryEngine? = null
     private var backgroundBitmap: Bitmap? = null
 
+    /** The window's last known state (F-SSV-02), applied to each new engine. */
+    private var active = true
+
     init {
         setBackgroundColor(Color.BLACK)
         addView(blur, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -96,31 +106,40 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
      * Show the photos mode with [photos], the current settings; false when the
      * gallery cannot render (an unbuilt source, an empty playlist, a blank
      * URL), in which case the caller shows the clock stand-in (ADR 0013
-     * item 3, ADR 0016).
+     * item 3, ADR 0016). The source folder is listed off the main thread: a
+     * large card tree must not ANR the activity as the screensaver starts.
      */
-    fun show(photos: ScreensaverPhotos?): Boolean {
+    suspend fun show(photos: ScreensaverPhotos?): Boolean {
         stopEngine()
         this.photos = photos ?: return false
         val panel = context.resources.displayMetrics
-        val files: List<String> = when (photos.source) {
-            ScreensaverPhotosSource.Folder -> AndroidGallery.listImages(File(photos.folderPath), photos.includeSubfolders)
+        // P3.9's source; until it ships there is no content to render
+        if (photos.source == ScreensaverPhotosSource.MediaBrowser) return false
+        val fetcher = UrlPhotoFetcher(File(context.cacheDir, "gallery"))
+        val files: List<String> = withContext(Dispatchers.IO) {
+            fetcher.reset()
+            when (photos.source) {
+                ScreensaverPhotosSource.Folder -> AndroidGallery.listImages(File(photos.folderPath), photos.includeSubfolders)
 
-            ScreensaverPhotosSource.Picker -> AndroidGallery.listImages(AndroidGallery.pickerDir(context), recursive = false)
+                ScreensaverPhotosSource.Picker -> AndroidGallery.listImages(AndroidGallery.pickerDir(context), recursive = false)
 
-            ScreensaverPhotosSource.Url -> emptyList()
-
-            // P3.9's source; until it ships there is no content to render
-            ScreensaverPhotosSource.MediaBrowser -> return false
+                else -> emptyList()
+            }
         }
         if (photos.source != ScreensaverPhotosSource.Url && files.isEmpty()) return false
         if (photos.source == ScreensaverPhotosSource.Url && photos.imageUrl.isBlank()) return false
-        val fetcher = UrlPhotoFetcher(File(context.cacheDir, "gallery")).apply { reset() }
         val engine = GalleryEngine(
             controller = GalleryController(now = System::currentTimeMillis, random = Random(System.nanoTime())),
             decode = { path, width, height -> AndroidGallery.decode(path, width, height) },
             fetch = { url -> fetcher.fetch(url) },
             release = { handle -> (handle as? Bitmap)?.recycle() },
-            render = { show -> post { draw(show) } },
+            // synchronous, on the carry-out's own main thread: the draw clears
+            // or reuses the old layers before any release in the same outcome
+            // recycles them (ADR 0016 item 4), and nothing sits in the post
+            // queue for a dismissal to strand (a recycled bitmap must never
+            // be drawn, even one frame late)
+            render = { show -> draw(show) },
+            onDeadEnd = ::deadEnd,
             scope = scope,
         )
         val started = engine.start(
@@ -139,6 +158,7 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
         )
         if (!started) return false
         this.engine = engine
+        engine.setActive(active)
         visibility = View.VISIBLE
         return true
     }
@@ -147,6 +167,23 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
     fun hide() {
         stopEngine()
         visibility = View.GONE
+    }
+
+    /**
+     * Pause or resume with the window (F-SSV-02): no slide advances while
+     * Tabula is not in front — which includes the panel being off, since a
+     * powered-off panel stops the activity — so no decode or fetch runs
+     * against a dark screen.
+     */
+    fun setActive(on: Boolean) {
+        active = on
+        engine?.setActive(on)
+    }
+
+    /** A playlist with nothing decodable: fall back to the clock stand-in (ADR 0016 item 1). */
+    private fun deadEnd() {
+        hide()
+        clockStandIn()
     }
 
     /**
@@ -192,8 +229,16 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
     /** Render one slide: the fit's layers, the transition, and the details overlay. */
     private fun draw(show: GalleryController.Effect.Show) {
         val bitmap = show.handle as? Bitmap ?: return
+        // a stale carry-out racing a stop: the engine released it already
+        if (bitmap.isRecycled) return
         // the hardware check counts these lines as slide evidence (check_p38.sh)
         android.util.Log.i(TAG, "slide: transition=${show.transition} fit=${show.fit.kind}")
+        // Cancel both layers' animations before placing anything: a pending
+        // end action from an earlier transition would otherwise clear the
+        // slide this draw just placed (a cancelled animator never runs its
+        // end action), and the outgoing layer's half-run transform would
+        // skew this transition.
+        slides.forEach { it.animate().cancel() }
         val w = width.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels
         val h = height.takeIf { it > 0 } ?: context.resources.displayMetrics.heightPixels
         val incoming = slides[if (showingFront) 1 else 0]
@@ -208,6 +253,11 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
         incoming.setImageBitmap(bitmap)
         incoming.alpha = 0f
         incoming.visibility = View.VISIBLE
+        // the outgoing layer exits from the settled state, not whatever a
+        // cancelled animation left mid-flight
+        outgoing.alpha = 1f
+        outgoing.scaleX = 1f
+        outgoing.scaleY = 1f
         placeBackground(show, bitmap, w, h)
 
         val fade = Constants.GALLERY_TRANSITION_MS
@@ -222,6 +272,7 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
 
             SlideTransition.SLIDE -> {
                 incoming.translationX = w.toFloat()
+                outgoing.translationX = 0f
                 outgoing.animate().translationX(-w.toFloat()).setDuration(fade)
                 incoming.animate().translationX(0f).setDuration(fade).withEndAction { clearSlide(outgoing) }
             }

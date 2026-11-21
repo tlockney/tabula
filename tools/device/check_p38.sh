@@ -32,9 +32,10 @@
 # action, SAF) is documented in DEVICE.md and can be checked by hand.
 #
 # The script cleans up after itself: a trap turns the screensaver switch off
-# and puts the tablet's Wi-Fi and settings back on any failure, Ctrl-C and
-# normal exit. The pushed photos are left in place (harmless app storage);
-# delete them with adb shell rm if a clean slate is wanted. Paste the whole
+# and stops the HA event listener on any failure, Ctrl-C and normal exit. It
+# never touches the tablet's Wi-Fi, pairing or app settings; the pushed
+# photos are left in place (harmless app storage) — delete them with
+# `adb shell rm "$device_photos"/*` for a clean slate. Paste the whole
 # output into the packet Result section.
 
 set -euo pipefail
@@ -180,6 +181,19 @@ after="$(slide_count)"
 echo "-- left-edge tap: slides $before -> $after (a step back)"
 (( after > before )) || fail "a left-edge tap did not step a slide"
 ha_state_is "$TABULA_SCREENSAVER" on || fail "an edge tap dismissed the screensaver (it must not, F-SSV-04)"
+
+# two taps inside one transition window (GALLERY_TRANSITION_MS, ADR 0002):
+# the second draw must cancel the first transition, not be cleared by its
+# pending end action (ADR 0016 item 4) - a crash here is the regression
+before="$after"
+adb shell input tap "$right_x" "$mid_y"
+adb shell input tap "$edge_x" "$mid_y"
+sleep 3
+after="$(slide_count)"
+echo "-- two taps inside one transition: slides $before -> $after (both steps land)"
+(( after - before >= 2 )) || fail "a tap inside the transition window was lost"
+ha_state_is "$TABULA_SCREENSAVER" on || fail "an edge tap dismissed the screensaver (it must not, F-SSV-04)"
+ask "Is the tablet still showing a photo (no crash, no half-cleared slide)?"
 
 adb shell input tap $((w / 2)) $((h / 2))
 wait_for "the screensaver switch to turn off (centre tap dismisses)" 10 ha_state_is "$TABULA_SCREENSAVER" off

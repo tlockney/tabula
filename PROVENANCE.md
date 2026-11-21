@@ -133,3 +133,5 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | The URL source fetches its photo fresh for every slide: the current photo stays until the next has loaded, a failed fetch keeps it and retries an interval later, and a bounded history lets edge taps step back through recent photos | F-SSV-12 | P3.8 |
 | Tapping near the left edge steps back one slide, near the right edge steps forward, and the slide interval restarts; a tap anywhere else dismisses the screensaver | F-SSV-12, F-SSV-04 | P3.8 |
 | An optional EXIF details overlay shows the date taken and the camera (no location) in a free corner, bottom corners first | F-SSV-12, F-WGT-02 | P3.8 |
+| A playlist in which every photo fails to decode (e.g. HEIC on an old build) falls back to the clock stand-in too, not a black screen | F-SSV-12; ADR 0016 item 1 | P3.8 |
+| The slideshow pauses while Tabula's window is not in front (a powered-off panel included) and resumes where it was, so no decode or fetch runs against a dark screen | F-SSV-02; ADR 0016 item 9 | P3.8 |
