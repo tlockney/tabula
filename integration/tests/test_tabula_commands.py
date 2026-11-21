@@ -465,3 +465,16 @@ async def test_url_without_path_is_normalised(hass_setup, tablet):
         blocking=True,
     )
     assert tablet.device.played[0]["url"] == "https://example.com/?track=1"
+
+
+async def test_oversized_command_is_refused_before_sending(hass_setup, tablet, monkeypatch):
+    """PROTOCOL.md 4, "Size": the integration never sends a frame over the cap."""
+    monkeypatch.setattr(tabula, "FRAME_MAX_BYTES", 200)
+    with pytest.raises(HomeAssistantError, match="too large"):
+        await hass_setup.services.async_call(
+            DOMAIN,
+            "notify",
+            {"device_id": tablet.paired.ha_device_id, "message": "x" * 300},
+            blocking=True,
+        )
+    assert tablet.device.notifications == []

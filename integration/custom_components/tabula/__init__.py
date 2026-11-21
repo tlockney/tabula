@@ -10,6 +10,7 @@ tokens, then the user (ADR 0001 item 3), sweep orphans at setup (item 4).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections import deque
 from dataclasses import dataclass, field
@@ -34,6 +35,7 @@ from .const import (
     COMMAND_CAPABILITIES,
     COMMAND_TIMEOUT,
     DOMAIN,
+    FRAME_MAX_BYTES,
     LOCAL_ONLY,
     PAIR_PENDING_TTL,
     PAIR_RATE_LIMIT,
@@ -558,6 +560,9 @@ class TabulaHub:
                     "problem": problems[0].split(":", 1)[0][:200],
                 },
             )
+        # The size cap binds senders too (PROTOCOL.md 4, "Size").
+        if len(json.dumps(frame).encode()) > FRAME_MAX_BYTES:
+            raise _command_error("command_too_large", command)
         key = (record.device_id, command_id)
         future: asyncio.Future = self.hass.loop.create_future()
         self.result_futures[key] = PendingCommand(session, command, future)

@@ -308,6 +308,7 @@ async def async_push_settings(hub: TabulaHub, record: DeviceRecord) -> int | Non
         if target == SCHEMA_VERSION
         else migrations.translate(stored.settings, target)
     )
+    session = record.current
     data = await hub.async_command(
         record,
         "set_settings",
@@ -316,8 +317,9 @@ async def async_push_settings(hub: TabulaHub, record: DeviceRecord) -> int | Non
     applied = data.get("revision")
     # The ACK is the device's new reported revision (PROTOCOL.md 4.6): the
     # next drift check compares against it, not the register-time report.
-    if applied is not None and record.current is not None:
-        record.current.reported_settings_revision = applied
+    # Only on the session that took it: a reconnect mid-push reports its own.
+    if applied is not None and session is not None and record.current is session:
+        session.reported_settings_revision = applied
     return applied
 
 
@@ -330,7 +332,8 @@ async def _push_task(hub: TabulaHub, record: DeviceRecord) -> None:
     """
     try:
         applied = await async_push_settings(hub, record)
-    except HomeAssistantError as e:
+    except (HomeAssistantError, ValueError, RuntimeError) as e:
+        # ValueError/RuntimeError: no translation down to the device's schema.
         _LOGGER.warning(
             "Settings push to %s failed (%s); it will be retried at the next registration",
             record.name or record.device_id[:8],

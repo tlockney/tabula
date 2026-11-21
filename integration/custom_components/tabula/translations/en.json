@@ -179,6 +179,9 @@
     },
     "setting_invalid": {
       "message": "The {setting} setting was not changed: {problem}"
+    },
+    "command_too_large": {
+      "message": "The {command} command is too large to send to the tablet."
     }
   },
   "services": {
