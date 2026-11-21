@@ -19,7 +19,7 @@ Work is delegated across several agents and tools as well as people. The plan ma
 
 - An executor can be handed just an issue number: the issue points to the packet, the packet lists everything to read.
 - Briefs change through pull requests and get reviewed; issues stay short.
-- Labels must be created once in the GitHub repository.
+- Labels are defined in `.github/labels.txt` and synced by a workflow on merge to `main`.
 
 ## Alternatives considered
 

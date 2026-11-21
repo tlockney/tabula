@@ -113,7 +113,7 @@ Every unit of work is a packet in `docs/packets/`, written before execution star
 GitHub issues are the unit of delegation. Each packet has one issue (template "Packet"); work too small for a packet gets a "Task" issue with the same brief shape. GitHub Projects may be layered on later.
 
 - The brief lives in the repo (`docs/packets/`), not in the issue, so it is versioned and reviewed with the code. The issue records who has the work, its state and its pull request.
-- Labels: `packet` or `task`; `side:spec` or `side:build`; `tier:light`, `tier:standard` or `tier:deep`; `verification:hardware`; `awaiting-hardware`; `blocked`.
+- Labels: `packet` or `task`; `side:spec` or `side:build`; `tier:light`, `tier:standard` or `tier:deep`; `verification:hardware`; `awaiting-hardware`; `blocked`. They are defined in `.github/labels.txt` and synced to GitHub on merge to `main`; change them there.
 - Taking work: assign yourself (or comment that you have it) before starting. Dependencies are listed in the issue; do not start until they are closed.
 - The pull request says `Closes #N`. Discussion that changes the brief is folded back into the packet file in the same pull request.
 
