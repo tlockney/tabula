@@ -6,14 +6,12 @@
 # Prerequisites: the tablet is provisioned (tools/device/provision.sh) and
 # paired by hand, the app is in the foreground, and the environment has:
 #   TABULA_HA_URL    e.g. http://homeassistant.local:8123
-#   TABULA_HA_TOKEN  a long-lived access token (any user; read-only queries)
+#   TABULA_HA_TOKEN  a long-lived access token from an ADMIN user (the
+#                    owner's; HA's config/device_registry/list command is
+#                    admin-only, so a non-admin token fails step 3)
 #   ANDROID_SERIAL   optional, picks the tablet when several are attached
 #
 # Paste the whole output into the packet Result section.
-#
-# Entity platforms are in the tree (P1.3), so the HA queries also print the
-# tablet's entity states; before the entity packets merged the same script
-# relied on the registry entry and the app's logcat alone.
 
 set -euo pipefail
 
@@ -23,6 +21,26 @@ adb() {
 }
 pkg=net.lockney.tabula
 log_tag=TabulaService
+
+# Airplane mode on/off. `cmd connectivity airplane-mode` is OEM- and
+# version-dependent (public references disagree on whether it exists on
+# Android 9, and Fire OS 7 is Android 9), so when the subcommand is missing
+# the script falls back to `svc wifi disable`/`enable`, which severs the HA
+# link the same way for the purposes of this check. Both paths are printed so
+# the verifier can see which one ran.
+airplane() { # airplane <enable|disable>
+    local mode="$1"
+    if adb shell cmd connectivity airplane-mode "$mode" 2>/dev/null; then
+        echo "-- toggled with: cmd connectivity airplane-mode $mode"
+    else
+        case "$mode" in
+            enable)  echo "-- cmd connectivity airplane-mode unavailable; falling back to: svc wifi disable"
+                     adb shell svc wifi disable ;;
+            disable) echo "-- cmd connectivity airplane-mode unavailable; falling back to: svc wifi enable"
+                     adb shell svc wifi enable ;;
+        esac
+    fi
+}
 
 : "${TABULA_HA_URL:?set TABULA_HA_URL, e.g. http://homeassistant.local:8123}"
 : "${TABULA_HA_TOKEN:?set TABULA_HA_TOKEN to a long-lived access token}"
@@ -56,9 +74,16 @@ echo "device_id: ${device_id:-NOT FOUND}"
 
 step "3. HA knows the tablet (device registry)"
 here="$(cd "$(dirname "$0")" && pwd)"
-UV_CONFIG_FILE="$here/../uv.toml" \
-    uv run --directory "$here/.." python tools/device/ha_query.py \
-    --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$device_id"
+reg_output="$(
+    UV_CONFIG_FILE="$here/../uv.toml" \
+        uv run --directory "$here/.." python tools/device/ha_query.py \
+        --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$device_id"
+)"
+echo "$reg_output"
+# the gate itself: the registry output must mention this device_id, and a
+# failed HA command makes ha_query.py exit non-zero, so empty evidence fails
+echo "$reg_output" | grep -F "$device_id" > /dev/null \
+    || { echo "the registry output does not mention $device_id" >&2; exit 1; }
 echo "-- the registry entry above is the P2.1 'appears in HA' evidence"
 
 adb shell logcat -c
@@ -66,17 +91,16 @@ echo "waiting up to 90s for the 'registered' log line"
 wait_for_log "registered with HA device" 90
 
 step "4. airplane mode ON (device becomes unavailable)"
-adb shell cmd connectivity airplane-mode enable
+airplane enable
 echo "waiting up to 60s for the 'connection lost' log line"
 wait_for_log "connection lost" 60
-echo "-- HA side while offline (entities are expected to read unavailable once"
-echo "   P1.3 is merged; the registry entry stays):"
+echo "-- HA side while offline (entities read unavailable; the registry entry stays):"
 UV_CONFIG_FILE="$here/../uv.toml" \
     uv run --directory "$here/.." python tools/device/ha_query.py \
     --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$device_id" || true
 
 step "5. airplane mode OFF (reconnect brings it back)"
-adb shell cmd connectivity airplane-mode disable
+airplane disable
 echo "waiting up to 120s for re-registration"
 adb shell logcat -c
 wait_for_log "registered with HA device" 120

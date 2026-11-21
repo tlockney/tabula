@@ -23,6 +23,7 @@ Each value is chosen from first principles: the HA facts in ADR 0001, the Office
 | `PAIR_PENDING_CAP` | 8 | Far above a household's simultaneous pairings; bounds the discovery-flow flood an unauthenticated client can cause. |
 | `PAIR_RATE_LIMIT` | 10 requests / 60 s per source IP | A device sends one request per attempt; 10 allows retries after errors. |
 | `CLAIM_POLL_INTERVAL` | 3 s | Pairing feels immediate after the user confirms, at 200 requests over the whole TTL. |
+| `RETRY_AFTER_DEFAULT` | 1 s | Assumed when a rate-limit response omits `retry_after`: long enough to matter, short enough not to stall pairing on a busy HA. |
 | `CLAIM_RATE_LIMIT` | 60 requests / 60 s per source IP | Three times the polling rate, so a well-behaved device never hits it; caps nonce guessing (which is hopeless at 256 bits anyway). |
 | `PAIR_MAX_BODY` | 4 KiB | The largest valid request is under 400 bytes. |
 
@@ -43,6 +44,7 @@ Each value is chosen from first principles: the HA facts in ADR 0001, the Office
 | `STATE_MIN_INTERVAL` | 250 ms | Plan 5.5 targets under 1 s from device change to HA state; 250 ms coalesces bursts (a brightness slider) with plenty of margin. |
 | `APP_PING_INTERVAL` | 30 s | The device's own `ping` command (HA's library pings are invisible to the app). Detects a dead socket within about 40 s, well inside the time someone notices a dashboard is stale, at negligible cost. |
 | `PONG_TIMEOUT` | 10 s | A `pong` takes milliseconds on a LAN; 10 s tolerates a busy HA. |
+| `RESTART_EXIT_DELAY` | 500 ms | After `restart_app` is answered (PROTOCOL 4.5: answered before the restart), the process waits this long before exiting so the result frame reaches HA on a slow uplink. |
 
 ### Reconnect
 

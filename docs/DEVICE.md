@@ -17,7 +17,9 @@ anything the tablet's own settings do not allow.
   ADR 0008). `make android-apk` builds
   `android/app/build/outputs/apk/debug/app-debug.apk`.
 - For HA queries: the repo's uv environment (`make setup`) and a long-lived
-  access token with which to read the device registry.
+  access token from an **admin user** (HA's owner, typically) — HA's
+  `config/device_registry/list` WebSocket command is admin-only, so a
+  non-admin token fails the check's HA steps.
 
 With several devices attached, set `ANDROID_SERIAL` so the scripts pick the
 right one.
@@ -74,7 +76,16 @@ It verifies, with pasted evidence for each step:
    and HA's entities refresh from the tablet's state;
 6. the full service log.
 
-The script's exit status is 0 only when every step's evidence appeared.
+The script's exit status is 0 only when every step's evidence appeared, and
+the "appears in HA" step fails unless the registry output actually mentions
+the tablet's device_id (a failed HA command makes ha_query.py exit non-zero,
+so empty evidence cannot pass).
+
+Airplane mode is toggled with `cmd connectivity airplane-mode`; that
+subcommand is OEM- and version-dependent (it may not exist on Fire OS 7's
+Android 9), so the script detects a missing subcommand and falls back to
+`svc wifi disable`/`enable`, which severs the HA link the same way. The
+output names which path ran.
 
 ### Echo Show 8 (2nd gen)
 

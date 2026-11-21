@@ -89,14 +89,22 @@ async def test_entity_write_goes_through_the_settings_store(
     await hass_setup.services.async_call("switch", "turn_on", {"entity_id": eid}, blocking=True)
 
     try:
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        record = runtime.devices[paired.device_id]
+        # settle: the device's settings and HA's record of the reported
+        # revision arrive in separate round trips; wait for both
         for _ in range(200):
-            if device.settings.get("screen", {}).get("keep_screen_on") is True:
+            current = record.current
+            if (
+                device.settings.get("screen", {}).get("keep_screen_on") is True
+                and current is not None
+                and current.reported_settings_revision == 1
+            ):
                 break
             await asyncio.sleep(0.05)
         assert device.settings["screen"]["keep_screen_on"] is True
 
-        runtime = TabulaHub.get(hass_setup)
-        assert runtime is not None
         stored = runtime.settings.get(paired.device_id)
         assert stored is not None
         assert stored.revision == 1
@@ -130,16 +138,24 @@ async def test_options_flow_save_reaches_the_device(
     assert result["type"] == "create_entry", result
 
     try:
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        record = runtime.devices[paired.device_id]
+        # settle: the device ACK is a separate round trip from the settings
+        # landing; wait for the reported revision before asserting it
         for _ in range(200):
-            if device.settings.get("screen", {}).get("brightness") == 23:
+            current = record.current
+            if (
+                device.settings.get("screen", {}).get("brightness") == 23
+                and current is not None
+                and current.reported_settings_revision == 1
+            ):
                 break
             await asyncio.sleep(0.05)
         assert device.settings["screen"]["brightness"] == 23
         assert device.settings["identity"]["name"] == "Kitchen Tablet"
         assert device.settings_revision == 1
 
-        runtime = TabulaHub.get(hass_setup)
-        assert runtime is not None
         stored = runtime.settings.get(paired.device_id)
         assert stored is not None
         assert stored.revision == 1

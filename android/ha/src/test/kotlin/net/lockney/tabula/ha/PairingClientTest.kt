@@ -169,4 +169,49 @@ class PairingClientTest {
         val paired = client.pair("http://ha:8123", deviceId, null, null)
         assertEquals("w".repeat(48), paired.credential.refreshToken)
     }
+
+    @Test
+    fun `consecutive transport failures during claim polling are retried, not fatal`() = runTest {
+        // an HA restart mid-poll: several claim polls fail in a row (the old
+        // code retried exactly once and the second failure escaped pair(),
+        // which crashed the app - PR #47 second review, blocker 1)
+        var claims = 0
+        val http = FakeHttp { url, _ ->
+            if (url.endsWith("/claim")) {
+                claims += 1
+                if (claims <= 3) throw java.io.IOException("HA is restarting")
+                claimPaired("z".repeat(48))
+            } else {
+                pairPending(pollInterval = 1)
+            }
+        }
+        val client = PairingClient(http.exchange, Random(1))
+        val paired = client.pair("http://ha:8123", deviceId, null, null)
+        assertEquals("z".repeat(48), paired.credential.refreshToken)
+        assertTrue(claims >= 4, "the failures must have been retried, not fatal")
+    }
+
+    @Test
+    fun `an unreachable server expires the attempt after the window and pairing starts over`() = runTest {
+        // the whole pending window passes with every claim failing: the
+        // attempt expires (as a server-side 404 would) and pairing restarts
+        // with a fresh nonce, which then succeeds
+        var attempt = 0
+        val http = FakeHttp { url, _ ->
+            if (url.endsWith("/pair")) {
+                attempt += 1
+                HttpExchange.Result(
+                    202,
+                    """{"status":"pending","expires_in":2,"poll_interval":1}""",
+                )
+            } else {
+                if (attempt == 1) throw java.io.IOException("network down")
+                claimPaired("q".repeat(48))
+            }
+        }
+        val client = PairingClient(http.exchange, Random(1))
+        val paired = client.pair("http://ha:8123", deviceId, null, null)
+        assertEquals("q".repeat(48), paired.credential.refreshToken)
+        assertEquals(2, attempt, "the expired attempt must have started a fresh one")
+    }
 }

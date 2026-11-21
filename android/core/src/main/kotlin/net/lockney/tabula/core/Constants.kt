@@ -28,6 +28,9 @@ object Constants {
     /** CLAIM_POLL_INTERVAL: s between pair/claim polls; the server's response overrides it. */
     const val CLAIM_POLL_INTERVAL_S = 3.0
 
+    /** RETRY_AFTER_DEFAULT: s assumed when a rate-limit response omits retry_after. */
+    const val RETRY_AFTER_DEFAULT_S = 1.0
+
     /** TOKEN_REFRESH_MARGIN: s of access-token life left before the device refreshes. */
     const val TOKEN_REFRESH_MARGIN_S = 300.0
 
@@ -39,6 +42,9 @@ object Constants {
 
     /** PONG_TIMEOUT: s to wait for the pong before treating the connection as dead. */
     const val PONG_TIMEOUT_S = 10.0
+
+    /** RESTART_EXIT_DELAY: ms the process waits after restart_app's result frame before it exits. */
+    const val RESTART_EXIT_DELAY_MS = 500L
 
     /** STATE_MIN_INTERVAL: minimum gap between two tabula/state frames, milliseconds. */
     const val STATE_MIN_INTERVAL_MS = 250L

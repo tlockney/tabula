@@ -33,6 +33,13 @@ object TabulaStatus {
     /** The pairing code shown on screen, with the device id beside it. */
     val pairing = MutableStateFlow<PairingView?>(null)
 
+    /**
+     * The last terminal pairing failure, shown on the pairing form
+     * (PROTOCOL 2.5: a bad-nonce device shows a pairing error). Cleared when
+     * a new pairing attempt starts.
+     */
+    val pairingError = MutableStateFlow<String?>(null)
+
     /** The last rejection (code, message) when [Phase.REJECTED]. */
     val rejection = MutableStateFlow<Pair<String, String>?>(null)
 

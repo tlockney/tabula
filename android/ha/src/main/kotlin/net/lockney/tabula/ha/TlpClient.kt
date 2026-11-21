@@ -1,6 +1,7 @@
 package net.lockney.tabula.ha
 
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
@@ -126,12 +127,21 @@ class TlpClient(
      * HA message id, and a mutex so concurrent senders keep ids increasing.
      * Request matchers are registered before the frame is sent, so a reply
      * that races the sender is never dropped.
+     *
+     * [pending] is shared across threads without a common lock: `request`
+     * mutates it under [sendMutex], while [completePending] runs from the
+     * read loop and [failPending] from the OkHttp listener threads
+     * (Transport.kt). It is therefore a [ConcurrentHashMap] with
+     * remove-then-complete operations: each pending entry is completed exactly
+     * once, by whichever side removed it.
+     *
+     * Internal (not private) so the concurrency test can drive it directly.
      */
-    private class Connection {
+    internal class Connection {
         lateinit var transport: WsTransport
         val initial = CompletableDeferred<Result<Unit>>()
         val inbound = Channel<String>(Channel.UNLIMITED)
-        private val pending = HashMap<Int, CompletableDeferred<JsonObject>>()
+        private val pending = ConcurrentHashMap<Int, CompletableDeferred<JsonObject>>()
         private val sendMutex = Mutex()
         var nextId = 1
         var subscribeId = -1
@@ -194,13 +204,27 @@ class TlpClient(
             }
         }
 
+        /**
+         * Atomically remove the pending entry and complete it: only the side
+         * that removed it completes, so a racing [failPending] cannot
+         * double-complete, and the read loop's reply can never arrive on a
+         * cleared map and vanish.
+         */
         fun completePending(id: Int, message: JsonObject) {
-            pending[id]?.complete(message)
+            pending.remove(id)?.complete(message)
         }
 
+        /**
+         * Fail everything in flight. The iteration is weakly consistent (safe
+         * against concurrent [request] mutation), and each entry is removed
+         * before being completed, so it is completed exactly once here.
+         */
         fun failPending(cause: Throwable) {
-            pending.values.forEach { it.completeExceptionally(cause) }
-            pending.clear()
+            val iterator = pending.entries.iterator()
+            while (iterator.hasNext()) {
+                iterator.next().value.completeExceptionally(cause)
+                iterator.remove()
+            }
         }
     }
 

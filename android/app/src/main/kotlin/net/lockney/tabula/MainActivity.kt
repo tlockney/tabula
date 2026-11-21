@@ -59,6 +59,11 @@ class MainActivity : Activity() {
             TabulaStatus.phase.collect { render(it) }
         }
         scope.launch {
+            // a pairing error arrives while the phase stays UNPAIRED, so it
+            // needs its own trigger to re-render the form
+            TabulaStatus.pairingError.collect { render(TabulaStatus.phase.value) }
+        }
+        scope.launch {
             TabulaStatus.pairing.collect { view ->
                 val codeText = root.findViewWithTag<TextView>("code")
                 codeText?.text = view?.let { "${it.code}" } ?: ""
@@ -83,6 +88,8 @@ class MainActivity : Activity() {
         if (phase == Phase.REVOKED) {
             text("Home Assistant revoked this device's credential.", bold = false)
         }
+        // a terminal pairing failure (PROTOCOL 2.5), e.g. a refused nonce
+        TabulaStatus.pairingError.value?.let { text(it, bold = false) }
         text("Enter your Home Assistant address", bold = false)
         val input = EditText(this).apply {
             hint = "http://homeassistant.local:8123"

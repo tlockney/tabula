@@ -52,6 +52,16 @@ async def test_notification_events_relay_to_the_bus(hass_setup, server, hub, ses
     )
     assert dismissed["success"], dismissed
 
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    record = hub_runtime.devices[paired.device_id]
+    # settle: the relay and the hub's diagnostics record are written as the
+    # frames are handled, which a busy CI runner can interleave with the acks
+    for _ in range(100):
+        if len(seen) == 2 and len(record.events) == 2:
+            break
+        await asyncio.sleep(0.05)
+
     assert len(seen) == 2
     by_type = {e.data["type"]: e for e in seen}
     assert set(by_type) == {"notification_shown", "notification_dismissed"}
@@ -62,9 +72,6 @@ async def test_notification_events_relay_to_the_bus(hass_setup, server, hub, ses
     assert by_type["notification_shown"].data["tag"] == "door"
     assert by_type["notification_dismissed"].data["reason"] == "touch"
     # The frames also land in the hub's diagnostics record.
-    hub_runtime = TabulaHub.get(hass_setup)
-    assert hub_runtime is not None
-    record = hub_runtime.devices[paired.device_id]
     assert [f["event"] for f in record.events] == ["notification_shown", "notification_dismissed"]
     await client.close()
 

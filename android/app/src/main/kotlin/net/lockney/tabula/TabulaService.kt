@@ -101,6 +101,7 @@ class TabulaService : Service() {
         job = scope.launch {
             TabulaStatus.phase.value = Phase.PAIRING
             TabulaStatus.pairing.value = null
+            TabulaStatus.pairingError.value = null
             try {
                 val http = OkHttpExchange()
                 val paired = PairingClient(http).pair(
@@ -119,6 +120,7 @@ class TabulaService : Service() {
                 // user pairs again and deletes the HA entry this claim created.
                 if (!store.savePairing(paired.credential.refreshToken, paired.haDeviceId)) {
                     Log.e(TAG, "could not persist the pairing credential; pair again")
+                    TabulaStatus.pairingError.value = "Pairing failed: the credential could not be saved on this device. Pair again."
                     TabulaStatus.phase.value = Phase.UNPAIRED
                     TabulaStatus.pairing.value = null
                     return@launch
@@ -128,8 +130,18 @@ class TabulaService : Service() {
             } catch (e: CredentialRevoked) {
                 TabulaStatus.phase.value = Phase.REVOKED
             } catch (e: net.lockney.tabula.ha.PairingException) {
-                // Terminal pairing failure: show the pairing screen again so the
-                // user can retry (bad nonce, refused request).
+                // Terminal pairing failure (bad nonce, refused request): show it
+                // as a pairing error, PROTOCOL 2.5, then back to the pairing form.
+                TabulaStatus.pairingError.value = "Pairing failed: ${e.message ?: e.name.name}. Pair again."
+                TabulaStatus.phase.value = Phase.UNPAIRED
+                TabulaStatus.pairing.value = null
+            } catch (e: Exception) {
+                // Anything else escaping pair() is an environment failure or a bug;
+                // it must surface as a pairing error, never an uncaught exception
+                // in a coroutine that kills the app process.
+                Log.e(TAG, "pairing failed", e)
+                TabulaStatus.pairingError.value =
+                    "Pairing failed: ${e.message ?: e.javaClass.simpleName}. Pair again."
                 TabulaStatus.phase.value = Phase.UNPAIRED
                 TabulaStatus.pairing.value = null
             }
@@ -202,7 +214,8 @@ class TabulaService : Service() {
         }
         scope.launch {
             // give the result frame time to reach HA before the process dies
-            kotlinx.coroutines.delay(500)
+            // (ADR 0002: RESTART_EXIT_DELAY)
+            kotlinx.coroutines.delay(net.lockney.tabula.core.Constants.RESTART_EXIT_DELAY_MS)
             android.os.Process.killProcess(android.os.Process.myPid())
         }
     }
@@ -271,7 +284,6 @@ class TabulaService : Service() {
 
         /** Start the service in the connect state (paired) or nothing (unpaired). */
         fun start(context: Context) {
-            val store = TabulaStore(context)
             val intent = Intent(context, TabulaService::class.java)
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent)
             else context.startService(intent)

@@ -6,6 +6,7 @@ import kotlin.random.Random
 import kotlin.random.asKotlinRandom
 import java.security.SecureRandom
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import net.lockney.tabula.core.Constants
@@ -134,9 +135,10 @@ class PairingClient(
             }
             onStatus(PairingStatus(attempt.code, deviceId, pending.expiresIn))
             val pollMs = (pending.pollInterval * 1000.0).toLong()
+            val windowMs = pending.expiresIn * 1000L
             while (true) {
                 delay(pollMs)
-                when (val outcome = claimWithRetry(haUrl, deviceId, attempt)) {
+                when (val outcome = claimWithRetry(haUrl, deviceId, attempt, windowMs)) {
                     is ClaimOutcome.Paired -> return Paired(outcome.credential, outcome.haDeviceId)
                     is ClaimOutcome.Expired -> break // start pairing again (PROTOCOL 2.5)
                     ClaimOutcome.Pending -> onStatus(
@@ -161,12 +163,12 @@ class PairingClient(
             } catch (e: PairingException) {
                 when (e.name) {
                     HttpErrorName.RATE_LIMITED, HttpErrorName.TOO_MANY_PENDING -> {
-                        delay((e.retryAfter ?: 1) * 1000L)
+                        delay((e.retryAfter ?: Constants.RETRY_AFTER_DEFAULT_S.toInt()) * 1000L)
                     }
                     // A different attempt is pending for this device_id; the nonce
                     // in it is not ours, so it can only be waited out (PROTOCOL 2.2).
                     HttpErrorName.ALREADY_PENDING -> {
-                        delay((e.retryAfter ?: 1) * 1000L)
+                        delay((e.retryAfter ?: Constants.RETRY_AFTER_DEFAULT_S.toInt()) * 1000L)
                         throw e // pair() catches it and restarts with a fresh nonce
                     }
                     else -> throw e
@@ -177,17 +179,34 @@ class PairingClient(
         }
     }
 
-    private suspend fun claimWithRetry(haUrl: String, deviceId: String, attempt: Attempt): ClaimOutcome {
-        try {
-            return claim(haUrl, deviceId, attempt)
-        } catch (e: PairingException) {
-            throw e // terminal; never retried (PROTOCOL 2.5)
-        } catch (e: IOException) {
-            // A transport hiccup must not kill the poll loop; retry at the default rate.
-            delay((Constants.CLAIM_POLL_INTERVAL_S * 1000).toLong())
-            return claim(haUrl, deviceId, attempt)
+    /**
+     * One claim poll, resilient to transient transport failures: an
+     * [IOException] (HA briefly down, a router blip, Wi-Fi roaming) is
+     * retried with the equal-jitter backoff (PROTOCOL 7 values) for the whole
+     * pending window, so any number of consecutive failures cannot end
+     * pairing. [PairingException] stays terminal (PROTOCOL 2.5). When the
+     * window ends while the server was unreachable, the attempt has expired
+     * like a server-side 404, and [pair] starts a fresh one.
+     */
+    private suspend fun claimWithRetry(
+        haUrl: String,
+        deviceId: String,
+        attempt: Attempt,
+        windowMs: Long,
+    ): ClaimOutcome = withTimeoutOrNull(windowMs) {
+        val backoff = Backoff()
+        while (true) {
+            try {
+                return@withTimeoutOrNull claim(haUrl, deviceId, attempt)
+            } catch (e: PairingException) {
+                throw e // terminal; never retried (PROTOCOL 2.5)
+            } catch (e: IOException) {
+                delay(backoff.nextDelayMs())
+            }
         }
-    }
+        @Suppress("UNREACHABLE_CODE") // while(true) never completes; typing aid only
+        ClaimOutcome.Pending
+    } ?: ClaimOutcome.Expired
 
     private fun httpError(result: HttpExchange.Result): Pair<HttpErrorName, String> {
         val raw = result.bodyJson()?.get("error")?.jsonPrimitiveOrNull()?.content
