@@ -93,6 +93,42 @@ class TabulaCommandsTest {
     // --- set_settings -----------------------------------------------------------
 
     @Test
+    fun `a name typed at pairing survives a set_settings with no identity name`() = runTest {
+        // issue #100: set_settings replaces the whole document, and HA keeps the
+        // pairing name on its device record rather than in identity.name
+        val store = store()
+        store.pairingName = "Office Kiosk"
+        store.settings = store.settings.copy(identity = store.settings.identity.copy(name = "Office Kiosk"))
+        val commands = TabulaCommands(store, onRestartApp = {}, dashboard = busWith())
+
+        assertTrue(commands.run("set_settings", setSettingsArgs(1)) is CommandHandler.Reply.Ok)
+
+        assertEquals(null, store.settings.identity.name)
+        assertEquals("Office Kiosk", store.nameForPairing("Fire Tablet 78b2"))
+    }
+
+    @Test
+    fun `a name set in HA's settings wins over the pairing name`() = runTest {
+        val store = store()
+        store.pairingName = "Office Kiosk"
+        val commands = TabulaCommands(store, onRestartApp = {}, dashboard = busWith())
+        val args = buildJsonObject {
+            put("revision", 1)
+            put("schema_version", 1)
+            put("settings", buildJsonObject { put("identity", buildJsonObject { put("name", "Hall Kiosk") }) })
+        }
+
+        assertTrue(commands.run("set_settings", args) is CommandHandler.Reply.Ok)
+
+        assertEquals("Hall Kiosk", store.nameForPairing("Fire Tablet 78b2"))
+    }
+
+    @Test
+    fun `with no names stored the default is used`() {
+        assertEquals("Fire Tablet 78b2", store().nameForPairing("Fire Tablet 78b2"))
+    }
+
+    @Test
     fun `an equal revision is accepted and ACKed`() = runTest {
         val store = store()
         val commands = TabulaCommands(store, onRestartApp = {}, dashboard = DashboardBus())

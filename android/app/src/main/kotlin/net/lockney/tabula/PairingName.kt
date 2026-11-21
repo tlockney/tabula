@@ -26,7 +26,21 @@ object PairingName {
     fun resolve(input: String?, fallback: String): String =
         clip(input?.trim()?.takeIf(String::isNotEmpty) ?: fallback)
 
-    private fun clip(name: String): String {
+    /**
+     * An [android.text.InputFilter] body bounding a field to [MAX_LENGTH] code
+     * points: null keeps [insert] whole, otherwise the part of it that fits
+     * when it replaces [dest]'s range [dstart, dend).
+     */
+    fun limitInsert(dest: CharSequence, dstart: Int, dend: Int, insert: CharSequence): CharSequence? {
+        val kept = Character.codePointCount(dest, 0, dest.length) - Character.codePointCount(dest, dstart, dend)
+        val room = MAX_LENGTH - kept
+        if (Character.codePointCount(insert, 0, insert.length) <= room) return null
+        if (room <= 0) return ""
+        return insert.subSequence(0, Character.offsetByCodePoints(insert, 0, room))
+    }
+
+    /** [name] cut to at most [MAX_LENGTH] code points (also bounds the model sent at pairing). */
+    fun clip(name: String): String {
         if (name.codePointCount(0, name.length) <= MAX_LENGTH) return name
         return name.substring(0, name.offsetByCodePoints(0, MAX_LENGTH)).trimEnd()
     }

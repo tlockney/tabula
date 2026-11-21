@@ -23,4 +23,5 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0015](0015-settings-entities.md) | Settings entities (P3.2) | accepted |
 | [0016](0016-gallery-core.md) | Gallery core (P3.8) | accepted |
 | [0017](0017-entity-data-connection.md) | Entity data connection (P3.5); amends PLAN 5.1 | accepted |
+| [0019](0019-close-sockets-on-unload.md) | Close device sockets when the config entry unloads (#97) | accepted |
 | [0021](0021-start-page.md) | Start target as a settings path (P3.15) | accepted |
