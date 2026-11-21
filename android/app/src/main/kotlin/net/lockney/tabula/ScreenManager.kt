@@ -54,6 +54,12 @@ interface ScreenControl {
  * Panel writes are ordered by a generation counter: each decision starts a new
  * generation, and a fade step from an older one is dropped, so a manual level
  * can never be overwritten by the tail of an earlier fade.
+ *
+ * While the screensaver shows, [setOverride] holds the panel at its level
+ * (F-SSV-17, packet P2.4). Decisions keep running and update the reported
+ * state, but their level is only remembered; it returns when the override
+ * is cleared. The screensaver level is never persisted, so a restart during
+ * the night does not adopt it as the day level.
  */
 class ScreenManager(
     private val controller: ScreenController,
@@ -68,13 +74,22 @@ class ScreenManager(
 
     private val generation = AtomicInteger(0)
     private var onPanel: Int? = null
+
+    /** The screensaver's level while it holds the panel (F-SSV-17), else null. */
+    private var override: Int? = null
+
+    /** The level to return to when the override is cleared. */
+    private var restore: Int? = null
     private var fadeJob: Job? = null
     private var recheckJob: Job? = null
 
     /** Full screen state for registration (PROTOCOL 4.2). */
     fun current(): StateDelta {
         val state = controller.current()
-        val level = if (controller.configured) state.brightness else panel.readLevel() ?: state.brightness
+        val level = when {
+            controller.configured -> state.brightness
+            else -> heldLevel() ?: panel.readLevel() ?: state.brightness
+        }
         return state.copy(brightness = level, screenOn = panel.isOn)
     }
 
@@ -106,6 +121,25 @@ class ScreenManager(
     }
 
     /**
+     * Hold the panel at [level] while the screensaver shows, or release it with
+     * null: the level decided meanwhile (or the one from before) comes back.
+     */
+    @Synchronized
+    fun setOverride(level: Int?) {
+        if (level == override) return
+        generation.incrementAndGet()
+        fadeJob?.cancel()
+        if (override == null) restore = onPanel ?: panel.readLevel()
+        override = level
+        val target = level ?: restore ?: return
+        panel.setLevel(target)
+        onPanel = target
+    }
+
+    @Synchronized
+    private fun heldLevel(): Int? = if (override != null) restore else null
+
+    /**
      * Compute a decision and start carrying it out under one monitor (the same
      * one [write] takes), so a decision computed before another one can never
      * take a newer generation after it: a reading decided just before a manual
@@ -119,7 +153,7 @@ class ScreenManager(
             val gen = generation.incrementAndGet()
             fadeJob?.cancel()
             val from = onPanel
-            if (decision.fade && from != null) {
+            if (decision.fade && from != null && override == null) {
                 val steps = ScreenController.fadeSteps(from, target)
                 val stepMs = Constants.ADAPTIVE_FADE_MS / steps.size.coerceAtLeast(1)
                 fadeJob = scope.launch {
@@ -147,6 +181,10 @@ class ScreenManager(
     @Synchronized
     private fun write(gen: Int, level: Int): Boolean {
         if (gen != generation.get()) return false
+        if (override != null) {
+            restore = level // shown when the screensaver lets go
+            return true
+        }
         panel.setLevel(level)
         onPanel = level
         return true

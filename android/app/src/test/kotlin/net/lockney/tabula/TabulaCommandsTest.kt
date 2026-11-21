@@ -5,7 +5,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import net.lockney.tabula.core.settings.Settings
 import net.lockney.tabula.core.tlp.ErrorCode
+import net.lockney.tabula.core.tlp.ScreensaverMode
 import net.lockney.tabula.ha.CommandHandler
 
 /**
@@ -63,5 +65,40 @@ class TabulaCommandsTest {
 
         // the same revision floor is gone: an earlier revision is accepted again
         assertTrue(commands.handle("set_settings", setSettingsArgs(8)) is CommandHandler.Reply.Ok)
+    }
+
+    private class FakeScreensaver : ScreensaverControl {
+        val commands = mutableListOf<Pair<Boolean, ScreensaverMode?>>()
+        val settings = mutableListOf<Settings>()
+
+        override fun command(active: Boolean, mode: ScreensaverMode?): CommandHandler.Reply {
+            commands += active to mode
+            return CommandHandler.Reply.Ok()
+        }
+
+        override fun applySettings(settings: Settings) {
+            this.settings += settings
+        }
+    }
+
+    @Test
+    fun `the screensaver command and settings reach the screensaver`() {
+        val saver = FakeScreensaver()
+        val commands = TabulaCommands(store(), onRestartApp = {}, screensaver = saver)
+        val reply = commands.handle(
+            "screensaver",
+            buildJsonObject {
+                put("active", true)
+                put("mode", "black")
+            },
+        )
+        assertTrue(reply is CommandHandler.Reply.Ok)
+        assertEquals(listOf(true to ScreensaverMode.BLACK), saver.commands)
+        commands.handle("set_settings", setSettingsArgs(1))
+        assertEquals(1, saver.settings.size)
+
+        val without = TabulaCommands(store(), onRestartApp = {})
+        val unsupported = without.handle("screensaver", buildJsonObject { put("active", false) })
+        assertEquals(ErrorCode.UNSUPPORTED_COMMAND, (unsupported as CommandHandler.Reply.Error).code)
     }
 }

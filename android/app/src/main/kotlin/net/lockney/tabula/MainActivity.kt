@@ -25,13 +25,14 @@ import kotlin.math.roundToInt
  * dashboard WebView that replaces this surface arrives in P2.2.
  *
  * Plain framework views on purpose: the pinned compileSdk 34 toolchain
- * (ADR 0008) predates current Compose runtimes, so the native UI layers that
- * need Compose (P2.4) should bump compileSdk with their own ADR first.
+ * (ADR 0008) predates current Compose runtimes. The screensaver overlay (P2.4)
+ * stays with plain views too (ADR 0013).
  */
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var store: TabulaStore
     private lateinit var root: LinearLayout
+    private lateinit var screensaver: ScreensaverView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,9 +46,30 @@ class MainActivity : Activity() {
             setPadding(dp(32), dp(48), dp(32), dp(48))
         }
         setContentView(root)
+        // the screensaver overlay sits above everything else in the window (P2.4)
+        screensaver = ScreensaverView(this)
+        addContentView(screensaver, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
         ScreenWindow.attach(this, scope)
         observe()
         TabulaService.start(this)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        TabulaStatus.foreground.value = true
+    }
+
+    override fun onStop() {
+        TabulaStatus.foreground.value = false
+        super.onStop()
+    }
+
+    /** Every touch or key on the window restarts the idle timer (F-SSV-02). */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        TabulaStatus.userActivity.tryEmit(Unit)
     }
 
     override fun onResume() {
@@ -61,6 +83,9 @@ class MainActivity : Activity() {
     }
 
     private fun observe() {
+        scope.launch {
+            TabulaStatus.screensaver.collect { screensaver.show(it) }
+        }
         scope.launch {
             TabulaStatus.phase.collect { render(it) }
         }

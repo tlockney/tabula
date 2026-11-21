@@ -115,6 +115,30 @@ Without WRITE_SETTINGS the app dims only its own window, so step 2 fails on
 purpose. Without the device admin, turning the light off is refused with an
 error in HA, and the panel stays on.
 
+## Hardware check (P2.4, screensaver)
+
+Install a P2.4 build, open Tabula so its window is in front, then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver TABULA_NEXT=sensor.<tablet>_next_screensaver \
+ANDROID_SERIAL=<serial> tools/device/check_p24.sh
+```
+
+The script records `tabula_screensaver` events in HA in the background, then
+checks:
+
+1. the app runs and the screensaver is off;
+2. without touching the tablet, the screensaver starts at the time the
+   next-screensaver sensor showed (the idle timeout, 300 s by default), the
+   backlight drops to the screensaver brightness, and the clock shows. The
+   script asks you to confirm what is on screen;
+3. a tap dismisses it and the previous backlight level returns;
+4. `tabula.screensaver` with `mode: black` starts it black at the lowest
+   backlight, and the HA switch stops it;
+5. the HA switch starts the configured mode and stops it again;
+6. HA received at least six `tabula_screensaver` events.
+
 ### Echo Show 8 (2nd gen)
 
 P0.6 gave a provisional no-go (ADR 0007): no settings-only path to ADB is

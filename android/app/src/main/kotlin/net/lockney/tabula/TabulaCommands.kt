@@ -7,6 +7,7 @@ import net.lockney.tabula.core.settings.SettingsCodec
 import net.lockney.tabula.core.tlp.Commands
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.ScreenArgs
+import net.lockney.tabula.core.tlp.ScreensaverArgs
 import net.lockney.tabula.core.tlp.SetSettingsArgs
 import net.lockney.tabula.core.tlp.Tlp
 import net.lockney.tabula.ha.CommandHandler
@@ -15,6 +16,7 @@ import net.lockney.tabula.ha.CommandHandler
  * The commands the device runs (PROTOCOL 4.5):
  * - set_settings applies HA's document (plan 5.6) and hands it to screen control.
  * - screen (P2.3) goes to [screen] when the app declared screen control.
+ * - screensaver (P2.4) goes to [screensaver] when the app declared it.
  * - restart_app asks the service to restart the app process.
  * - reload and clear_cache are ACKed as no-ops until the dashboard arrives (P2.2).
  */
@@ -22,6 +24,7 @@ class TabulaCommands(
     private val store: TabulaStore,
     private val onRestartApp: () -> Unit,
     private val screen: ScreenControl? = null,
+    private val screensaver: ScreensaverControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
@@ -39,6 +42,10 @@ class TabulaCommands(
         Commands.SCREEN -> screen?.let { control ->
             val parsed = Tlp.json.decodeFromJsonElement(ScreenArgs.serializer(), args)
             control.command(parsed.on, parsed.brightness)
+        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        Commands.SCREENSAVER -> screensaver?.let { control ->
+            val parsed = Tlp.json.decodeFromJsonElement(ScreensaverArgs.serializer(), args)
+            control.command(parsed.active, parsed.mode)
         } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
         Commands.RELOAD, Commands.CLEAR_CACHE ->
             CommandHandler.Reply.Ok() // no dashboard yet; P2.2 makes these real
@@ -63,6 +70,7 @@ class TabulaCommands(
         store.settingsRevision = parsed.revision
         connectionRevision = parsed.revision
         screen?.applySettings(settings)
+        screensaver?.applySettings(settings)
         return CommandHandler.Reply.Ok(buildJsonObject { put("revision", parsed.revision) })
     }
 }

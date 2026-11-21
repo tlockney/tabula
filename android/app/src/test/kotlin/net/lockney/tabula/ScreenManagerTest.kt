@@ -194,4 +194,44 @@ class ScreenManagerTest {
         assertTrue(reply is CommandHandler.Reply.Ok)
         assertEquals(35, panel.writes.last())
     }
+
+    @Test
+    fun `the screensaver holds its level and the decided level returns after`() {
+        manager.applySettings(settings(brightness = 60))
+        manager.setOverride(20)
+        assertEquals(20, panel.level)
+
+        // HA moves the brightness while the screensaver shows: reported, not shown
+        manager.command(on = null, brightness = 80)
+        assertEquals(20, panel.level)
+        assertEquals(80, manager.current().brightness)
+
+        manager.setOverride(null)
+        assertEquals(80, panel.level)
+        assertEquals(listOf(60, 20, 80), panel.writes)
+        assertTrue(persisted.none { it.brightness == 20 }, "the screensaver level is never stored")
+    }
+
+    @Test
+    fun `before any settings the override returns the panel's own level`() {
+        manager.setOverride(0)
+        assertEquals(70, manager.current().brightness, "the level from before is reported")
+        manager.setOverride(null)
+        assertEquals(listOf(0, 70), panel.writes)
+    }
+
+    @Test
+    fun `an adaptive fade does not run under the override`() {
+        manager.applySettings(settings(adaptive = true))
+        manager.onLux(10_000.0)
+        scope.advanceUntilIdle()
+        manager.setOverride(5)
+        val before = panel.writes.size
+        scope.advanceTimeBy(5_000)
+        manager.onLux(1.0)
+        scope.advanceUntilIdle()
+        assertEquals(before, panel.writes.size, "nothing reached the panel")
+        manager.setOverride(null)
+        assertEquals(curve.levelFor(1.0), panel.level)
+    }
 }

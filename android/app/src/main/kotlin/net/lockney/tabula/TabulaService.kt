@@ -43,6 +43,7 @@ class TabulaService : Service() {
     private lateinit var panel: AndroidPanel
     private lateinit var lightSensor: LightSensor
     private lateinit var screen: ScreenManager
+    private lateinit var screensaver: ScreensaverManager
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -57,6 +58,7 @@ class TabulaService : Service() {
         createChannel()
         startForeground(NOTIFICATION_ID, notification(phaseText(TabulaStatus.phase.value)))
         startScreenControl()
+        startScreensaver()
     }
 
     /**
@@ -67,7 +69,10 @@ class TabulaService : Service() {
      * alone (F-SCR-02, ADR 0011).
      */
     private fun startScreenControl() {
-        panel = AndroidPanel(applicationContext) { on -> screen.onPanelPower(on) }
+        panel = AndroidPanel(applicationContext) { on ->
+            screen.onPanelPower(on)
+            if (::screensaver.isInitialized) screensaver.setPanelOn(on)
+        }
         screen = ScreenManager(
             controller = net.lockney.tabula.core.screen.ScreenController(),
             panel = panel,
@@ -77,6 +82,27 @@ class TabulaService : Service() {
         if (store.settingsRevision > 0) screen.applySettings(store.settings)
         lightSensor = LightSensor(applicationContext) { lux -> screen.onLux(lux) }
         lightSensor.start()
+    }
+
+    /**
+     * The screensaver (packet P2.4) runs for the service's lifetime too. It
+     * draws through [TabulaStatus.screensaver], holds the backlight through
+     * screen control, and hears touches and foreground changes from the
+     * activity. Stored settings apply at start, or the defaults on a fresh
+     * install (ADR 0002: the first milestone idles to a clock).
+     */
+    private fun startScreensaver() {
+        screensaver = ScreensaverManager(
+            controller = net.lockney.tabula.core.screensaver.ScreensaverController(),
+            show = { mode -> TabulaStatus.screensaver.value = mode },
+            holdBrightness = screen::setOverride,
+            scope = scope,
+        )
+        screensaver.applySettings(store.settings)
+        screensaver.setPanelOn(panel.isOn)
+        screensaver.start()
+        scope.launch { TabulaStatus.userActivity.collect { screensaver.onActivity() } }
+        scope.launch { TabulaStatus.foreground.collect { screensaver.setForeground(it) } }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -102,6 +128,9 @@ class TabulaService : Service() {
     }
 
     override fun onDestroy() {
+        screensaver.stop()
+        screen.setOverride(null)
+        TabulaStatus.screensaver.value = null
         lightSensor.stop()
         panel.close()
         job?.cancel()
@@ -179,8 +208,9 @@ class TabulaService : Service() {
         val refreshToken = store.refreshToken ?: return startPairing()
         job?.cancel()
         job = scope.launch {
-            val state = AndroidStateSource(applicationContext, versionName(), extra = screen::current)
+            val state = AndroidStateSource(applicationContext, versionName(), extra = ::extraState)
             screen.listener = state::publish
+            screensaver.listener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
                 TlpClient.Config(
@@ -194,7 +224,13 @@ class TabulaService : Service() {
                     settingsRevision = { store.settingsRevision },
                     refreshToken = { refreshToken },
                     state = state,
-                    commands = TabulaCommands(store, onRestartApp = ::restartApp, screen = screen),
+                    commands = TabulaCommands(
+                        store,
+                        onRestartApp = ::restartApp,
+                        screen = screen,
+                        screensaver = screensaver,
+                    ),
+                    events = screensaver.events,
                 ),
                 TokenRefresher(OkHttpExchange()),
                 OkHttpWsTransportFactory(),
@@ -228,6 +264,7 @@ class TabulaService : Service() {
                 client.run(events)
             } finally {
                 screen.listener = null
+                screensaver.listener = null
                 state.close()
             }
         }
@@ -248,16 +285,28 @@ class TabulaService : Service() {
         }
     }
 
+    /** Screen and screensaver state for registration (PROTOCOL 4.2). */
+    private fun extraState(): net.lockney.tabula.core.tlp.StateDelta {
+        val saver = screensaver.current()
+        return screen.current().copy(
+            screensaverActive = saver.screensaverActive,
+            screensaverMode = saver.screensaverMode,
+            screensaverBrightness = saver.screensaverBrightness,
+            nextScreensaver = saver.nextScreensaver,
+        )
+    }
+
     /**
      * The capabilities this device declares (PROTOCOL 4.2): battery (P2.1),
-     * screen and brightness (P2.3), and adaptive_brightness only when the
-     * tablet has a light sensor.
+     * screen and brightness (P2.3), adaptive_brightness only when the tablet
+     * has a light sensor, and screensaver (P2.4).
      */
     private fun capabilities(): List<String> = buildList {
         add("battery")
         add("screen")
         add("brightness")
         if (lightSensor.available) add("adaptive_brightness")
+        add("screensaver")
     }
 
     private fun versionName(): String =

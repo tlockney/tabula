@@ -1,6 +1,9 @@
 package net.lockney.tabula
 
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import net.lockney.tabula.core.tlp.ScreensaverMode
 
 /**
  * What the app is doing, shared between the service and the UI. The service is
@@ -52,6 +55,15 @@ object TabulaStatus {
 
     /** Keep the panel awake while the app's window is showing (F-SCR-01). */
     val keepScreenOn = MutableStateFlow(true)
+
+    /** The screensaver mode on screen, or null (P2.4). Written by [ScreensaverManager]. */
+    val screensaver = MutableStateFlow<ScreensaverMode?>(null)
+
+    /** A touch on the app's window; the service restarts the idle timer (F-SSV-02). */
+    val userActivity = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** Whether the app's window is in front; the idle timer stops while it is not (F-SSV-02). */
+    val foreground = MutableStateFlow(false)
 
     data class PairingView(val code: String, val deviceIdShort: String)
 }

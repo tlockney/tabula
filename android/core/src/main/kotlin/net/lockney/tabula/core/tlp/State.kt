@@ -2,6 +2,7 @@ package net.lockney.tabula.core.tlp
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.nullable
 
 /**
  * Device state (docs/PROTOCOL.md 4.4, $defs "state"): every key is optional,
@@ -21,6 +22,7 @@ data class StateDelta(
     @SerialName("screensaver_active") val screensaverActive: Boolean? = null,
     @SerialName("screensaver_mode") val screensaverMode: ScreensaverMode? = null,
     @SerialName("screensaver_brightness") val screensaverBrightness: Int? = null,
+    @Serializable(with = NextScreensaverSerializer::class)
     @SerialName("next_screensaver") val nextScreensaver: String? = null,
     @SerialName("battery_level") val batteryLevel: Int? = null,
     val charging: Boolean? = null,
@@ -38,7 +40,7 @@ data class StateDelta(
         batteryLevel?.let { Wire.requireRange("state.battery_level", it, 0, 100) }
         volume?.let { Wire.requireRange("state.volume", it, 0, 100) }
         wifiRssi?.let { Wire.requireRange("state.wifi_rssi", it, -127, 0) }
-        nextScreensaver?.let { Wire.requireDateTime("state.next_screensaver", it) }
+        nextScreensaver?.takeIf { it != NO_NEXT_SCREENSAVER }?.let { Wire.requireDateTime("state.next_screensaver", it) }
         currentPage?.let {
             Wire.requireLength("state.current_page", it, 1, 2048)
             Wire.requirePattern("state.current_page", it, Wire.pagePath)
@@ -46,7 +48,34 @@ data class StateDelta(
         appVersion?.let { Wire.requireLength("state.app_version", it, 1, 64) }
     }
 
+    companion object {
+        /**
+         * next_screensaver's explicit null (PROTOCOL 4.4: null while the
+         * screensaver is active or disabled). A Kotlin null means "key
+         * absent" in a delta, so the clear needs its own value; it is
+         * encoded as JSON null.
+         */
+        const val NO_NEXT_SCREENSAVER = "none"
+    }
+
     /** True when at least one key is set (minProperties in the schema). */
     val isNotEmpty: Boolean
         get() = this != StateDelta()
+}
+
+/** Encodes [StateDelta.NO_NEXT_SCREENSAVER] as JSON null; decodes JSON null as an absent key. */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+internal object NextScreensaverSerializer : kotlinx.serialization.KSerializer<String?> {
+    override val descriptor: kotlinx.serialization.descriptors.SerialDescriptor =
+        kotlinx.serialization.descriptors.PrimitiveSerialDescriptor(
+            "net.lockney.tabula.NextScreensaver",
+            kotlinx.serialization.descriptors.PrimitiveKind.STRING,
+        ).nullable
+
+    override fun serialize(encoder: kotlinx.serialization.encoding.Encoder, value: String?) {
+        if (value == null || value == StateDelta.NO_NEXT_SCREENSAVER) encoder.encodeNull() else encoder.encodeString(value)
+    }
+
+    override fun deserialize(decoder: kotlinx.serialization.encoding.Decoder): String? =
+        if (decoder.decodeNotNullMark()) decoder.decodeString() else decoder.decodeNull()
 }

@@ -80,4 +80,7 @@ object Constants {
 
     /** FADE_FRAME: ms between two backlight writes during a fade. */
     const val FADE_FRAME_MS = 50L
+
+    /** SCREENSAVER_EVENT_BUFFER: screensaver events kept while they wait for the session (P2.4). */
+    const val SCREENSAVER_EVENT_BUFFER = 16
 }

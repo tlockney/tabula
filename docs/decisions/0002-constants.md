@@ -97,6 +97,14 @@ These appear as bounds in `schema/tlp-v1.schema.json` and are chosen here:
 
 Manual brightness from HA (the light entity, the `screen` command) is applied at once, without a fade: the user asked for that level.
 
+### Screensaver engine (P2.4)
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `SCREENSAVER_EVENT_BUFFER` | 16 events | Screensaver start and stop events wait here for the TLP session; the oldest are dropped past this. A connected session drains it at once, and one that registers drops what came before, so the bound only caps memory while HA is down. |
+
+The idle timeout, mode and brightness defaults are in "Phase 1–2 behavior defaults" below.
+
 ### Phase 1–2 behavior defaults
 
 Defaults for the settings schema (P0.5) and the device's behavior before HA has sent any settings.
