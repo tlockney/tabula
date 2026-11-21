@@ -57,3 +57,11 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Entities exist only for declared capabilities; a capability dropped at registration removes its entities | F-HA-02 | P1.3 |
 | Losing the link makes every other entity unavailable; reconnecting refreshes them from the tablet's state; nothing is removed on disconnect | F-HA-04 | P1.3 |
 | Entities of a paired tablet survive an HA restart (unavailable until it reconnects) | independent design | P1.3 |
+| Entity actions send device commands; an offline tablet, an undeclared capability, a refusal or no answer in time fails the action with an error | F-HA-14, PROTOCOL.md 4.6, ADR 0010 | P1.4 |
+| `notify.send_message` shows a text notification on the tablet | F-NTF-01 | P1.4 |
+| `tabula.notify` with title, level, duration, icon, chime and replace-by-tag | F-NTF-01, F-NTF-02, F-HA-14 | P1.4 |
+| `tabula.navigate` opens an HA frontend path on the tablet | F-NAV-01 | P1.4 |
+| `tabula.screensaver` starts or stops the screensaver, optionally in a given mode | F-SSV-03, F-SSV-05, F-HA-14 | P1.4 |
+| `tts.speak` and `media_player.play_media` play on the tablet speaker; announcements are flagged; HA media is sent as a path the tablet fetches without its credential | F-TTS-01, F-TTS-02, ADR 0001 item 5, ADR 0010 | P1.4 |
+| A manual brightness change through the screen light turns adaptive brightness off | plan 5.5; F-SCR-07 open question settled in ADR 0010 | P1.4 |
+| Settings entities (keep screen on, adaptive brightness, screensaver brightness and mode) refuse changes with an explanation until device settings exist | independent design (ADR 0010) | P1.4 |

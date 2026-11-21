@@ -68,7 +68,7 @@ class TabulaSwitch(TabulaEntity, SwitchEntity):
             await self.async_command("screensaver", {"active": value})
         else:
             # keep_screen_on and adaptive_brightness are settings (plan 5.6).
-            await self.async_command("set_settings", {self.entity_description.state_key: value})
+            await self.async_set_setting(self.entity_description.state_key, value)
 
 
 async def async_setup_entry(

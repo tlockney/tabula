@@ -34,7 +34,7 @@ class TabulaScreensaverBrightness(TabulaEntity, NumberEntity):
         return self.device_state.get("screensaver_brightness")
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.async_command("set_settings", {"screensaver_brightness": round(value)})
+        await self.async_set_setting("screensaver_brightness", round(value))
 
 
 async def async_setup_entry(

@@ -20,21 +20,26 @@ from homeassistant.auth.const import GROUP_ID_USER
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util.ulid import ulid_now
 
 from . import pairing
 from .const import (
     CLAIM_RATE_LIMIT,
+    COMMAND_CAPABILITIES,
+    COMMAND_TIMEOUT,
     DOMAIN,
     LOCAL_ONLY,
     PAIR_PENDING_TTL,
     PAIR_RATE_LIMIT,
     PAIR_RATE_WINDOW,
     PROTOCOL_VERSION,
+    SCREENSHOT_TIMEOUT,
     SIGNAL_CAPABILITIES,
     SIGNAL_DEVICE_UPDATE,
     USER_NAME_PREFIX,
@@ -90,6 +95,15 @@ class DeviceSession:
     registered: bool = False
     superseded: bool = False
     subscription_id: int | None = None
+
+
+@dataclass
+class PendingCommand:
+    """A command sent on one connection, waiting for its tabula/result (4.6)."""
+
+    session: DeviceSession
+    command: str
+    future: asyncio.Future
 
 
 @dataclass
@@ -158,8 +172,9 @@ class TabulaHub:
         self.pending = PendingPairings(on_drop=self._drop_pending)
         self.pair_limiter = RateLimiter(PAIR_RATE_LIMIT, PAIR_RATE_WINDOW)
         self.claim_limiter = RateLimiter(CLAIM_RATE_LIMIT, PAIR_RATE_WINDOW)
-        # (device_id, command_id) -> Future; the P1.4 command path resolves these.
-        self.result_futures: dict[tuple[str, str], asyncio.Future] = {}
+        # (device_id, command_id) -> the command waiting for its result. A result
+        # settles it only when it arrives on the connection the command went out on.
+        self.result_futures: dict[tuple[str, str], PendingCommand] = {}
         self._unsub: list[Any] = []
         # device_id -> cancel callback of the pending entry's expiry timer.
         self._pending_timers: dict[str, Any] = {}
@@ -441,6 +456,13 @@ class TabulaHub:
                 self.notify_update(record)
             self.sessions.pop(session.connection, None)
             session.subscription_id = None
+            # Nothing can answer on a closed socket: fail its commands now
+            # rather than at their timeout.
+            for pending in self.result_futures.values():
+                if pending.session is session and not pending.future.done():
+                    pending.future.set_exception(
+                        _command_error("command_disconnected", pending.command)
+                    )
 
         return _cleanup
 
@@ -465,6 +487,71 @@ class TabulaHub:
         """Record the subscription; its cleanup clears session state on socket close."""
         session.subscription_id = msg_id
         session.connection.subscriptions[msg_id] = self._session_cleanup(session)
+
+    # --- commands (PROTOCOL.md 4.5, 4.6) ------------------------------------
+
+    @callback
+    def settle(self, session: DeviceSession, frame: dict[str, Any]) -> None:
+        """A tabula/result for a pending command on this connection settles it.
+
+        Unknown, already answered, or other-connection results are ignored (4.6).
+        """
+        assert session.device is not None
+        pending = self.result_futures.get((session.device.device_id, frame["command_id"]))
+        if pending is None or pending.session is not session or pending.future.done():
+            return
+        pending.future.set_result(frame)
+
+    async def async_command(
+        self, record: DeviceRecord, command: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Send one command and wait for its result; returns the result's data.
+
+        Raises HomeAssistantError when the device is offline, did not declare the
+        command's capability, answers with an error (NACK), or does not answer
+        within COMMAND_TIMEOUT (SCREENSHOT_TIMEOUT for screenshot).
+        """
+        caps = COMMAND_CAPABILITIES[command]
+        if caps and not caps & set(record.capabilities):
+            raise _command_error("command_unsupported", command)
+        session = record.current
+        if session is None or session.subscription_id is None:
+            raise _command_error("command_offline", command)
+        command_id = ulid_now()
+        event = {"command_id": command_id, "command": command, "args": args}
+        frame = {"id": session.subscription_id, "type": "event", "event": event}
+        # Strict sender (PROTOCOL.md 4.0): a frame we would send invalid is a bug
+        # in the caller's arguments, reported as such.
+        if problems := self.tlp.problems(f"command_{command}", frame, lenient=False):
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_invalid",
+                translation_placeholders={"command": command, "problem": problems[0][:200]},
+            )
+        key = (record.device_id, command_id)
+        future: asyncio.Future = self.hass.loop.create_future()
+        self.result_futures[key] = PendingCommand(session, command, future)
+        timeout = SCREENSHOT_TIMEOUT if command == "screenshot" else COMMAND_TIMEOUT
+        try:
+            session.connection.send_message(frame)
+            async with asyncio.timeout(timeout):
+                result = await future
+        except TimeoutError:
+            raise _command_error("command_timeout", command) from None
+        finally:
+            self.result_futures.pop(key, None)
+        if not result["ok"]:
+            error = result["error"]
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+                translation_placeholders={
+                    "command": command,
+                    "code": str(error.get("code")),
+                    "message": str(error.get("message", ""))[:200],
+                },
+            )
+        return result.get("data") or {}
 
     # --- views and listeners -------------------------------------------------
 
@@ -495,16 +582,25 @@ class TabulaHub:
         self._pending_timers.clear()
 
 
+def _command_error(key: str, command: str) -> HomeAssistantError:
+    return HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key=key,
+        translation_placeholders={"command": command},
+    )
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the tabula/* WebSocket commands and the pair/claim views once.
+    """Register the tabula/* WebSocket commands, tabula.* services and pair/claim views once.
 
     aiohttp freezes the router once HA's HTTP server is running, so views are
     registered here at component setup; they find the live hub per request and
     survive hub reloads (pairing.register_views).
     """
-    from . import ws_api
+    from . import services, ws_api
 
     ws_api.async_register(hass)
+    services.async_register(hass)
     pairing.register_views(hass)
     return True
 

@@ -126,12 +126,28 @@ class TabulaEntity(Entity):
         if keys is None or keys & self.entity_description.state_keys:
             self.async_write_ha_state()
 
-    async def async_command(self, command: str, args: dict[str, Any]) -> None:
-        """Send a command to the tablet. Command dispatch arrives with P1.4."""
+    async def async_command(self, command: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Send a command to the tablet and wait for its result (PROTOCOL.md 4.5)."""
+        record = self.record
+        if record is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_offline",
+                translation_placeholders={"command": command},
+            )
+        return await self.hub.async_command(record, command, args)
+
+    async def async_set_setting(self, key: str, value: Any) -> None:
+        """Change one device setting.
+
+        Settings travel as whole documents with revisions from HA's settings
+        store (plan 5.6, PROTOCOL.md 4.5), which arrives with P1.5. Until then
+        these entities are read-only and say so.
+        """
         raise HomeAssistantError(
             translation_domain=DOMAIN,
-            translation_key="commands_unavailable",
-            translation_placeholders={"command": command},
+            translation_key="settings_unavailable",
+            translation_placeholders={"setting": key},
         )
 
 

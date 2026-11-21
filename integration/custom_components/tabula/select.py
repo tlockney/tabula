@@ -31,7 +31,7 @@ class TabulaScreensaverMode(TabulaEntity, SelectEntity):
         return self.device_state.get("screensaver_mode")
 
     async def async_select_option(self, option: str) -> None:
-        await self.async_command("set_settings", {"screensaver_mode": option})
+        await self.async_set_setting("screensaver_mode", option)
 
 
 async def async_setup_entry(

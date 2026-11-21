@@ -1,0 +1,80 @@
+notify:
+  target:
+    device:
+      integration: tabula
+    entity:
+      integration: tabula
+      domain: notify
+  fields:
+    message:
+      required: true
+      example: "Dinner is ready"
+      selector:
+        text:
+          multiline: true
+    title:
+      selector:
+        text:
+    level:
+      selector:
+        select:
+          options:
+            - info
+            - success
+            - warning
+            - error
+          translation_key: level
+    duration:
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: s
+    icon:
+      selector:
+        icon:
+    chime:
+      selector:
+        boolean:
+    tag:
+      selector:
+        text:
+
+navigate:
+  target:
+    device:
+      integration: tabula
+    entity:
+      integration: tabula
+  fields:
+    path:
+      required: true
+      example: "/lovelace/kitchen"
+      selector:
+        text:
+
+screensaver:
+  target:
+    device:
+      integration: tabula
+    entity:
+      integration: tabula
+      domain: switch
+  fields:
+    active:
+      required: true
+      selector:
+        boolean:
+    mode:
+      selector:
+        select:
+          options:
+            - clock
+            - weather
+            - photos
+            - website
+            - dashboard
+            - calendar
+            - dim
+            - black
+          translation_key: screensaver_mode
