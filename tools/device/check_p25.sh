@@ -35,16 +35,16 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 ha_call() { # ha_call <domain> <service> <json body>
     curl -fsS -X POST \
-        -H "Authorization: Bearer ***" -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $TABULA_HA_TOKEN" -H "Content-Type: application/json" \
         -d "$3" "${TABULA_HA_URL%/}/api/services/$1/$2" > /dev/null
     echo "-- called $1.$2 $3"
 }
 ha_state() { # ha_state <entity_id> -> prints the state
-    curl -fsS -H "Authorization: Bearer ***" "${TABULA_HA_URL%/}/api/states/$1" \
+    curl -fsS -H "Authorization: Bearer $TABULA_HA_TOKEN" "${TABULA_HA_URL%/}/api/states/$1" \
         | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])'
 }
 ha_attr() { # ha_attr <entity_id> <attribute> -> prints the attribute
-    curl -fsS -H "Authorization: Bearer ***" "${TABULA_HA_URL%/}/api/states/$1" \
+    curl -fsS -H "Authorization: Bearer $TABULA_HA_TOKEN" "${TABULA_HA_URL%/}/api/states/$1" \
         | python3 -c "import json,sys; print(json.load(sys.stdin)['attributes'].get('$2'))"
 }
 ha_state_is() { [[ "$(ha_state "$1")" == "$2" ]]; }
