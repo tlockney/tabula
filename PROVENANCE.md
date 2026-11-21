@@ -45,3 +45,10 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Deleting the HA device revokes that tablet's credential and user | F-HA-01, ADR 0001 item 4 | P1.2 |
 | Registering with an unsupported protocol major is refused and raises a repair issue for that device | independent design (ADR 0001, PROTOCOL.md 4.2) | P1.2 |
 | Diagnostics report device summaries and pending pairing state, never credentials | independent design (ADR 0001) | P1.2 |
+| Per-device settings documents live in HA (revisioned); the device keeps a cached copy and HA pushes the current document when the tablet registers behind or ahead of the stored revision | F-MGT-01, PROTOCOL.md 4.2, 4.5 | P1.5 |
+| The integration's options flow is the settings editor: pick a tablet, edit every non-hardware setting in one form generated from the settings schema; the entry's own options are untouched | F-MGT-01 | P1.5 |
+| identity.name in the settings document is the tablet's display name in HA's device registry | F-MGT-03 | P1.5 |
+| Device events fire on the HA bus as tabula_* events, one name per subject, a type field for the specific change, carrying the tablet's HA device id | F-EVT-01 | P1.5 |
+| tabula_notification fires when a notification shows, is dismissed, or its action runs; tabula_screensaver on screensaver start and end | F-EVT-02, F-EVT-03 | P1.5 |
+| tabula_media fires when media finishes; tabula_page when the page changes | independent design (PROTOCOL.md 4.7) | P1.5 |
+| Deleting a tablet's HA device also deletes its stored settings document | independent design (plan 5.6) | P1.5 |
