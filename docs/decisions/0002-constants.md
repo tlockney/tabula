@@ -64,6 +64,7 @@ Jitter: uniform in [d/2, d] ("equal jitter"), so many tablets do not reconnect i
 | `LOG_MIN_INTERVAL` | 1 s | A live tail that does not load HA's event loop. |
 | `LOG_SUBSCRIPTION_TTL` | 600 s | A forgotten log viewer stops streaming by itself; the panel re-sends to extend. |
 | `SCREENSHOT_MAX_BYTES` | 5 MiB | A 1920×1200 JPEG at quality 95 is about 1–2 MiB; 5 MiB leaves headroom for larger panels. |
+| `SCREENSHOT_JPEG_QUALITY` | 80 | The quality the Android app encodes at when the command sends no hint. 80 is visually clean on a dashboard-sized image at roughly half the bytes of 95, and it sits inside the schema's 10–95 range so a hinted capture can be compared against the default. |
 
 ### Protocol limits in the schema
 

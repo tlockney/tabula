@@ -113,3 +113,8 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Play, pause, stop, seek, volume and mute reach the device's media channel, reported as volume, muted and media state; next and previous fail (no queue), and stopping nothing is a no-op | F-MED-01, F-TTS-06, F-TTS-07, PROTOCOL 4.4-4.5 | P2.5 |
 | Every playback reaches a terminal state: the end, a stop or a fetch/decode failure is reported as a `tabula_media` (`media_finished`) event with its reason | F-TTS-10, PROTOCOL 4.7 | P2.5 |
 | The media volume is a device setting HA owns (audio.media_volume) and the device applies to its music stream; a per-call volume applies for that playback | F-TTS-07, plan 5.6, ADR 0002 | P2.5 |
+| The screenshot capture action asks the device for a capture; the image entity shows the latest stored capture and refreshes when a new one lands | F-MGT-07, F-HA-12, PROTOCOL 5 | P3.13 |
+| The image entity serves the screen-off placeholder (a designed slate, not a black frame) whenever no capture is stored: with the screen off the device captures and uploads nothing and still ACKs | F-MGT-07, ADR 0014 | P3.13 |
+| The `last_capture` timestamp records when a capture was started by the action, is set only when the capture succeeds, persists across restarts, and is untouched by ordinary image fetches | F-HA-12 | P3.13 |
+| The image entity, the capture button and the last-capture sensor exist only when the tablet declared the screenshot capability | F-HA-02 | P3.13 |
+| Losing the link makes the screenshot entities unavailable with the rest of the device, and a stored capture survives the loss and the restore | F-HA-04 | P3.13 |
