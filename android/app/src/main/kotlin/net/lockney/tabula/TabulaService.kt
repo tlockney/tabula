@@ -21,7 +21,6 @@ import net.lockney.tabula.ha.CredentialRevoked
 import net.lockney.tabula.ha.OkHttpExchange
 import net.lockney.tabula.ha.OkHttpWsTransportFactory
 import net.lockney.tabula.ha.PairingClient
-import net.lockney.tabula.ha.TokenRefresher
 import net.lockney.tabula.ha.TlpClient
 
 /**
@@ -158,7 +157,7 @@ class TabulaService : Service() {
         val refreshToken = store.refreshToken ?: return startPairing()
         job?.cancel()
         job = scope.launch {
-            val state = AndroidStateSource(applicationContext, versionName())
+            val state = AndroidStateSource(applicationContext, versionName(), (application as TabulaApp).dashboard)
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
                 TlpClient.Config(
@@ -172,9 +171,13 @@ class TabulaService : Service() {
                     settingsRevision = { store.settingsRevision },
                     refreshToken = { refreshToken },
                     state = state,
-                    commands = TabulaCommands(store, onRestartApp = ::restartApp),
+                    commands = TabulaCommands(
+                        store,
+                        onRestartApp = ::restartApp,
+                        dashboard = (application as TabulaApp).dashboard,
+                    ),
                 ),
-                TokenRefresher(OkHttpExchange()),
+                (application as TabulaApp).tokens,
                 OkHttpWsTransportFactory(),
             )
             val events = object : TlpClient.Events {
@@ -284,8 +287,10 @@ class TabulaService : Service() {
         private const val CHANNEL_ID = "tabula_connection"
         private const val NOTIFICATION_ID = 1
 
-        /** The capabilities a P2.1 device declares (PROTOCOL 4.2). */
-        private val CAPABILITIES = listOf("battery")
+        /** The capabilities a P2.2 device declares (PROTOCOL 4.2): the P2.1
+         * diagnostics plus navigation, now that the dashboard WebView can
+         * follow a navigate command and report the current page. */
+        private val CAPABILITIES = listOf("battery", "navigation")
 
         /** Start the service in the connect state (paired) or nothing (unpaired). */
         fun start(context: Context) {

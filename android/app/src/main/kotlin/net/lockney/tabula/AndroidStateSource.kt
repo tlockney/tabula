@@ -15,15 +15,17 @@ import net.lockney.tabula.core.tlp.StateDelta
 import net.lockney.tabula.ha.StateSource
 
 /**
- * The device's sensors as TLP state (packet P2.1): battery level, charging,
- * network type, Wi-Fi RSSI and the app version. Battery comes from the
- * ACTION_BATTERY_CHANGED sticky broadcast, network type from the system's
- * default network, and every change goes out as a delta on an unlimited
- * channel (PROTOCOL 4.4). [close] unregisters the listeners.
+ * The device's sensors as TLP state (packets P2.1 and P2.2): battery level,
+ * charging, network type, Wi-Fi RSSI, the app version and the dashboard's
+ * current page (F-NAV-02). Battery comes from the ACTION_BATTERY_CHANGED
+ * sticky broadcast, network type from the system's default network, page
+ * changes from the [DashboardBus], and every change goes out as a delta on
+ * an unlimited channel (PROTOCOL 4.4). [close] unregisters the listeners.
  */
 class AndroidStateSource(
     context: Context,
     private val appVersion: String,
+    private val dashboard: DashboardBus,
 ) : StateSource {
     private val appContext = context.applicationContext
     private val batteryManager = appContext.getSystemService(BatteryManager::class.java)
@@ -33,15 +35,18 @@ class AndroidStateSource(
 
     private val batteryReceiver = BatteryReceiver()
     private val networkCallback = NetworkCallback()
+    private val removePageListener: () -> Unit
 
     init {
         appContext.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         connectivityManager?.registerDefaultNetworkCallback(networkCallback)
+        removePageListener = dashboard.onPageChanged { path -> push(StateDelta(currentPage = path)) }
     }
 
     fun close() {
         runCatching { appContext.unregisterReceiver(batteryReceiver) }
         runCatching { connectivityManager?.unregisterNetworkCallback(networkCallback) }
+        removePageListener()
         channel.close()
     }
 
@@ -62,6 +67,7 @@ class AndroidStateSource(
             charging = charging,
             network = currentNetwork(),
             wifiRssi = currentRssi(),
+            currentPage = dashboard.currentPage(),
             appVersion = appVersion,
         )
     }

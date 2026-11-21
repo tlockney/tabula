@@ -6,9 +6,11 @@ import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
@@ -19,10 +21,17 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
- * The pairing screen (packet P2.1): before pairing it asks for the HA base
- * URL, then shows the code and the device ID to confirm in HA
- * (docs/PROTOCOL.md 2.1). Once paired it shows the connection status. The
- * dashboard WebView that replaces this surface arrives in P2.2.
+ * The kiosk's screen (packets P2.1 and P2.2): before pairing it asks for the
+ * HA base URL, then shows the code and the device ID to confirm in HA
+ * (docs/PROTOCOL.md 2.1). Once connected it hosts the full-screen dashboard
+ * WebView (F-DSH-01), which stays loaded across connection blips: a
+ * CONNECTING phase with a dashboard up only hides the native views, and the
+ * frontend shows its own reconnect banner underneath. A revocation or
+ * refusal destroys the WebView and returns to the native screens, since its
+ * authenticated session must not outlive the credential.
+ *
+ * The WebView is never paused here, so the screen turning off does not
+ * reload the dashboard; the frontend's own background behavior is ADR 0011.
  *
  * Plain framework views on purpose: the pinned compileSdk 34 toolchain
  * (ADR 0008) predates current Compose runtimes, so the native UI layers that
@@ -31,7 +40,9 @@ import kotlin.math.roundToInt
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var store: TabulaStore
-    private lateinit var root: LinearLayout
+    private lateinit var root: FrameLayout
+    private lateinit var native: LinearLayout
+    private var dashboard: DashboardView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,11 +50,16 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-        root = LinearLayout(this).apply {
+        root = FrameLayout(this)
+        native = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(32), dp(48), dp(32), dp(48))
         }
+        root.addView(
+            native,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
         setContentView(root)
         observe()
         TabulaService.start(this)
@@ -51,6 +67,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         scope.cancel()
+        destroyDashboard()
         super.onDestroy()
     }
 
@@ -65,22 +82,49 @@ class MainActivity : Activity() {
         }
         scope.launch {
             TabulaStatus.pairing.collect { view ->
-                val codeText = root.findViewWithTag<TextView>("code")
+                val codeText = native.findViewWithTag<TextView>("code")
                 codeText?.text = view?.let { "${it.code}" } ?: ""
-                val idText = root.findViewWithTag<TextView>("device")
+                val idText = native.findViewWithTag<TextView>("device")
                 idText?.text = view?.let { "Device ${it.deviceIdShort}" } ?: ""
             }
         }
     }
 
     private fun render(phase: Phase) {
-        root.removeAllViews()
+        when (phase) {
+            Phase.UNPAIRED, Phase.REVOKED, Phase.PAIRING, Phase.REJECTED -> {
+                // the native screens replace the dashboard; its authenticated
+                // session must not outlive the credential that failed
+                destroyDashboard()
+                showNative(phase)
+            }
+            Phase.CONNECTING -> {
+                if (dashboard == null) {
+                    showNative(phase)
+                } else {
+                    // the dashboard stays loaded (F-DSH-01); the frontend is
+                    // showing its own connection state to the user already
+                    native.visibility = View.GONE
+                }
+            }
+            Phase.CONNECTED -> {
+                native.visibility = View.GONE
+                ensureDashboard()
+            }
+        }
+    }
+
+    // --- the native (pre-pairing) UI -------------------------------------------
+
+    private fun showNative(phase: Phase) {
+        native.visibility = View.VISIBLE
+        native.removeAllViews()
         when (phase) {
             Phase.UNPAIRED, Phase.REVOKED -> pairingForm(phase)
             Phase.PAIRING -> waitingForConfirm()
             Phase.CONNECTING -> status("Connecting to Home Assistant…")
-            Phase.CONNECTED -> connected()
             Phase.REJECTED -> rejected()
+            else -> {} // CONNECTED never lands here
         }
     }
 
@@ -95,7 +139,7 @@ class MainActivity : Activity() {
             hint = "http://homeassistant.local:8123"
             store.haUrl?.let { setText(it) }
         }
-        root.addView(input, LinearLayout.LayoutParams(
+        native.addView(input, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { bottomMargin = dp(16) })
         val button = Button(this).apply { text = "Pair with Home Assistant" }
@@ -111,7 +155,7 @@ class MainActivity : Activity() {
                     .putExtra(TabulaService.EXTRA_HA_URL, url),
             )
         }
-        root.addView(button)
+        native.addView(button)
         text("Tabula ${versionName()}", small = true)
     }
 
@@ -129,24 +173,33 @@ class MainActivity : Activity() {
         text("Tabula ${versionName()}", small = true)
     }
 
-    private fun connected() {
-        text("Connected", bold = true, size = 34f)
-        text(store.haUrl.orEmpty(), bold = false)
-        text("Device ${store.deviceId.take(8)}", small = true)
-        val unpair = Button(this).apply { text = "Unpair" }
-        unpair.setOnClickListener {
-            startService(
-                Intent(this, TabulaService::class.java).setAction(TabulaService.ACTION_UNPAIR),
-            )
-        }
-        root.addView(unpair)
-    }
-
     private fun rejected() {
         text("Home Assistant refused this device", bold = true, size = 28f)
         val rejection = TabulaStatus.rejection.value
         text(rejection?.let { "${it.first}: ${it.second}" } ?: "", bold = false)
         text("The device may need an app update, or re-pairing.", small = true)
+    }
+
+    // --- the dashboard -----------------------------------------------------------
+
+    private fun ensureDashboard() {
+        if (dashboard != null) return
+        val app = application as TabulaApp
+        val view = DashboardView(this, store, app.tokens, app.dashboard)
+        dashboard = view
+        // at the bottom of the stack: native views and the later overlays
+        // (menus, screensavers) sit above the dashboard (F-DSH-01)
+        root.addView(view.view, 0, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        view.load()
+    }
+
+    private fun destroyDashboard() {
+        val view = dashboard ?: return
+        dashboard = null
+        root.removeView(view.view)
+        view.destroy()
     }
 
     // --- helpers ---------------------------------------------------------------
@@ -165,7 +218,7 @@ class MainActivity : Activity() {
             if (bold) typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
         }
-        root.addView(view, LinearLayout.LayoutParams(
+        native.addView(view, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { bottomMargin = dp(if (small) 4 else 16) })
         return view
