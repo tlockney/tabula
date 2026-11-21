@@ -7,6 +7,7 @@ import asyncio
 import pytest
 from mockdevice.client import Backoff, TLPClient
 from mockdevice.codec import Codec
+from mockdevice.constants import SCREENSHOT_JPEG
 from mockdevice.device import Behavior, MockDevice
 from mockdevice.pairing import CredentialRevoked, PairingError, claim, request_pairing
 from mockdevice.store import DeviceStore
@@ -239,3 +240,42 @@ async def test_backoff_reset_window_counts_from_registration(tmp_path, http):
     assert 0.1 <= backoff.stable[0] < SlowRegisterServer.REGISTER_DELAY
     # The attempt that never registered counts as zero stable time.
     assert backoff.stable[1] == 0.0
+
+
+# --- screenshots (P3.13) ----------------------------------------------------
+
+
+async def test_screenshot_command_uploads_before_answering(server, store, start):
+    """The upload names the command and lands before the result (PROTOCOL.md 5)."""
+    running = await start(store)
+    record = await server.wait_registered(store.device_id)
+    result = await server.send_command(store.device_id, "screenshot", {})
+    assert result["ok"] is True
+    assert record.last_upload == SCREENSHOT_JPEG
+    assert record.upload_before_result is True
+    # The capture is consumed: a new capture starts empty.
+    assert running.client.device.last_screenshot is None
+
+
+async def test_screenshot_with_screen_off_skips_the_upload(server, store, start):
+    """Screen off: the command still answers ok, but nothing is uploaded (F-MGT-07)."""
+    running = await start(store)
+    device = running.client.device
+    await server.wait_registered(store.device_id)
+    device.update(screen_on=False)
+    result = await server.send_command(store.device_id, "screenshot", {})
+    assert result["ok"] is True
+    assert server.devices[store.device_id].last_upload is None
+
+
+async def test_screenshot_upload_failure_fails_the_command(server, store, start, monkeypatch):
+    """An upload that fails fails the command (`failed`, PROTOCOL.md 6)."""
+
+    async def broken(self, command_id, jpeg):
+        return False
+
+    monkeypatch.setattr(TLPClient, "_upload_screenshot", broken)
+    await start(store)
+    await server.wait_registered(store.device_id)
+    result = await server.send_command(store.device_id, "screenshot", {})
+    assert result["error"]["code"] == "failed"

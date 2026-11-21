@@ -162,34 +162,41 @@ class ScreenManagerTest {
     }
 
     @Test
-    fun `the screen command reaches screen control through TabulaCommands`() {
+    fun `the screen command reaches screen control through TabulaCommands`() = kotlinx.coroutines.test.runTest {
         val store = TabulaStore(FakeSharedPreferences(), PlainTextCrypto)
         val commands = TabulaCommands(store, onRestartApp = {}, screen = manager)
-        val reply = commands.handle("screen", buildJsonObject { put("brightness", 40) })
+        val reply = commands.handle(
+            net.lockney.tabula.core.tlp.CommandEvent("cmd-0001", "screen", buildJsonObject { put("brightness", 40) }),
+        )
         assertEquals(CommandHandler.Reply.Ok(), reply)
         assertEquals(40, panel.writes.last())
 
         val without = TabulaCommands(store, onRestartApp = {})
-        val unsupported = without.handle("screen", buildJsonObject { put("on", true) })
+        val unsupported = without.handle(
+            net.lockney.tabula.core.tlp.CommandEvent("cmd-0002", "screen", buildJsonObject { put("on", true) }),
+        )
         assertEquals(ErrorCode.UNSUPPORTED_COMMAND, (unsupported as CommandHandler.Reply.Error).code)
     }
 
     @Test
-    fun `set_settings hands the document to screen control`() {
+    fun `set_settings hands the document to screen control`() = kotlinx.coroutines.test.runTest {
         val store = TabulaStore(FakeSharedPreferences(), PlainTextCrypto)
         val commands = TabulaCommands(store, onRestartApp = {}, screen = manager)
         val reply = commands.handle(
-            "set_settings",
-            buildJsonObject {
-                put("revision", 3)
-                put("schema_version", 1)
-                put(
-                    "settings",
-                    buildJsonObject {
-                        put("screen", buildJsonObject { put("brightness", 35) })
-                    },
-                )
-            },
+            net.lockney.tabula.core.tlp.CommandEvent(
+                "cmd-0001",
+                "set_settings",
+                buildJsonObject {
+                    put("revision", 3)
+                    put("schema_version", 1)
+                    put(
+                        "settings",
+                        buildJsonObject {
+                            put("screen", buildJsonObject { put("brightness", 35) })
+                        },
+                    )
+                },
+            ),
         )
         assertTrue(reply is CommandHandler.Reply.Ok)
         assertEquals(35, panel.writes.last())

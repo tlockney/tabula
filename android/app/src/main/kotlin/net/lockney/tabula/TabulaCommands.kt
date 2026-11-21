@@ -4,12 +4,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import net.lockney.tabula.core.settings.SettingsCodec
+import net.lockney.tabula.core.tlp.CommandEvent
 import net.lockney.tabula.core.tlp.Commands
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.MediaControlArgs
 import net.lockney.tabula.core.tlp.NotifyArgs
 import net.lockney.tabula.core.tlp.PlayMediaArgs
 import net.lockney.tabula.core.tlp.ScreenArgs
+import net.lockney.tabula.core.tlp.ScreenshotArgs
 import net.lockney.tabula.core.tlp.ScreensaverArgs
 import net.lockney.tabula.core.tlp.SetSettingsArgs
 import net.lockney.tabula.core.tlp.Tlp
@@ -24,7 +26,9 @@ import net.lockney.tabula.ha.DashboardLinks
  * dashboard WebView through the [DashboardBus] (the command fails when no
  * dashboard is showing), navigate loads an HA frontend path the origin
  * check allows, screensaver (P2.4) goes to [screensaver], notify (P2.5) to
- * [notifications], and play_media and media_control (P2.5) to [audio].
+ * [notifications], play_media and media_control (P2.5) to [audio], and
+ * screenshot (P3.13) to [screenshot], which captures, uploads and only then
+ * answers.
  */
 class TabulaCommands(
     private val store: TabulaStore,
@@ -34,6 +38,7 @@ class TabulaCommands(
     private val screensaver: ScreensaverControl? = null,
     private val notifications: NotificationControl? = null,
     private val audio: AudioControl? = null,
+    private val screenshot: ScreenshotControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
@@ -42,36 +47,43 @@ class TabulaCommands(
         connectionRevision = 0
     }
 
-    override fun handle(command: String, args: JsonObject): CommandHandler.Reply = when (command) {
-        Commands.SET_SETTINGS -> setSettings(args)
+    override suspend fun handle(event: CommandEvent): CommandHandler.Reply = when (event.command) {
+        Commands.SET_SETTINGS -> setSettings(event.args)
         Commands.RESTART_APP -> {
             onRestartApp()
             CommandHandler.Reply.Ok()
         }
         Commands.SCREEN -> screen?.let { control ->
-            val parsed = Tlp.json.decodeFromJsonElement(ScreenArgs.serializer(), args)
+            val parsed = Tlp.json.decodeFromJsonElement(ScreenArgs.serializer(), event.args)
             control.command(parsed.on, parsed.brightness)
-        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        } ?: undeclared(event.command)
         Commands.SCREENSAVER -> screensaver?.let { control ->
-            val parsed = Tlp.json.decodeFromJsonElement(ScreensaverArgs.serializer(), args)
+            val parsed = Tlp.json.decodeFromJsonElement(ScreensaverArgs.serializer(), event.args)
             control.command(parsed.active, parsed.mode)
-        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        } ?: undeclared(event.command)
         Commands.NOTIFY -> notifications?.let { control ->
-            control.show(Tlp.json.decodeFromJsonElement(NotifyArgs.serializer(), args))
-        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+            control.show(Tlp.json.decodeFromJsonElement(NotifyArgs.serializer(), event.args))
+        } ?: undeclared(event.command)
         Commands.PLAY_MEDIA -> audio?.let { control ->
-            val parsed = Tlp.json.decodeFromJsonElement(PlayMediaArgs.serializer(), args)
+            val parsed = Tlp.json.decodeFromJsonElement(PlayMediaArgs.serializer(), event.args)
             control.play(parsed.url, parsed.mediaType, parsed.announce, parsed.volume)
-        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        } ?: undeclared(event.command)
         Commands.MEDIA_CONTROL -> audio?.let { control ->
-            val parsed = Tlp.json.decodeFromJsonElement(MediaControlArgs.serializer(), args)
+            val parsed = Tlp.json.decodeFromJsonElement(MediaControlArgs.serializer(), event.args)
             control.control(parsed.action, parsed.volume, parsed.position)
-        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        } ?: undeclared(event.command)
+        Commands.SCREENSHOT -> screenshot?.let { control ->
+            val parsed = Tlp.json.decodeFromJsonElement(ScreenshotArgs.serializer(), event.args)
+            control.capture(parsed.quality, event.commandId)
+        } ?: undeclared(event.command)
         Commands.RELOAD -> dashboardAction("reload the dashboard") { dashboard.reload() }
         Commands.CLEAR_CACHE -> dashboardAction("clear the cache") { dashboard.clearCache() }
-        Commands.NAVIGATE -> navigate(args)
-        else -> CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        Commands.NAVIGATE -> navigate(event.args)
+        else -> undeclared(event.command)
     }
+
+    private fun undeclared(command: String): CommandHandler.Reply =
+        CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
 
     /** reload/clear_cache succeed only when a dashboard is showing (PROTOCOL 6). */
     private inline fun dashboardAction(what: String, run: () -> Boolean): CommandHandler.Reply =
@@ -121,4 +133,15 @@ class TabulaCommands(
         audio?.applySettings(settings)
         return CommandHandler.Reply.Ok(buildJsonObject { put("revision", parsed.revision) })
     }
+}
+
+/**
+ * The screenshot flow (P3.13, PROTOCOL 5): capture the screen and upload the
+ * JPEG *before* the command's result is sent, so HA stores the image for a
+ * command that is still pending. With the screen off nothing is captured or
+ * uploaded and the answer is still Ok - HA then shows its placeholder
+ * (F-MGT-07). No dashboard, or an upload HA refuses, fails the command.
+ */
+interface ScreenshotControl {
+    suspend fun capture(quality: Int?, commandId: String): CommandHandler.Reply
 }

@@ -9,6 +9,7 @@ from typing import Any
 import aiohttp
 import pytest
 from mockdevice.codec import REPO_ROOT, Codec
+from mockdevice.constants import SCREENSHOT_JPEG
 
 FIXTURES = REPO_ROOT / "schema" / "fixtures" / "tlp" / "v1"
 DEVICE_FRAMES = {"state_delta", "event", "log", "command_result"}
@@ -179,3 +180,29 @@ async def test_claim_without_pending_entry(target, http):
 
 async def test_refresh_token_is_exchanged_without_client_id(token):
     assert token
+
+
+# --- screenshot upload view (PROTOCOL.md 5, P3.13) --------------------------
+
+
+async def test_screenshot_upload_needs_authentication(target, http):
+    async with http.post(
+        f"{target.url}/api/tabula/screenshot",
+        data=b"x",
+        headers={"Content-Type": "image/jpeg", "X-Tabula-Command-Id": "never-sent-0001"},
+    ) as resp:
+        assert resp.status == 401
+
+
+async def test_screenshot_upload_needs_a_pending_command(target, http, token):
+    """No command is open: 409 `no_pending_screenshot`, never a stored image."""
+    async with http.post(
+        f"{target.url}/api/tabula/screenshot",
+        data=SCREENSHOT_JPEG,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "image/jpeg",
+            "X-Tabula-Command-Id": "never-sent-0001",
+        },
+    ) as resp:
+        assert (resp.status, await http_error(resp)) == (409, "no_pending_screenshot")

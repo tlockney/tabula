@@ -14,7 +14,9 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.lockney.tabula.core.tlp.CommandEvent
 import net.lockney.tabula.core.tlp.CommandResultFrame
+import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.Tlp
 import okhttp3.OkHttpClient
 import org.junit.Assume.assumeTrue
@@ -78,6 +80,7 @@ class PythonServerTest {
             val tokens = TokenRefresher(http)
             val state = FakeState()
             val commands = FakeCommands()
+            val uploading = UploadingCommands(commands, http, { url }, { tokens.access(url) { paired.credential.refreshToken } })
             val registered = CompletableDeferred<Unit>()
             val events = object : TlpClient.Events {
                 override fun onRegistered(result: net.lockney.tabula.core.tlp.RegisterResultData) {
@@ -102,7 +105,7 @@ class PythonServerTest {
                     settingsRevision = { 0 },
                     refreshToken = { paired.credential.refreshToken },
                     state = state,
-                    commands = commands,
+                    commands = uploading,
                 ),
                 tokens,
                 OkHttpWsTransportFactory(client),
@@ -125,10 +128,37 @@ class PythonServerTest {
             assertEquals(true, frame.ok)
             assertEquals(1, frame.data!!["revision"]!!.jsonPrimitive.content.toInt())
 
+            // the screenshot flow (P3.13, PROTOCOL 5): the device captures,
+            // uploads naming the still-pending command, and only then ACKs
+            val shotCommand = http.post(
+                "$url/test/command",
+                "application/json",
+                """{"device_id":"$deviceId","command":"screenshot",""" +
+                    """"args":{"quality":80}}""",
+            )
+            assertEquals(200, shotCommand.status, "screenshot command: ${shotCommand.body}")
+            val shotFrame = Tlp.strict.decodeFromString(
+                CommandResultFrame.serializer(),
+                Json.parseToJsonElement(shotCommand.body).jsonObject["result"].toString(),
+            )
+            assertEquals(true, shotFrame.ok)
+
+            // the server saw the upload land while the command was still open
+            val afterShot = http.get("$url/test/report")
+            assertEquals(200, afterShot.status)
+            val report = Json.parseToJsonElement(afterShot.body).jsonObject
+            val screenshot = report["devices"]!!
+                .jsonObject[deviceId]!!.jsonObject["screenshot"]!!.jsonObject
+            assertEquals(true, screenshot["uploaded"]!!.jsonPrimitive.content.toBoolean())
+            assertEquals(shotFrame.commandId, screenshot["command_id"]!!.jsonPrimitive.content)
+            assertEquals(
+                true,
+                screenshot["before_result"]!!.jsonPrimitive.content.toBoolean(),
+                "the upload must precede the command's result (PROTOCOL 5)",
+            )
+
             // the server saw no schema problems with anything the client sent
-            val report = http.get("$url/test/report")
-            assertEquals(200, report.status)
-            val problems = Json.parseToJsonElement(report.body).jsonObject["problems"].toString()
+            val problems = report["problems"].toString()
             assertEquals("[]", problems)
 
             job.cancelAndJoin()
@@ -183,5 +213,41 @@ class PythonServerTest {
             dir = dir.parentFile
         }
         return null
+    }
+
+    /**
+     * [FakeCommands], plus the P3.13 screenshot flow over the real HTTP
+     * client: the JPEG upload names the still-pending command and precedes
+     * the ACK, so the server's `before_result` marker proves the ordering
+     * (PROTOCOL 5).
+     */
+    private class UploadingCommands(
+        private val inner: CommandHandler,
+        private val http: HttpExchange,
+        private val url: () -> String,
+        private val token: suspend () -> String,
+    ) : CommandHandler {
+        override fun onNewConnection() = inner.onNewConnection()
+
+        override suspend fun handle(event: CommandEvent): CommandHandler.Reply =
+            if (event.command == "screenshot") {
+                val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + "jpeg-bytes".toByteArray()
+                val result = http.postBytes(
+                    "${url()}/api/tabula/screenshot",
+                    "image/jpeg",
+                    jpeg,
+                    mapOf(
+                        "Authorization" to "Bearer ${token()}",
+                        "X-Tabula-Command-Id" to event.commandId,
+                    ),
+                )
+                if (result.status == 200) {
+                    CommandHandler.Reply.Ok()
+                } else {
+                    CommandHandler.Reply.Error(ErrorCode.FAILED, "screenshot upload rejected: HTTP ${result.status}")
+                }
+            } else {
+                inner.handle(event)
+            }
     }
 }

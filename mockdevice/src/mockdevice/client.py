@@ -151,8 +151,13 @@ class TLPClient:
         os_version: str = "python",
         backoff: Backoff | None = None,
         on_registered: Callable[[Frame], None] | None = None,
+        schema_version: int = SCHEMA_VERSION,
     ) -> None:
         self.ha_url = ha_url.rstrip("/")
+        # The settings schema version it registers with: the mock stays on 1 by
+        # default (it does not validate settings), and a test can claim a newer
+        # one to see what HA sends a device on that version (P3.2).
+        self.schema_version = schema_version
         self.store = store
         self.device = device
         self.codec = codec or Codec()
@@ -169,6 +174,8 @@ class TLPClient:
         self._token: AccessToken | None = None
         self._stop = asyncio.Event()
         self._conn: Connection | None = None
+        # Set per session; the screenshot upload needs it (PROTOCOL.md 5).
+        self._http: aiohttp.ClientSession | None = None
         self._pending_state: dict[str, Any] = {}
         self._state_wakeup = asyncio.Event()
         device.on_change = self._queue_state
@@ -212,6 +219,7 @@ class TLPClient:
         return self._token.token
 
     async def _session(self, session: aiohttp.ClientSession) -> None:
+        self._http = session
         token = await self._access_token(session)
         async with session.ws_connect(f"{self.ha_url}/api/websocket", max_msg_size=0) as ws:
             first = await ws.receive_json(timeout=REGISTER_TIMEOUT)
@@ -259,7 +267,7 @@ class TLPClient:
                 "type": "tabula/register",
                 "device_id": self.store.device_id,
                 "protocol_version": PROTOCOL_VERSION,
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": self.schema_version,
                 "app_version": __version__,
                 **self.identity,
                 "capabilities": self.device.capabilities,
@@ -318,11 +326,47 @@ class TLPClient:
         except CommandError as e:
             await self._send_result(conn, command_id, e.code, str(e))
             return
+        if command == "screenshot":
+            # Upload the capture before answering (PROTOCOL.md 5). A capture of
+            # None means the screen was off: nothing to upload (F-MGT-07). An
+            # upload that fails fails the command (`failed`, PROTOCOL.md 6).
+            jpeg, self.device.last_screenshot = self.device.last_screenshot, None
+            if jpeg is not None and not await self._upload_screenshot(command_id, jpeg):
+                await self._send_result(conn, command_id, "failed", "screenshot upload failed")
+                return
         await self._send_result(conn, command_id, None, None, data)
         if command == "set_settings":
             self.store.settings = self.device.settings
             self.store.settings_revision = self.device.settings_revision
             self.store.save()
+
+    async def _upload_screenshot(self, command_id: str, jpeg: bytes) -> bool:
+        """POST the capture to HA (PROTOCOL.md 5); False on any failure.
+
+        Called after the device captured and before the command's result is
+        sent, so HA only stores an image for a command that is still pending.
+        """
+        session = self._http
+        assert session is not None, "upload outside a session"
+        try:
+            token = await self._access_token(session)
+            async with session.post(
+                f"{self.ha_url}/api/tabula/screenshot",
+                data=jpeg,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "image/jpeg",
+                    "X-Tabula-Command-Id": command_id,
+                },
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("screenshot upload rejected: %s", resp.status)
+                    return False
+                self.codec.validate("http_screenshot_response", await resp.json())
+                return True
+        except (aiohttp.ClientError, ConnectionError, TimeoutError, FrameError) as e:
+            _LOGGER.warning("screenshot upload failed: %s", e)
+            return False
 
     async def _send_result(
         self,

@@ -25,6 +25,7 @@ from mockdevice.constants import (
     PAIR_CODE_ATTEMPTS,
     PAIR_PENDING_TTL,
     PROTOCOL_VERSION,
+    SCREENSHOT_MAX_BYTES,
 )
 
 SUPPORTED_PROTOCOLS = {PROTOCOL_VERSION}
@@ -72,6 +73,11 @@ class DeviceRecord:
     events: list[Frame] = field(default_factory=list)
     logs: list[dict[str, Any]] = field(default_factory=list)
     connections: int = 0
+    # The latest screenshot upload (P3.13): its bytes, the command it belongs
+    # to, and whether it arrived while that command was still open.
+    last_upload: bytes | None = None
+    upload_command_id: str | None = None
+    upload_before_result: bool = False
 
 
 class TestServer:
@@ -100,12 +106,14 @@ class TestServer:
         self.received: list[tuple[str, Frame]] = []
         self.problems: list[str] = []
         self._results: dict[tuple[int, str], asyncio.Future[Frame]] = {}
+        self.pending_screenshots: dict[str, str] = {}  # command_id -> device_id (P3.13)
         self._registered = asyncio.Condition()
         app = web.Application()
         app.router.add_post("/auth/token", self._token)
         app.router.add_get("/api/websocket", self._websocket)
         app.router.add_post("/api/tabula/pair", self._pair)
         app.router.add_post("/api/tabula/pair/claim", self._claim)
+        app.router.add_post("/api/tabula/screenshot", self._screenshot)
         # Test hooks (not part of TLP): what the Python tests and the Android
         # JVM integration test drive the server with over HTTP.
         app.router.add_post("/test/confirm", self._test_confirm)
@@ -184,11 +192,15 @@ class TestServer:
             self.codec.validate(self.codec.command_types[command], frame)
         fut: asyncio.Future[Frame] = asyncio.get_running_loop().create_future()
         self._results[(id(session), command_id)] = fut
+        if command == "screenshot":
+            # The upload view accepts only these (PROTOCOL.md 5, P3.13).
+            self.pending_screenshots[command_id] = device_id
         await session.ws.send_str(json.dumps(frame))
         try:
             return await asyncio.wait_for(fut, timeout)
         finally:
             self._results.pop((id(session), command_id), None)
+            self.pending_screenshots.pop(command_id, None)
 
     # --- HTTP -------------------------------------------------------------
 
@@ -271,6 +283,37 @@ class TestServer:
                 "ha_device_id": record.ha_device_id,
             }
         )
+
+    async def _screenshot(self, request: web.Request) -> web.Response:
+        """The upload view (PROTOCOL.md 5): accept a capture for an open command.
+
+        Mirrors the integration's view: the device comes from the bearer
+        token, the command ID must name a still-pending `screenshot` command
+        (409 `no_pending_screenshot` otherwise), the body is capped
+        (`413 too_large`), and the answer is `http_screenshot_response`.
+        """
+        auth = request.headers.get("Authorization", "")
+        token = auth[7:] if auth.startswith("Bearer ") else ""
+        device_id = self.access.get(token)
+        if device_id is None:
+            return web.Response(status=401)
+        command_id = request.headers.get("X-Tabula-Command-Id", "")
+        if self.pending_screenshots.get(command_id) != device_id:
+            return self._http_error(409, "no_pending_screenshot")
+        if request.content_type != "image/jpeg":  # media type, parameters ignored
+            return self._http_error(400, "invalid_request")
+        body = await request.read()
+        if len(body) > SCREENSHOT_MAX_BYTES:
+            return self._http_error(413, "too_large")
+        record = self.devices[device_id]
+        record.last_upload = body
+        record.upload_command_id = command_id
+        # The command is still open here, so the client really did upload
+        # before answering - the ordering the protocol requires.
+        record.upload_before_result = (id(record.current), command_id) in self._results
+        response = {"status": "stored", "bytes": len(body)}
+        self.codec.validate("http_screenshot_response", response)
+        return web.json_response(response)
 
     # --- WebSocket --------------------------------------------------------
 
@@ -446,6 +489,12 @@ class TestServer:
                         "registered": record.current is not None,
                         "state": record.state,
                         "capabilities": record.capabilities,
+                        "screenshot": {
+                            "uploaded": record.last_upload is not None,
+                            "bytes": len(record.last_upload or b""),
+                            "command_id": record.upload_command_id,
+                            "before_result": record.upload_before_result,
+                        },
                     }
                     for device_id, record in self.devices.items()
                 },

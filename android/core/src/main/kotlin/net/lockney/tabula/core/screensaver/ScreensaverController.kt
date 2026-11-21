@@ -44,6 +44,7 @@ class ScreensaverController(
     private var timeoutMs = Screensaver().idleTimeout * 1000L
     private var mode = fromSettings(Screensaver().mode)
     private var brightness = Screensaver().brightness
+    private var brightnessEnabled = Screensaver().brightnessEnabled
     private var lastActivityMs: Long? = null
     private var pauses = 0
     private var shown: ScreensaverMode? = null
@@ -56,13 +57,19 @@ class ScreensaverController(
     val shownMode: ScreensaverMode?
         get() = shown
 
-    /** The backlight level while the screensaver shows (F-SSV-17); black uses the lowest. */
+    /**
+     * The backlight level while the screensaver shows (F-SSV-17); black uses
+     * the lowest and dim always dims (F-SSV-07). With the separate level
+     * switched off (brightness_enabled, P3.2) the other modes hold nothing, so
+     * the panel keeps its current level.
+     */
     @get:Synchronized
     val brightnessWhileShown: Int?
         get() = when (shown) {
             null -> null
             ScreensaverMode.BLACK -> 0
-            else -> brightness
+            ScreensaverMode.DIM -> brightness
+            else -> brightness.takeIf { brightnessEnabled }
         }
 
     /** Full screensaver state for registration (PROTOCOL 4.2). */
@@ -87,11 +94,14 @@ class ScreensaverController(
     @Synchronized
     fun applySettings(settings: Screensaver, nowMs: Long): Outcome {
         val wasEnabled = enabled
+        val oldTimeoutMs = timeoutMs
         enabled = settings.enabled
         timeoutMs = settings.idleTimeout * 1000L
         mode = fromSettings(settings.mode)
         brightness = settings.brightness
-        if (enabled && !wasEnabled) lastActivityMs = nowMs
+        brightnessEnabled = settings.brightnessEnabled
+        // switching on, or a new idle timeout, starts the countdown over (F-HA-11)
+        if ((enabled && !wasEnabled) || timeoutMs != oldTimeoutMs) lastActivityMs = nowMs
         val transitions = if (!enabled && shown != null) listOf(stop(ScreensaverStopTrigger.COMMAND, nowMs)) else emptyList()
         return Outcome(
             transitions,

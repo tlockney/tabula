@@ -1,4 +1,5 @@
-"""Switches (plan 5.5): screensaver active, keep screen on, adaptive brightness."""
+"""Switches (plan 5.5): screensaver active, keep screen on, adaptive brightness,
+and the settings switches of P3.2 (F-HA-11, ADR 0015)."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TabulaHub
-from .entity import TabulaEntity, TabulaEntityDescription, setup_platform
+from .entity import TabulaEntity, TabulaEntityDescription, TabulaSettingEntity, setup_platform
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -52,6 +53,48 @@ SWITCHES = (
 )
 
 
+# Settings switches (P3.2): HA's stored value, written as one revision.
+SETTING_SWITCHES = (
+    TabulaEntityDescription(
+        key="screensaver_enabled",
+        translation_key="screensaver_enabled",
+        entity_category=EntityCategory.CONFIG,
+        setting="screensaver_enabled",  # F-SSV-01 master switch
+    ),
+    TabulaEntityDescription(
+        key="screensaver_brightness_enabled",
+        translation_key="screensaver_brightness_enabled",
+        entity_category=EntityCategory.CONFIG,
+        setting="screensaver_brightness_enabled",  # F-SSV-17
+    ),
+    TabulaEntityDescription(
+        key="schedule_enabled",
+        translation_key="schedule_enabled",
+        entity_category=EntityCategory.CONFIG,
+        setting="schedule_enabled",  # F-SSV-18
+    ),
+    TabulaEntityDescription(
+        key="widgets_shown",
+        translation_key="widgets_shown",
+        entity_category=EntityCategory.CONFIG,
+        setting="widgets_shown",  # F-WGT-01
+    ),
+)
+
+
+class TabulaSettingSwitch(TabulaSettingEntity, SwitchEntity):
+    @property
+    def is_on(self) -> bool | None:
+        value = self.setting_value
+        return None if value is None else bool(value)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.async_write_setting(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.async_write_setting(False)
+
+
 class TabulaSwitch(TabulaEntity, SwitchEntity):
     entity_description: TabulaSwitchDescription
 
@@ -83,3 +126,6 @@ async def async_setup_entry(
     hub = TabulaHub.get(hass)
     assert hub is not None
     entry.async_on_unload(setup_platform(hass, hub, async_add_entities, SWITCHES, TabulaSwitch))
+    entry.async_on_unload(
+        setup_platform(hass, hub, async_add_entities, SETTING_SWITCHES, TabulaSettingSwitch)
+    )
