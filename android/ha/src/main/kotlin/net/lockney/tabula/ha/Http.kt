@@ -17,6 +17,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 interface HttpExchange {
     suspend fun post(url: String, contentType: String, body: String, headers: Map<String, String> = emptyMap()): Result
 
+    suspend fun get(url: String, headers: Map<String, String> = emptyMap()): Result
+
     data class Result(val status: Int, val body: String) {
         fun bodyJson(): kotlinx.serialization.json.JsonObject? =
             runCatching { kotlinx.serialization.json.Json.parseToJsonElement(body) }
@@ -44,4 +46,15 @@ class OkHttpExchange(private val client: OkHttpClient = OkHttpClient()) : HttpEx
             HttpExchange.Result(response.code, response.body?.string() ?: "")
         }
     }
+
+    override suspend fun get(url: String, headers: Map<String, String>): HttpExchange.Result =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(url)
+                .apply { headers.forEach { (name, value) -> header(name, value) } }
+                .build()
+            client.newCall(request).execute().use { response ->
+                HttpExchange.Result(response.code, response.body?.string() ?: "")
+            }
+        }
 }

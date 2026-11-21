@@ -23,7 +23,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tabula-mockdevice", description="Python reference device for TLP v1."
     )
-    parser.add_argument("--ha", required=True, help="Home Assistant base URL, e.g. http://ha:8123")
+    parser.add_argument(
+        "--ha",
+        help="Home Assistant base URL, e.g. http://ha:8123 (pair and run)",
+    )
     parser.add_argument(
         "--store", type=Path, default=DEFAULT_STORE, help=f"device file (default {DEFAULT_STORE})"
     )
@@ -44,6 +47,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--fail", default="", help="comma-separated commands that NACK with 'failed'")
     run.add_argument("--drop", default="", help="comma-separated commands that never answer")
     run.add_argument("--delay", type=float, default=0.0, help="seconds before answering a command")
+
+    serve = sub.add_parser(
+        "serve",
+        help="run the in-process TLP test server until interrupted (client integration tests)",
+    )
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=0, help="0 picks a free port")
     return parser
 
 
@@ -94,9 +104,30 @@ async def do_run(args: argparse.Namespace) -> int:
     return 0
 
 
+async def do_serve(args: argparse.Namespace) -> int:
+    """Run the test server until interrupted; prints `LISTENING <url>` first."""
+    from mockdevice.testserver import TestServer
+
+    async with TestServer(host=args.host, port=args.port) as server:
+        print(f"LISTENING {server.url}", flush=True)
+        try:
+            await asyncio.Event().wait()  # until cancelled (Ctrl-C)
+        finally:
+            print("server stopped", flush=True)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
+    if args.cmd == "serve":
+        try:
+            return asyncio.run(do_serve(args))
+        except KeyboardInterrupt:
+            return 130
+    if not args.ha:
+        print("pair and run need --ha", file=sys.stderr)
+        return 2
     handler = do_pair if args.cmd == "pair" else do_run
     try:
         return asyncio.run(handler(args))

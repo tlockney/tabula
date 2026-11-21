@@ -24,6 +24,9 @@ class FakeHttp(private val script: (url: String, body: String) -> HttpExchange.R
             requests.add(url to body)
             return script(url, body)
         }
+
+        override suspend fun get(url: String, headers: Map<String, String>): HttpExchange.Result =
+            HttpExchange.Result(404, "")
     }
 }
 
