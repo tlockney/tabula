@@ -26,6 +26,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.setup import async_setup_component
 from mockdevice.client import TLPClient
+from mockdevice.constants import BACKOFF_MAX
 from mockdevice.device import ALL_CAPABILITIES, MockDevice
 from mockdevice.store import DeviceStore
 from pytest_homeassistant_custom_component.common import (
@@ -515,3 +516,47 @@ async def test_oversized_command_is_refused_before_sending(hass_setup, tablet, m
             blocking=True,
         )
     assert tablet.device.notifications == []
+
+
+# --- entry reload (#97, ADR 0019) ------------------------------------------
+
+
+@pytest.fixture
+def expected_lingering_timers(request) -> bool:
+    """Allow this file's socket-close test on HA 2026.10+ (aiohttp 3.14).
+
+    aiohttp 3.14 stopped cancelling prior heartbeat handles ("TimerHandle
+    churn"): cancelling a live websocket connection - which is exactly what
+    the entry teardown does here - leaves its heartbeat timer scheduled. The
+    socket belongs to HA's websocket_api; tabula only asks for the close.
+    """
+    return request.node.name == "test_reload_closes_socket_and_device_re_registers"
+
+
+async def test_reload_closes_socket_and_device_re_registers(hass_setup, hub, tablet):
+    """Unloading the entry closes the old sockets; the device re-registers.
+
+    The tablet sits on a live WebSocket when the entry reloads (a name or
+    options edit does this). Unload must close that socket, so the client
+    reconnects through its backoff (PROTOCOL.md 7) and re-registers within
+    the reconnect bound instead of waiting on a dead session (#97).
+    """
+    device_id = tablet.paired.device_id
+    assert await hass_setup.config_entries.async_reload(hub.entry_id)
+
+    def re_registered() -> bool:
+        # Both sides: HA has a subscribed session again, and the device has
+        # seen its own subscribe ack (its counter ticks only then, so waiting
+        # on it alone would race the hub's answer).
+        hub_runtime = TabulaHub.get(hass_setup)
+        return (
+            hub_runtime is not None
+            and (record := hub_runtime.devices.get(device_id)) is not None
+            and record.current is not None
+            and record.current.subscription_id is not None
+            and tablet.client.connections >= 2
+        )
+
+    # The first backoff retry lands well inside BACKOFF_MAX; the bound is the
+    # contract, and a reload that reconnected is what the issue asks to prove.
+    await wait_until(re_registered, timeout=BACKOFF_MAX)
