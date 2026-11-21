@@ -26,6 +26,7 @@ ALL_CAPABILITIES = [
     "go_home",
     "logs",
     "screenshot",
+    "illuminance",
 ]
 
 # Which capability a command needs (docs/PROTOCOL.md 4.5); None = always available.
@@ -135,6 +136,8 @@ class MockDevice:
             "charging": True,
             "network": "wifi",
             "wifi_rssi": -54,
+            # the room's light (P3.16): the mock "has a light sensor"
+            "illuminance": 128.5,
             "current_page": "/lovelace/0",
             "volume": 50,
             "muted": False,

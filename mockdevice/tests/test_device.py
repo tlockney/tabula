@@ -97,6 +97,19 @@ async def test_media_stop_emits_finished():
     assert device.state["media_state"] == "idle"
 
 
+async def test_illuminance_is_a_state_key_covered_by_its_capability():
+    """The mock "has a light sensor": the key and capability exist (P3.16, F-HA-06)."""
+    device = MockDevice()
+    deltas = []
+    device.on_change = deltas.append
+    assert "illuminance" in device.capabilities
+    assert device.state["illuminance"] == 128.5
+    assert device.update(illuminance=64.0) == {"illuminance": 64.0}
+    assert deltas == [{"illuminance": 64.0}]
+    # a steady reading produces no delta (HA's recorder is not flooded)
+    assert device.update(illuminance=64.0) == {}
+
+
 async def test_missing_capability_and_failure_mode():
     device = MockDevice(capabilities=["screen"], behavior=Behavior(fail={"screen"}))
     with pytest.raises(CommandError) as err:

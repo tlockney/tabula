@@ -41,6 +41,7 @@ V1_CAPABILITIES = {
     "navigation",
     "logs",
     "screenshot",
+    "illuminance",
 }
 
 

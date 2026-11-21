@@ -242,6 +242,9 @@
       "app_version": {
         "name": "App version"
       },
+      "illuminance": {
+        "name": "Illuminance"
+      },
       "last_capture": {
         "name": "Last capture"
       }

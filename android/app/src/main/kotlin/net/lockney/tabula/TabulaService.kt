@@ -48,6 +48,17 @@ class TabulaService : Service() {
     private lateinit var screensaver: ScreensaverManager
 
     /**
+     * The illuminance state key's rate limit (P3.16, ADR 0020): one filter for
+     * the service's lifetime, fed by the same [LightSensor] listener that
+     * drives adaptive brightness (no second sensor registration).
+     */
+    private val illuminance = net.lockney.tabula.core.screen.IlluminanceFilter()
+
+    /** Publishes illuminance to the session's state source; null while disconnected. */
+    @Volatile
+    private var illuminanceListener: ((net.lockney.tabula.core.tlp.StateDelta) -> Unit)? = null
+
+    /**
      * HA core commands on the live TLP connection, null between connections;
      * the screensaver's entity data rides it (ADR 0017, packet P3.5).
      */
@@ -106,7 +117,16 @@ class TabulaService : Service() {
             scope = scope,
         )
         if (store.settingsRevision > 0) screen.applySettings(store.settings)
-        lightSensor = LightSensor(applicationContext) { lux -> screen.onLux(lux) }
+        lightSensor = LightSensor(applicationContext) { lux ->
+            screen.onLux(lux)
+            // the same reading feeds the illuminance state key (P3.16): one
+            // listener, two consumers
+            illuminance.reading(lux, System.currentTimeMillis())?.let { reported ->
+                illuminanceListener?.invoke(
+                    net.lockney.tabula.core.tlp.StateDelta(illuminance = reported)
+                )
+            }
+        }
         lightSensor.start()
     }
 
@@ -343,6 +363,7 @@ class TabulaService : Service() {
             screen.listener = state::publish
             screensaver.listener = state::publish
             audio.listener = state::publish
+            illuminanceListener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
                 TlpClient.Config(
@@ -415,6 +436,7 @@ class TabulaService : Service() {
                 screen.listener = null
                 screensaver.listener = null
                 audio.listener = null
+                illuminanceListener = null
                 state.close()
             }
         }
@@ -435,7 +457,7 @@ class TabulaService : Service() {
         }
     }
 
-    /** Screen, screensaver and media state for registration (PROTOCOL 4.2). */
+    /** Screen, screensaver, media and illuminance state for registration (PROTOCOL 4.2). */
     private fun extraState(): net.lockney.tabula.core.tlp.StateDelta {
         val saver = screensaver.current()
         val screenAndSaver = screen.current().copy(
@@ -443,6 +465,9 @@ class TabulaService : Service() {
             screensaverMode = saver.screensaverMode,
             screensaverBrightness = saver.screensaverBrightness,
             nextScreensaver = saver.nextScreensaver,
+            // the key exists only once the sensor has reported (P3.16); the
+            // filter holds the latest reading across a disconnect
+            illuminance = illuminance.value,
         )
         return net.lockney.tabula.ha.mergeState(screenAndSaver, audio.current())
     }
@@ -451,8 +476,8 @@ class TabulaService : Service() {
      * The capabilities this device declares (PROTOCOL 4.2): battery (P2.1),
      * navigation (P2.2, the dashboard WebView follows a navigate command and
      * reports the current page), go_home (P3.15, the start target and the
-     * go_home command), screen and brightness (P2.3),
-     * adaptive_brightness only when the tablet has a light sensor,
+     * go_home command), screen and brightness (P2.3), adaptive_brightness and
+     * illuminance only when the tablet has a light sensor (P3.16),
      * screensaver (P2.4), notifications and audio (P2.5), and screenshot
      * (P3.13, the capture-and-upload flow).
      */
@@ -462,7 +487,10 @@ class TabulaService : Service() {
         add("go_home")
         add("screen")
         add("brightness")
-        if (lightSensor.available) add("adaptive_brightness")
+        if (lightSensor.available) {
+            add("adaptive_brightness")
+            add("illuminance")
+        }
         add("screensaver")
         add("notifications")
         add("audio")
