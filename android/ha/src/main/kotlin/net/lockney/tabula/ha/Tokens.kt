@@ -40,6 +40,27 @@ class TokenRefresher(
         return refresh(haUrl, refreshToken())
     }
 
+    /**
+     * The current access token with the seconds remaining before it expires,
+     * for the frontend's external-auth bridge (ADR 0001 item 3): the frontend
+     * counts its `expires_in` from the moment the app answers, so the
+     * remaining life of the cached token is the truthful value, not the
+     * original grant's. [force] drops the cache first (the frontend asks for
+     * a fresh token when its cached one was rejected).
+     */
+    suspend fun accessWithRemaining(
+        haUrl: String,
+        refreshToken: () -> String,
+        force: Boolean = false,
+    ): Access {
+        val token = if (force) forceRefresh(haUrl, refreshToken) else access(haUrl, refreshToken)
+        val remaining = ((cached?.expiresAtMs ?: 0) - clockMs()) / 1000
+        return Access(token, remaining.coerceAtLeast(1))
+    }
+
+    /** An access token and how much longer it is valid. */
+    data class Access(val token: String, val remainingSeconds: Long)
+
     private suspend fun refresh(haUrl: String, refreshToken: String): String {
         val body = "grant_type=refresh_token&refresh_token=" +
             URLEncoder.encode(refreshToken, "UTF-8")
