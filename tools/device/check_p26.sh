@@ -465,7 +465,7 @@ echo "-- system brightness now: $level_now"
 echo "-- HA's registry and entity states after recovery:"
 # the token travels in the environment (already exported), not argv (review 2, nit 4)
 UV_CONFIG_FILE="$here/../uv.toml" \
-    uv run --directory "$here/.." python tools/device/ha_query.py \
+    uv run --directory "$here/../.." python tools/device/ha_query.py \
     --ha "$TABULA_HA_URL" "$(device_id)"
 loaded_now="$(adb shell logcat -d -s "$dash_tag:I" "$dash_tag:W" | grep -cF 'dashboard: loaded' || true)"
 (( loaded_now <= loaded_before )) \
