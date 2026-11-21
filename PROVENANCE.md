@@ -29,6 +29,8 @@ The names below may appear only in the files listed under "Public framing" in `A
 
 One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "independent design" (with the ADR, if any).
 
+New rows go in `docs/provenance/`, one file per packet, not in this table; see `docs/provenance/README.md`. The table below is frozen as of 2026-11-21 and stays as written. `make provenance` prints it together with the per-packet files.
+
 | Behavior | Source | Packet |
 | --- | --- | --- |
 | Device settings: device name and HA base URL (connection keys, the only ones recovery may change) | F-MGT-03, F-MGT-11 | P0.5 |

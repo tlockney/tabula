@@ -52,7 +52,8 @@ Component targets (integration, mock device, Android, panel) are added by the pa
 | `docs/FEATURES.md` | Behavior spec, written by the spec side only | P0.2 |
 | `docs/PROTOCOL.md` | Tabula Link Protocol (TLP) | P0.4 |
 | `docs/DEVICE.md` | ADB provisioning and recovery runbook | P2.1 |
-| `docs/decisions/` | ADRs | ongoing |
+| `docs/decisions/` | ADRs (`make adr-index` lists them) | ongoing |
+| `docs/provenance/` | Provenance rows, one file per packet | ongoing |
 | `docs/packets/` | Work packets and their results | ongoing |
 | `schema/` | `settings.schema.json`, `fixtures/` (golden TLP frames) | P0.4, P0.5 |
 | `integration/` | HA custom integration | P1.2 |
@@ -61,6 +62,8 @@ Component targets (integration, mock device, Android, panel) are added by the pa
 | `android/` | Android Gradle project | P2.0 |
 | `tools/` | Repo checks, codegen, frame validator, device and release scripts | ongoing |
 | `website/` | Project website | P0.1 (placeholder) |
+
+Shared indexes are not hand-kept: each packet adds its own files and `make` prints the combined view, so parallel PRs do not conflict.
 
 Generated output goes to `build/` (or a component's own tool-managed build directory) and is never committed.
 
@@ -86,7 +89,7 @@ Build-side rules:
 - Never fork, vendor or patch the original.
 - Other prior art is allowed: Apache/MIT code that is not Kiosk Satellite, notably the HA Companion Android app and HA core and frontend. Record what you learned in an ADR and keep attribution for any adapted code.
 - Prefer standard engineering over unusual techniques.
-- Record every user-visible behavior in `PROVENANCE.md`: the FEATURES.md item ID it came from, or "independent design".
+- Record every user-visible behavior in `docs/provenance/<packet>.md` (see its README; older rows are in `PROVENANCE.md`): the FEATURES.md item ID it came from, or "independent design".
 
 ## Public framing
 
@@ -122,7 +125,7 @@ GitHub issues are the unit of delegation. Each packet has one issue (template "P
 - All "Done when" commands pass, with output pasted into the packet's Result section (hardware steps pasted by the hardware verifier).
 - `make check` passes.
 - Business logic has tests. Pure config or scaffolding may not.
-- `PROVENANCE.md` has an entry for any new user-visible behavior.
+- `docs/provenance/<packet>.md` has an entry for any new user-visible behavior.
 - No prose, identifiers or constants copied from the original product's documentation.
 - The reviewer, not the implementer, has signed off.
 

@@ -4,6 +4,8 @@
 2. Restricted names appear only in the files the public framing rule allows
    (AGENTS.md, "Public framing"). The names are read from PROVENANCE.md so that
    they never appear in code.
+3. ADR headers and per-packet provenance files are well formed, and no two
+   ADRs share a number (tools/doc_index.py).
 
 Exit status is non-zero when any check fails.
 """
@@ -15,6 +17,8 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+
+from tools import doc_index
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -112,6 +116,7 @@ def check_restricted_names(root: Path, files: Iterable[str]) -> list[str]:
 def main() -> int:
     errors = check_instruction_links(ROOT)
     errors += check_restricted_names(ROOT, repo_files(ROOT))
+    errors += doc_index.check(ROOT)
     for e in errors:
         print(e, file=sys.stderr)
     if errors:
