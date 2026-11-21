@@ -60,6 +60,15 @@ object TabulaStatus {
     val screensaver = MutableStateFlow<ScreensaverMode?>(null)
 
     /**
+     * The applied settings document's revision (P3.3). Written by
+     * [TabulaCommands] on every set_settings it applies, startup included;
+     * the activity re-applies the clock settings while a clock face shows,
+     * so a settings write always reloads the clock background, identical
+     * source or not (F-SSV-09: the revision change is the signal).
+     */
+    val settingsRevision = MutableStateFlow(0)
+
+    /**
      * The notification card stack, newest first (P2.5). Written by
      * [NotificationsManager], rendered by the activity's cards overlay.
      */
