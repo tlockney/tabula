@@ -45,3 +45,8 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Deleting the HA device revokes that tablet's credential and user | F-HA-01, ADR 0001 item 4 | P1.2 |
 | Registering with an unsupported protocol major is refused and raises a repair issue for that device | independent design (ADR 0001, PROTOCOL.md 4.2) | P1.2 |
 | Diagnostics report device summaries and pending pairing state, never credentials | independent design (ADR 0001) | P1.2 |
+| The tablet's pairing screen asks for the HA address, then shows the code and the device ID to confirm in Home Assistant | independent design (ADR 0001, PROTOCOL.md section 2) | P2.1 |
+| The pairing credential is stored on the device encrypted under an Android Keystore key and excluded from backups | independent design (plan 5.2, ADR 0001) | P2.1 |
+| A foreground service with an ongoing notification keeps the HA connection alive, holds a Wi-Fi wake lock, and starts on boot after one manual launch | F-KSK-09 | P2.1 |
+| Diagnostic state reported to HA while connected: battery level, charging, network type, Wi-Fi signal strength, app version | F-HA-05, F-HA-09 | P2.1 |
+| A credential revoked in HA returns the tablet to its pairing screen | independent design (ADR 0001 item 2) | P2.1 |

@@ -10,6 +10,7 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -152,21 +153,25 @@ class TabulaService : Service() {
             )
             val events = object : TlpClient.Events {
                 override fun onRegistered(result: net.lockney.tabula.core.tlp.RegisterResultData) {
+                    Log.i(TAG, "registered with HA device ${result.haDeviceId}")
                     TabulaStatus.phase.value = Phase.CONNECTED
                 }
 
                 override fun onDisconnected() {
+                    Log.i(TAG, "connection lost; reconnecting with backoff")
                     if (TabulaStatus.phase.value == Phase.CONNECTED) {
                         TabulaStatus.phase.value = Phase.CONNECTING
                     }
                 }
 
                 override fun onRevoked() {
+                    Log.w(TAG, "credential revoked in HA; back to pairing")
                     store.clearCredential()
                     TabulaStatus.phase.value = Phase.REVOKED
                 }
 
                 override fun onRejected(code: String, message: String) {
+                    Log.w(TAG, "registration refused: $code: $message")
                     TabulaStatus.rejection.value = code to message
                     TabulaStatus.phase.value = Phase.REJECTED
                 }
@@ -205,6 +210,7 @@ class TabulaService : Service() {
         observing = true
         scope.launch {
             TabulaStatus.phase.collect { phase ->
+                Log.i(TAG, "phase: $phase")
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 manager.notify(NOTIFICATION_ID, notification(phaseText(phase)))
             }
@@ -247,6 +253,7 @@ class TabulaService : Service() {
         const val ACTION_PAIR = "net.lockney.tabula.action.PAIR"
         const val ACTION_UNPAIR = "net.lockney.tabula.action.UNPAIR"
         const val EXTRA_HA_URL = "ha_url"
+        private const val TAG = "TabulaService"
         private const val CHANNEL_ID = "tabula_connection"
         private const val NOTIFICATION_ID = 1
 
