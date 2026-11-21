@@ -1,6 +1,6 @@
 # Tabula build entry point. CI runs these same targets; see docs/DEVELOPMENT.md.
-# Component targets (integration, mockdevice, android, panel) are added by the
-# packets that create those components.
+# Component targets (integration, android, panel) are added by the packets that
+# create those components.
 
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
@@ -48,6 +48,17 @@ fmt: ## Apply formatting and auto-fixable lint
 .PHONY: test
 test: ## Run tests
 	$(UV) run pytest
+
+# --- Mock device ---
+
+.PHONY: mock-test
+mock-test: ## Mock device unit tests and conformance suite (also part of make test)
+	$(UV) run pytest mockdevice/tests mockdevice/conformance
+
+.PHONY: conformance
+conformance: ## Conformance suite against TABULA_HA_URL with a paired TABULA_STORE
+	@test -n "$${TABULA_HA_URL:-}" || { echo "set TABULA_HA_URL and TABULA_STORE" >&2; exit 2; }
+	$(UV) run pytest mockdevice/conformance
 
 # --- Protocol ---
 
