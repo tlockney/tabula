@@ -381,6 +381,12 @@ screenshot survive). Two steps are visual and the script stops to ask:
 whether the entity shows the placeholder, and whether it shows the
 current screen. Paste the whole output into the packet Result.
 
+Fire OS note (review): the panel-on ask checks the capture is not blank.
+Some Fire OS WebView builds draw their hardware-accelerated layers to a
+blank bitmap via `View.draw` (`DashboardView.capture`); if the check
+reports a blank image, the fallback is `PixelCopy` on the window — note
+what you saw in the packet Result either way.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:

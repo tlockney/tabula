@@ -26,8 +26,10 @@ bundled in the integration as a fixed JPEG (`screenshot_placeholder.jpg`,
 800x480, quality 80). It is never confused with a real capture: it is a
 drawn image, not a frame of the display. The placeholder serves for every
 "no capture yet" state — never paired with an upload, screen off, capture
-failed, HA restarted and the media file is gone — because from the
-integration's side these are indistinguishable: there is no stored image.
+failed, HA restarted and the stored file is gone — because from the
+integration's side these are indistinguishable: there is no stored image
+(the store lives in `config/tabula/screenshots`, outside HA's media dir,
+so captures stay out of the media browser).
 
 The device side decides the difference: with the screen off it captures
 nothing and still ACKs the screenshot command (F-MGT-07), so HA never

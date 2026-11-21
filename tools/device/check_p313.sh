@@ -161,7 +161,9 @@ echo "-- last-capture sensor: $capture_time (was $capture_before)"
 [[ "$(ha_state "$TABULA_IMAGE")" == "$capture_time" ]] \
     || fail "the image entity's state ($(ha_state "$TABULA_IMAGE") != the sensor's $capture_time)"
 echo "-- the image entity's state matches the sensor"
-ask "In HA: does the image entity show the tablet's current screen?"
+# Some Fire OS WebView builds draw a blank bitmap (the Fire OS note in
+# DEVICE.md and DashboardView.capture): this ask is the check for it.
+ask "In HA: does the image entity show the tablet's current screen, drawn in full - not blank, not all-black, not partially missing UI?"
 
 step "4. ordinary image fetches leave the timestamp alone (F-HA-12)"
 echo "-- (the ask above fetched the image; the timestamp must not have moved)"
