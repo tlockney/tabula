@@ -1,4 +1,4 @@
-"""Sensors (plan 5.5): battery, connectivity, current page, next screensaver, app version, illuminance."""
+"""Sensors (plan 5.5): battery, current page, next screensaver, app version, illuminance."""
 
 from __future__ import annotations
 
@@ -14,7 +14,12 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import LIGHT_LUX, PERCENTAGE, SIGNAL_STRENGTH_DECIBELS_MILLIWATT, EntityCategory
+from homeassistant.const import (
+    LIGHT_LUX,
+    PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util

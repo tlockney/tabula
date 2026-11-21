@@ -80,7 +80,6 @@ async def test_illuminance_round_trip(server, store, start):
     await wait_for(lambda: record.state["illuminance"] == 64.0)
 
 
-
 @pytest.mark.parametrize(
     ("command", "args", "check"),
     [
