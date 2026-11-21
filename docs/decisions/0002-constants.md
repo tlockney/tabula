@@ -176,6 +176,7 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | website.url | empty or `http(s)://`, 0–4096 chars, default "" | A WebView loads http(s); 4096 matches `play_media.url` (ADR 0002). |
 | website.zoom | 25–500 %, default 100 | The range the WebView accepts without layout breaking; 100 is no zoom. |
 | website.double_tap_dismiss | default false | Single-tap dismissal is the default everywhere (F-SSV-04); double-tap is the option (F-SSV-14). |
+| brightness_enabled | default true | The switch over the separate screensaver level (F-SSV-17, an HA switch since P3.2). On by default because Phases 1–2 always applied `screensaver.brightness`; a v1 document upgrades without a behavior change. |
 | dim_brightness | 0–100 %, default 10 | Dim mode's own level (F-SSV-07), replacing its borrow of `screensaver.brightness` (ADR 0013 item 4). 10 % keeps a dashboard outline visible in a dim room. |
 | pixel_shift.enabled / interval / amplitude | default false / 10–86400 s, default 300 / 1–64 px, default 4 | Image-retention shift (F-SSV-22). Five minutes moves content often enough to prevent burn-in and rarely enough to be invisible; 4 px is under what an across-the-room viewer resolves. |
 | fade.enabled | default false | In/out fade (F-SSV-23) as an option; its duration is P3.14's to add with its own reasoning if it needs one. |

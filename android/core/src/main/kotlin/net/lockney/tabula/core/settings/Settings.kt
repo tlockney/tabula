@@ -366,6 +366,8 @@ data class Screensaver(
     val mode: ScreensaverMode = ScreensaverMode.Clock,
     /** Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Dim and black have their own levels (dim_brightness; black is always lowest). Default per ADR 0002. */
     val brightness: Int = 20,
+    /** Whether the separate screensaver backlight level (brightness) applies (F-SSV-17). Off: the screensaver shows at the panel's current level. Dim and black keep their own levels either way. Default per ADR 0002 (settings v2). */
+    @SerialName("brightness_enabled") val brightnessEnabled: Boolean = true,
     /** Dim mode's own backlight level, percent (F-SSV-07): the dashboard stays visible at a low level. Dim no longer borrows screensaver.brightness (ADR 0013 item 4). Default per ADR 0002 (settings v2). */
     @SerialName("dim_brightness") val dimBrightness: Int = 10,
     /** Clock mode (F-SSV-08, F-SSV-09): face, typography, layout, colors and the optional background image. Fonts name system families only; nothing is bundled in this phase. */

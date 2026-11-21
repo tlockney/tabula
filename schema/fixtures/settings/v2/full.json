@@ -15,6 +15,7 @@
     "idle_timeout": 600,
     "mode": "photos",
     "brightness": 30,
+    "brightness_enabled": false,
     "dim_brightness": 7,
     "clock": {
       "face": "analog",

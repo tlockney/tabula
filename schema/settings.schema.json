@@ -122,6 +122,13 @@
           "x-tabula-feature": "F-SSV-17",
           "description": "Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Dim and black have their own levels (dim_brightness; black is always lowest). Default per ADR 0002."
         },
+        "brightness_enabled": {
+          "type": "boolean",
+          "default": true,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-17",
+          "description": "Whether the separate screensaver backlight level (brightness) applies (F-SSV-17). Off: the screensaver shows at the panel's current level. Dim and black keep their own levels either way. Default per ADR 0002 (settings v2)."
+        },
         "dim_brightness": {
           "type": "integer",
           "minimum": 0,

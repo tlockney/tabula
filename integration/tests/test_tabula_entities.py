@@ -14,7 +14,10 @@ import pytest
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
 from custom_components.tabula.entity import TabulaEntity
+from custom_components.tabula.number import IDLE_TIMEOUT
 from custom_components.tabula.sensor import _timestamp
+from custom_components.tabula.switch import SETTING_SWITCHES
+from custom_components.tabula.text import CLOCK_BACKGROUND
 from helpers import Paired, frame_fixture, pair_device, ws_connect
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
@@ -23,6 +26,8 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 ALL_CAPS = frame_fixture("register")["capabilities"]
+# Settings entities (P3.2) are not tied to the connection (ADR 0015).
+SETTING_ENTITY_KEYS = {d.key for d in (*SETTING_SWITCHES, IDLE_TIMEOUT, CLOCK_BACKGROUND)}
 
 
 def entity_id(hass: HomeAssistant, platform: str, paired: Paired, key: str) -> str | None:
@@ -122,6 +127,8 @@ async def test_disconnect_unavailable_reconnect_restores(hass_setup, server, hub
         if e.unique_id.startswith(paired.device_id)
         and e.disabled_by is None
         and not e.unique_id.endswith("_connected")
+        # settings entities stay available offline (ADR 0015; test_tabula_setting_entities.py)
+        and e.unique_id.removeprefix(f"{paired.device_id}_") not in SETTING_ENTITY_KEYS
     ]
     assert len(ids) >= 10
 

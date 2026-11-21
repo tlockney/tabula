@@ -22,6 +22,13 @@ capability "covered by none", so those entities always exist):
 | notifications | (none) | notify |
 | navigation | current_page | sensor |
 | none | network, wifi_rssi, app_version | sensors; reload, restart and clear-cache buttons |
+
+Settings entities (P3.2, ADR 0015) are the exception to capability gating:
+they show and write a leaf of HA's own settings document, which exists for
+every paired device, so they are gated by the settings schema version the
+device registered with instead (a key its schema does not know never reaches
+it, plan 5.4). They stay available while the device is offline: the write is
+stored and reaches the device when it next registers.
 """
 
 from __future__ import annotations
@@ -40,7 +47,13 @@ from homeassistant.helpers.entity import Entity, EntityDescription
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DeviceRecord, TabulaHub
-from .const import DOMAIN, SIGNAL_CAPABILITIES, SIGNAL_DEVICE_UPDATE
+from .const import (
+    DOMAIN,
+    SCHEMA_VERSION,
+    SIGNAL_CAPABILITIES,
+    SIGNAL_DEVICE_UPDATE,
+    SIGNAL_SETTINGS_UPDATE,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -54,6 +67,9 @@ class TabulaEntityDescription(EntityDescription):
 
     capabilities: frozenset[str] = frozenset()
     state_keys: frozenset[str] = frozenset()
+    # Settings entities (P3.2): the flat settings key the entity shows and
+    # writes. Set, it replaces capability gating with schema-version gating.
+    setting: str | None = None
 
 
 class TabulaEntity(Entity):
@@ -160,8 +176,59 @@ class TabulaEntity(Entity):
             ) from e
 
 
+class TabulaSettingEntity(TabulaEntity):
+    """A settings leaf as an entity (P3.2, F-HA-11; ADR 0015).
+
+    The value is HA's stored copy (plan 5.6: HA is authoritative), refreshed
+    on every save, whoever made it - this entity, the options flow or a
+    service. A write goes through the settings store as one revision and one
+    push (``async_set_setting``). Available while the device is paired, even
+    offline: the stored write reconciles at its next registration.
+    """
+
+    @property
+    def setting_value(self) -> Any:
+        assert self.entity_description.setting is not None
+        return self.hub.settings.value(self.device_id, self.entity_description.setting)
+
+    @property
+    def available(self) -> bool:
+        return self.record is not None
+
+    async def async_write_setting(self, value: Any) -> None:
+        assert self.entity_description.setting is not None
+        await self.async_set_setting(self.entity_description.setting, value)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_SETTINGS_UPDATE.format(self.device_id),
+                self.async_write_ha_state,
+            )
+        )
+
+    @callback
+    def _handle_update(self, keys: set[str] | None) -> None:
+        # Device state never changes a setting's value; only connection
+        # changes (keys None) can matter, and only to device info.
+        if keys is None:
+            self.async_write_ha_state()
+
+
 def declared(record: DeviceRecord, description: TabulaEntityDescription) -> bool:
-    """The device declared a capability that covers this entity (or none is needed)."""
+    """The device can have this entity.
+
+    Capability-gated entities need a covering capability (or none). Settings
+    entities need the device's settings schema to know their key (ADR 0015);
+    a device that never registered is taken to speak the current one.
+    """
+    if description.setting is not None:
+        from .settings import SettingsSchema
+
+        version = record.schema_version or SCHEMA_VERSION
+        return SettingsSchema().since(description.setting) <= version
     caps = description.capabilities
     return not caps or bool(caps & set(record.capabilities))
 

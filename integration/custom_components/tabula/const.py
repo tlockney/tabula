@@ -58,6 +58,8 @@ LOCAL_ONLY = "local_only"  # hub option: False creates device users reachable re
 # device_id).
 SIGNAL_CAPABILITIES = f"{DOMAIN}_capabilities"
 SIGNAL_DEVICE_UPDATE = f"{DOMAIN}_device_update_{{}}"
+# A device's stored settings document changed (P3.2: settings entities refresh).
+SIGNAL_SETTINGS_UPDATE = f"{DOMAIN}_settings_update_{{}}"
 
 # hass.data keys
 DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
