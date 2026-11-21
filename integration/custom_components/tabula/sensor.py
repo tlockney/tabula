@@ -24,7 +24,9 @@ from .entity import TabulaEntity, TabulaEntityDescription, setup_platform
 
 
 def _timestamp(value: Any) -> datetime | None:
-    return dt_util.parse_datetime(value) if isinstance(value, str) else None
+    """RFC 3339 to an aware datetime; a value without an offset reads as unknown."""
+    parsed = dt_util.parse_datetime(value) if isinstance(value, str) else None
+    return parsed if parsed is not None and parsed.tzinfo is not None else None
 
 
 @dataclass(frozen=True, kw_only=True)

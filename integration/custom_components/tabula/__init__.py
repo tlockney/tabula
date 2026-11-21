@@ -270,17 +270,28 @@ class TabulaHub:
         """
         if pending.confirmed_token is None:
             return
-        self.hass.async_create_task(self._revoke_unclaimed(pending))
+        self.hass.async_create_task(self.revoke_unclaimed(pending))
 
-    async def _revoke_unclaimed(self, pending: PendingPairing) -> None:
-        """A confirmed-but-unclaimed attempt must leave nothing behind."""
+    async def revoke_unclaimed(self, pending: PendingPairing) -> None:
+        """A confirmed-but-unclaimed attempt must leave nothing behind.
+
+        Idempotent, and it only touches the record this attempt created: a
+        later successful pairing of the same device has another token.
+        """
         record = self.devices.get(pending.device_id)
-        if record is not None:
-            # Revoking first pops the record, so the device-registry remove
-            # event below finds no record and does not revoke a second time.
-            await self.revoke_device(record)
-        if pending.confirmed_ha_device_id is not None:
-            dr.async_get(self.hass).async_remove_device(pending.confirmed_ha_device_id)
+        token = (
+            self.hass.auth.async_get_refresh_token_by_token(pending.confirmed_token)
+            if pending.confirmed_token is not None
+            else None
+        )
+        if record is None or token is None or record.refresh_token_id != token.id:
+            return
+        # Revoking first pops the record, so the device-registry remove event
+        # below finds no record and does not revoke a second time.
+        await self.revoke_device(record)
+        registry = dr.async_get(self.hass)
+        if registry.async_get(record.ha_device_id) is not None:
+            registry.async_remove_device(record.ha_device_id)
 
     @callback
     def schedule_pending_expiry(self, device_id: str) -> None:
@@ -387,9 +398,11 @@ class TabulaHub:
         record.update_from_register(frame, self.tlp.known_capabilities)
         self._update_device_registry(record)
         if set(record.capabilities) != previous:
-            # Persist them and let the platforms add or remove entities.
             self._persist()
-            async_dispatcher_send(self.hass, SIGNAL_CAPABILITIES, record)
+        # Every registration syncs entities (idempotent): a capability gained
+        # or dropped, a re-paired device, or a first register with no
+        # capabilities, which still gets its always-present entities.
+        async_dispatcher_send(self.hass, SIGNAL_CAPABILITIES, record)
         self.notify_update(record)
         result = {
             "ha_device_id": record.ha_device_id,

@@ -13,10 +13,12 @@ import time
 import pytest
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
-from helpers import Paired, frame_fixture, ws_connect
+from custom_components.tabula.sensor import _timestamp
+from helpers import Paired, frame_fixture, pair_device, ws_connect
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 ALL_CAPS = frame_fixture("register")["capabilities"]
@@ -249,3 +251,56 @@ async def test_connectivity_sensor_reads_off_when_disconnected(
     assert hass_setup.states.get(eid).state == "on"
     await client.close()
     await wait_state(hass_setup, eid, lambda s: s.state == "off")
+
+
+async def test_repaired_device_entities_come_back(hass_setup, server, hub, session, paired):
+    """Re-pairing replaces the device record; the same entities follow the new one."""
+    client = await ws_connect(session, server, paired.refresh_token)
+    await register(client, paired)
+    await hass_setup.async_block_till_done()
+    eid = entity_id(hass_setup, "light", paired, "screen")
+    await client.close()
+    await wait_state(hass_setup, eid, lambda s: s.state == STATE_UNAVAILABLE)
+
+    again = await pair_device(hass_setup, server, paired.device_id)
+    client = await ws_connect(session, server, again.refresh_token)
+    await register(client, again)
+    await wait_state(hass_setup, eid, lambda s: s.state == "on")
+    await client.close()
+
+
+async def test_deleted_then_repaired_device_gets_entities(hass_setup, server, hub, session, paired):
+    client = await ws_connect(session, server, paired.refresh_token)
+    await register(client, paired)
+    await hass_setup.async_block_till_done()
+    await client.close()
+
+    dr.async_get(hass_setup).async_remove_device(paired.ha_device_id)
+    await hass_setup.async_block_till_done()
+    assert entity_id(hass_setup, "light", paired, "screen") is None
+
+    again = await pair_device(hass_setup, server, paired.device_id)
+    client = await ws_connect(session, server, again.refresh_token)
+    await register(client, again)
+    await hass_setup.async_block_till_done()
+    eid = entity_id(hass_setup, "light", again, "screen")
+    assert eid is not None
+    assert hass_setup.states.get(eid).state == "on"
+    await client.close()
+
+
+async def test_no_capabilities_still_gets_always_present_entities(
+    hass_setup, server, hub, session, paired
+):
+    client = await ws_connect(session, server, paired.refresh_token)
+    await register(client, paired, [])
+    await hass_setup.async_block_till_done()
+    assert entity_id(hass_setup, "button", paired, "reload") is not None
+    assert entity_id(hass_setup, "binary_sensor", paired, "connected") is not None
+    assert entity_id(hass_setup, "light", paired, "screen") is None
+    await client.close()
+
+
+def test_timestamp_without_offset_is_unknown():
+    assert _timestamp("2026-11-21T14:08:12") is None
+    assert _timestamp("2026-11-21T14:08:12Z") is not None

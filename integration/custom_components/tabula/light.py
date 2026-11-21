@@ -35,7 +35,7 @@ class TabulaScreenLight(TabulaEntity, LightEntity):
 
     @property
     def _dimmable(self) -> bool:
-        return "brightness" in self.record.capabilities
+        return "brightness" in self.capabilities
 
     @property
     def supported_color_modes(self) -> set[ColorMode]:

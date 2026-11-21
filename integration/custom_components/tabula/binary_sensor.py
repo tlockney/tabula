@@ -41,7 +41,7 @@ class TabulaConnected(TabulaEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        return self.record.connected
+        return self.connected
 
 
 class TabulaCharging(TabulaEntity, BinarySensorEntity):

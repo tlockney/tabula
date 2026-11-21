@@ -67,32 +67,58 @@ class TabulaEntity(Entity):
         self, hub: TabulaHub, record: DeviceRecord, description: TabulaEntityDescription
     ) -> None:
         self.hub = hub
-        self.record = record
+        self.device_id = record.device_id
         self.entity_description = description
         self._attr_unique_id = f"{record.device_id}_{description.key}"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, record.device_id)})
+        # Set by setup_platform: forget this entity when it is removed.
+        self.on_removed: Callable[[], None] | None = None
+
+    @property
+    def record(self) -> DeviceRecord | None:
+        """The device's current record, looked up each time.
+
+        Re-pairing replaces the record object for the same device_id, so an
+        entity never keeps one.
+        """
+        return self.hub.devices.get(self.device_id)
+
+    @property
+    def capabilities(self) -> set[str]:
+        record = self.record
+        return set(record.capabilities) if record is not None else set()
 
     @property
     def device_state(self) -> dict[str, Any]:
-        """The tablet's last known state keys."""
-        return self.record.state
+        """The tablet's last known state keys (empty while unpaired)."""
+        record = self.record
+        return record.state if record is not None else {}
+
+    @property
+    def connected(self) -> bool:
+        record = self.record
+        return record is not None and record.connected
 
     @property
     def available(self) -> bool:
         """Connected, and the capability is still declared on this connection."""
         caps = self.entity_description.capabilities
-        if not self.record.connected:
+        if not self.connected:
             return False
-        return not caps or bool(caps & set(self.record.capabilities))
+        return not caps or bool(caps & self.capabilities)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
-                SIGNAL_DEVICE_UPDATE.format(self.record.device_id),
+                SIGNAL_DEVICE_UPDATE.format(self.device_id),
                 self._handle_update,
             )
         )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self.on_removed is not None:
+            self.on_removed()
 
     @callback
     def _handle_update(self, keys: set[str] | None) -> None:
@@ -130,9 +156,18 @@ def setup_platform(
     Returns the dispatcher unsubscribe; the caller registers it on the entry.
     """
     descriptions = tuple(descriptions)
-    added: set[str] = set()
+    # unique_id -> live entity. An entry goes when its entity is removed (a
+    # dropped capability, a deleted device), so a later re-pair adds it again.
+    added: dict[str, TabulaEntity] = {}
     # Only valid during platform setup, so read it now for later removals.
     platform = entity_platform.async_get_current_platform().domain
+
+    def _forget(unique_id: str, entity: TabulaEntity) -> Callable[[], None]:
+        def _remove() -> None:
+            if added.get(unique_id) is entity:
+                del added[unique_id]
+
+        return _remove
 
     @callback
     def _sync(record: DeviceRecord) -> None:
@@ -142,10 +177,11 @@ def setup_platform(
             unique_id = f"{record.device_id}_{description.key}"
             if declared(record, description):
                 if unique_id not in added:
-                    added.add(unique_id)
-                    new.append(factory(hub, record, description))
+                    entity = factory(hub, record, description)
+                    entity.on_removed = _forget(unique_id, entity)
+                    added[unique_id] = entity
+                    new.append(entity)
                 continue
-            added.discard(unique_id)
             if entity_id := registry.async_get_entity_id(platform, DOMAIN, unique_id):
                 registry.async_remove(entity_id)
         if new:
