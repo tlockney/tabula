@@ -80,4 +80,33 @@ class TokenRefresherTest {
         assertEquals("token-2", tokens.forceRefresh("http://ha:8123") { "refresh-1" })
         assertEquals(2, calls)
     }
+
+    @Test
+    fun `accessWithRemaining reports the cached token's remaining life`() = runTest {
+        var calls = 0
+        val (tokens, http) = refresher { _, _ ->
+            calls++
+            granted("token-$calls")
+        }
+        nowMs = 60_000
+        val access = tokens.accessWithRemaining("http://ha:8123", { "refresh-1" })
+        assertEquals("token-1", access.token)
+        // granted just now with 1800s life: the full grant remains, one call
+        assertEquals(1800, access.remainingSeconds)
+        assertEquals(1, calls)
+        // a still-fresh token reports its shrinking remaining life
+        nowMs += 100_000
+        val cached = tokens.accessWithRemaining("http://ha:8123", { "refresh-1" })
+        assertEquals("token-1", cached.token)
+        assertEquals(1700, cached.remainingSeconds)
+        assertEquals(1, calls)
+        // past the refresh margin the token is renewed first, so the answer
+        // never carries a token at (or past) the wire
+        nowMs = 60_000 + 1800_000
+        val renewed = tokens.accessWithRemaining("http://ha:8123", { "refresh-1" })
+        assertEquals("token-2", renewed.token)
+        assertEquals(1800, renewed.remainingSeconds)
+        assertEquals(2, calls)
+        assertEquals(2, http.requests.size)
+    }
 }
