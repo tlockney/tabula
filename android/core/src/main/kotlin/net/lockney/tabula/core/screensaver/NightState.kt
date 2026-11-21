@@ -10,24 +10,38 @@ package net.lockney.tabula.core.screensaver
  * so those packets compile against it before the hardware-dependent sensor
  * work exists.
  *
- * Plain JVM — no Android types — so the default is JVM-testable. `isNight`
- * is a property, not an event stream: consumers re-render on their own
- * invalidation, and P3.4 may add change notification as an extension if
- * measurement shows it needed.
+ * Observable, not polled: consumers register a [Listener] and re-render on
+ * each transition instead of re-reading the flag every frame. android/core
+ * has no coroutine dependency, so the observation seam is a plain listener
+ * registration returning a removal function, matching the module's style.
+ * Plain JVM — no Android types — so the default is JVM-testable.
  */
 interface NightState {
     /** True while night mode is showing; false otherwise. */
     val isNight: Boolean
 
+    /**
+     * Register for night-mode transitions; the returned function removes the
+     * listener. A listener sees the new value on every transition, on the
+     * thread that made the change (ordering is the implementer's).
+     */
+    fun addListener(listener: Listener): () -> Unit
+
+    /** Called with the new [NightState.isNight] on every night-mode transition. */
+    fun interface Listener {
+        fun onNightChanged(isNight: Boolean)
+    }
+
     companion object {
         /**
          * The default before P3.4: night mode never engages. Consumers render
-         * their day colors against it, which is the honest behavior when the
-         * night-mode flag is not implemented (or the device has no light
-         * sensor, F-SSV-10).
+         * their day colors against it, and its listeners never fire — the
+         * honest behavior when the night-mode flag is not implemented (or the
+         * device has no light sensor, F-SSV-10).
          */
         val NEVER: NightState = object : NightState {
             override val isNight: Boolean = false
+            override fun addListener(listener: Listener) = {}
         }
     }
 }

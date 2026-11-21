@@ -10,14 +10,50 @@ device events onto the HA bus (plan 5.5).
 from __future__ import annotations
 
 import asyncio
+import json
+from functools import cache
+from pathlib import Path
 
 import aiohttp
 from custom_components.tabula import TabulaHub
 from homeassistant.core import Event, callback
 from homeassistant.helpers import entity_registry as er
+from jsonschema import Draft202012Validator
 from mockdevice.client import TLPClient
 from mockdevice.device import ALL_CAPABILITIES, MockDevice
 from mockdevice.store import DeviceStore
+from referencing import Registry, Resource
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FROZEN_V1_SCHEMA = REPO_ROOT / "schema" / "settings.schema.v1.json"
+
+
+@cache
+def _v1_validator() -> Draft202012Validator:
+    """Strict validation against the frozen v1 settings schema."""
+    doc = json.loads(FROZEN_V1_SCHEMA.read_text(encoding="utf-8"))
+    registry = Registry().with_resource(doc["$id"], Resource.from_contents(doc))
+    return Draft202012Validator(
+        doc, registry=registry, format_checker=Draft202012Validator.FORMAT_CHECKER
+    )
+
+
+def assert_no_v2_keys_reached_the_device(device: MockDevice) -> None:
+    """The paired mock device stays on settings schema 1 (mockdevice's
+    SCHEMA_VERSION), so every set_settings it received must be a translated
+    v1 document: nothing it was handed may carry a v2-only key, nested ones
+    included (plan 5.4 - the device's strict codec would reject them).
+    """
+    if device.settings_revision == 0:
+        return
+    errors = sorted(_v1_validator().iter_errors(device.settings), key=lambda e: list(e.path))
+    assert not errors, [
+        "the schema-1 device received a v2-only key: "
+        + "/".join(map(str, e.path))
+        + ": "
+        + e.message
+        for e in errors
+    ]
 
 
 async def _run_client(client: TLPClient) -> None:
@@ -119,6 +155,7 @@ async def test_entity_write_goes_through_the_settings_store(
                 break
             await asyncio.sleep(0.05)
         assert device.settings["screen"]["keep_screen_on"] is True
+        assert_no_v2_keys_reached_the_device(device)
 
         stored = runtime.settings.get(paired.device_id)
         assert stored is not None
@@ -174,6 +211,7 @@ async def test_options_flow_save_reaches_the_device(
         assert device.settings["screen"]["brightness"] == 23
         assert device.settings["identity"]["name"] == "Kitchen Tablet"
         assert device.settings_revision == 1
+        assert_no_v2_keys_reached_the_device(device)
 
         stored = runtime.settings.get(paired.device_id)
         assert stored is not None
@@ -212,6 +250,7 @@ async def test_subscription_reconciles_revision_drift(
             await asyncio.sleep(0.05)
         assert device.settings_revision == 1
         assert device.settings["screen"]["brightness"] == 77
+        assert_no_v2_keys_reached_the_device(device)
         record = runtime.devices[paired.device_id]
         assert record.current is not None
         await _until(lambda: record.current.reported_settings_revision == 1)
@@ -236,6 +275,7 @@ async def test_device_ahead_of_ha_still_converges(
             await asyncio.sleep(0.05)
         assert device.settings_revision == 1
         assert device.settings["screen"]["brightness"] == 55
+        assert_no_v2_keys_reached_the_device(device)
     finally:
         client.stop()
         await asyncio.wait_for(task, 10)
