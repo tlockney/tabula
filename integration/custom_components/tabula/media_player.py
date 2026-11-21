@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+import yarl
+from homeassistant.components import media_source
 from homeassistant.components.media_player import (
+    ATTR_MEDIA_ANNOUNCE,
+    ATTR_MEDIA_EXTRA,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
     MediaType,
+    async_process_play_media_url,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -59,7 +64,31 @@ class TabulaSpeaker(TabulaEntity, MediaPlayerEntity):
     async def async_play_media(
         self, media_type: MediaType | str, media_id: str, **kwargs: Any
     ) -> None:
-        await self.async_command("play_media", {"url": media_id, "media_type": str(media_type)})
+        """Play a URL or media-source item, tts.speak included (ADR 0001 item 5).
+
+        A media-source ID (tts.speak sends ``media-source://tts/...``) resolves
+        to an HA path; HA paths that need auth are signed. HA-hosted media goes
+        out as a ``/`` path the tablet resolves against the base URL it already
+        reaches HA on (PROTOCOL.md 4.5, ADR 0010), so no internal or external
+        URL needs configuring. The tablet never sends its token for it.
+        """
+        if media_source.is_media_source_id(media_id):
+            item = await media_source.async_resolve_media(self.hass, media_id, self.entity_id)
+            media_id = item.url
+        # yarl normalises what the schema is strict about (an empty path
+        # becomes "/", spaces are quoted) without changing what is fetched.
+        url = str(
+            yarl.URL(async_process_play_media_url(self.hass, media_id, allow_relative_url=True))
+        )
+        args: dict[str, Any] = {
+            "url": url,
+            "media_type": "music" if media_type == MediaType.MUSIC else "audio",
+            "announce": bool(kwargs.get(ATTR_MEDIA_ANNOUNCE)),
+        }
+        volume = (kwargs.get(ATTR_MEDIA_EXTRA) or {}).get("volume")
+        if isinstance(volume, int) and not isinstance(volume, bool) and 0 <= volume <= 100:
+            args["volume"] = volume
+        await self.async_command("play_media", args)
 
     async def async_media_play(self) -> None:
         await self.async_command("media_control", {"action": "resume"})

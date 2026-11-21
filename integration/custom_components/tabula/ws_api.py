@@ -141,10 +141,7 @@ def ws_result(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, 
         return
     if (frame := _frame(hub, connection, msg, "command_result")) is None:
         return
-    assert session.device is not None
-    future = hub.result_futures.get((session.device.device_id, frame["command_id"]))
-    if future is not None and not future.done():
-        future.set_result(frame)
+    hub.settle(session, frame)
     connection.send_result(msg["id"])
 
 

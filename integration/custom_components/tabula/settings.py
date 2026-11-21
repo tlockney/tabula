@@ -30,11 +30,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-from . import commands, migrations
+from . import migrations
 from .const import DOMAIN, SCHEMA_VERSION
 
 if TYPE_CHECKING:
@@ -293,7 +294,7 @@ async def async_push_settings(hub: TabulaHub, record: DeviceRecord) -> int | Non
     """Push the stored document to the device and await the ACK (4.5).
 
     Returns the revision the device applied, or None when HA has no document.
-    Raises commands.CommandError when the device cannot take the push; the
+    Raises HomeAssistantError when the device cannot take the push; the
     document stays stored either way and the next registration reconciles
     (schedule_settings_push).
     """
@@ -307,17 +308,18 @@ async def async_push_settings(hub: TabulaHub, record: DeviceRecord) -> int | Non
         if target == SCHEMA_VERSION
         else migrations.translate(stored.settings, target)
     )
-    result = await commands.async_send_command(
-        hub,
+    session = record.current
+    data = await hub.async_command(
         record,
         "set_settings",
         {"revision": stored.revision, "schema_version": target, "settings": document},
     )
-    applied = (result.get("data") or {}).get("revision")
+    applied = data.get("revision")
     # The ACK is the device's new reported revision (PROTOCOL.md 4.6): the
     # next drift check compares against it, not the register-time report.
-    if applied is not None and record.current is not None:
-        record.current.reported_settings_revision = applied
+    # Only on the session that took it: a reconnect mid-push reports its own.
+    if applied is not None and session is not None and record.current is session:
+        session.reported_settings_revision = applied
     return applied
 
 
@@ -330,7 +332,8 @@ async def _push_task(hub: TabulaHub, record: DeviceRecord) -> None:
     """
     try:
         applied = await async_push_settings(hub, record)
-    except commands.CommandError as e:
+    except (HomeAssistantError, ValueError, RuntimeError) as e:
+        # ValueError/RuntimeError: no translation down to the device's schema.
         _LOGGER.warning(
             "Settings push to %s failed (%s); it will be retried at the next registration",
             record.name or record.device_id[:8],

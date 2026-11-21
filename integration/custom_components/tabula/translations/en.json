@@ -150,8 +150,120 @@
     }
   },
   "exceptions": {
-    "commands_unavailable": {
-      "message": "Tabula cannot send the {command} command to the tablet yet. Commands arrive in a later release."
+    "command_offline": {
+      "message": "The tablet is not connected, so the {command} command was not sent."
+    },
+    "command_unsupported": {
+      "message": "The tablet does not support the {command} command."
+    },
+    "command_invalid": {
+      "message": "The {command} command has an invalid value at {problem}."
+    },
+    "command_timeout": {
+      "message": "The tablet did not answer the {command} command in time."
+    },
+    "command_disconnected": {
+      "message": "The tablet disconnected before answering the {command} command."
+    },
+    "command_failed": {
+      "message": "The tablet refused the {command} command ({code}): {message}"
+    },
+    "no_target_devices": {
+      "message": "The action did not target any paired Tabula tablet."
+    },
+    "hub_not_loaded": {
+      "message": "The Tabula hub is not loaded."
+    },
+    "invalid_screensaver_mode": {
+      "message": "Unknown screensaver mode {mode}. Valid modes: {modes}."
+    },
+    "setting_invalid": {
+      "message": "The {setting} setting was not changed: {problem}"
+    },
+    "command_too_large": {
+      "message": "The {command} command is too large to send to the tablet."
+    }
+  },
+  "services": {
+    "notify": {
+      "name": "Show notification",
+      "description": "Shows a notification card on the targeted tablets.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "Text of the card. Limited Markdown is rendered."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Optional title above the message."
+        },
+        "level": {
+          "name": "Level",
+          "description": "Severity: sets the stock icon and accent color."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Seconds before the card goes away; 0 keeps it until dismissed. Omit to use the tablet's setting."
+        },
+        "icon": {
+          "name": "Icon",
+          "description": "Material Design icon that replaces the level's icon."
+        },
+        "chime": {
+          "name": "Chime",
+          "description": "Play the notification sound."
+        },
+        "tag": {
+          "name": "Tag",
+          "description": "A new notification with the same tag replaces the old one."
+        }
+      }
+    },
+    "navigate": {
+      "name": "Navigate",
+      "description": "Opens a Home Assistant frontend path on the targeted tablets.",
+      "fields": {
+        "path": {
+          "name": "Path",
+          "description": "Frontend path starting with /, for example /lovelace/kitchen."
+        }
+      }
+    },
+    "screensaver": {
+      "name": "Screensaver",
+      "description": "Starts or stops the screensaver on the targeted tablets.",
+      "fields": {
+        "active": {
+          "name": "Active",
+          "description": "Start (on) or stop (off) the screensaver."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Screensaver to show when starting; omit to use the tablet's setting."
+        }
+      }
+    }
+  },
+  "selector": {
+    "level": {
+      "options": {
+        "info": "Info",
+        "success": "Success",
+        "warning": "Warning",
+        "error": "Error"
+      }
+    },
+    "screensaver_mode": {
+      "options": {
+        "clock": "Clock",
+        "weather": "Weather",
+        "photos": "Photos",
+        "website": "Website",
+        "dashboard": "Dashboard",
+        "calendar": "Calendar",
+        "dim": "Dim",
+        "black": "Black"
+      }
     }
   }
 }

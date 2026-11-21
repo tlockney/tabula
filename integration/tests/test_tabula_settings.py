@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 import custom_components.tabula as tabula_pkg
 import pytest
 from custom_components.tabula import DeviceRecord, DeviceSession, TabulaHub
-from custom_components.tabula.commands import DeviceNotConnected
 from custom_components.tabula.const import SCHEMA_VERSION
 from custom_components.tabula.settings import (
     SettingsError,
@@ -25,6 +24,7 @@ from custom_components.tabula.settings import (
     schedule_settings_push,
 )
 from helpers import uid
+from homeassistant.exceptions import HomeAssistantError
 
 REPO_SCHEMA = Path(__file__).resolve().parents[2] / "schema" / "settings.schema.json"
 BUNDLED_SCHEMA = Path(tabula_pkg.__file__).parent / "settings.schema.json"
@@ -211,7 +211,7 @@ async def test_push_offline_device_raises(hass_setup, hub, hass_storage):
     assert runtime is not None
     record = DeviceRecord(device_id=uid(), user_id="u", refresh_token_id="t", ha_device_id="h")
     await runtime.settings.async_save(record.device_id, {"screen": {"brightness": 1}})
-    with pytest.raises(DeviceNotConnected):
+    with pytest.raises(HomeAssistantError, match="not connected"):
         await async_push_settings(runtime, record)
 
 
@@ -248,7 +248,7 @@ async def test_push_sends_set_settings_and_takes_the_ack(hass_setup, hub, hass_s
 
     # Answer like the device: applied the revision, tabula/result (PROTOCOL.md 4.6).
     future = runtime.result_futures[(record.device_id, event["command_id"])]
-    future.set_result(
+    future.future.set_result(
         {
             "id": 9,
             "type": "tabula/result",

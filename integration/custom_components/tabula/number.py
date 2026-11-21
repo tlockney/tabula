@@ -10,7 +10,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TabulaHub
 from .entity import TabulaEntity, TabulaEntityDescription, setup_platform
-from .settings import async_set_setting
 
 SCREENSAVER_BRIGHTNESS = TabulaEntityDescription(
     key="screensaver_brightness",
@@ -35,7 +34,7 @@ class TabulaScreensaverBrightness(TabulaEntity, NumberEntity):
         return self.device_state.get("screensaver_brightness")
 
     async def async_set_native_value(self, value: float) -> None:
-        await async_set_setting(self.hub, self.device_id, "screensaver_brightness", round(value))
+        await self.async_set_setting("screensaver_brightness", round(value))
 
 
 async def async_setup_entry(

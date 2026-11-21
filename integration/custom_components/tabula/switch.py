@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TabulaHub
 from .entity import TabulaEntity, TabulaEntityDescription, setup_platform
-from .settings import async_set_setting
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -75,9 +74,7 @@ class TabulaSwitch(TabulaEntity, SwitchEntity):
             # the write goes through the HA-owned store, which bumps the
             # revision and pushes; a command would bypass HA's copy.
             assert self.entity_description.settings_key is not None
-            await async_set_setting(
-                self.hub, self.device_id, self.entity_description.settings_key, value
-            )
+            await self.async_set_setting(self.entity_description.settings_key, value)
 
 
 async def async_setup_entry(
