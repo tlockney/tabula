@@ -155,15 +155,26 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 
 ## 3. Context and assumptions
 
-- **First target:** Amazon Fire HD 10 Plus (11th gen, Fire OS 7 / Android 9, API 28), wall-mounted as "Office Kiosk" and managed over ADB from the Mac.
-- **Later targets:** PF1007L photo frames (low-spec Android). Their WebView may be too old for the current HA frontend; P0.3 checks this before they are committed to.
-- **Baselines:** minSdk 24 (Android 7), revisited after P0.3's WebView check. targetSdk is set in an ADR during P2.0. Design for weak SoCs.
+- **v1 targets:**
+
+  | Device | Count | Status |
+  | --- | --- | --- |
+  | Amazon Fire HD 10 Plus (11th gen, Fire OS 7 / Android 9, API 28), 1920×1200 | 2 | First target. "Office Kiosk" is built and accepted first (Phase 2); the second unit is provisioned from DEVICE.md alone |
+  | Amazon Echo Show 8 (2nd gen), 1280×800 | 2 | In v1, gated on the P0.6 feasibility check; brought up in P2.7 after the Fire tablet passes Phase 2 |
+
+  All units are managed over ADB from the Mac.
+- **Later targets:** PF1007L photo frames (low-spec Android). They need a WebView of Chromium 67 or later (ADR 0001); check one before committing to them.
+- **Baselines:** minSdk 24 (Android 7), revisited after P0.3's WebView check. targetSdk is set in an ADR during P2.0. Design for weak SoCs, and lay out the native UI (screensavers, cards, pairing screen) for both 1920×1200 and 1280×800 from the start.
 - **Fire OS constraints:**
   - No launcher replacement and no device owner, so lockdown means start-on-boot + screen pinning + overlay.
   - `RECORD_AUDIO` can be revoked at boot or on Wi-Fi reconnect.
   - Amazon WebView has no WebRTC.
   - Provisioning is done over ADB (`pm grant`, `appops set`, deviceidle whitelist, `dpm set-active-admin`). `DEVICE.md` documents it from Phase 2.
   - Silent APK install needs Shizuku or device owner.
+- **Echo Show 8 constraints (unverified until P0.6):**
+  - No app store for third-party apps; Tabula must be sideloaded over ADB, and whether ADB can be enabled without exploits is the open question.
+  - The Alexa home screen owns the device; whether a sideloaded app can start on boot and stay in the foreground is unknown.
+  - Exploits, rooting, bootloader unlocking and firmware downgrades are out of bounds. If the device needs any of them, it leaves v1.
 - **HA:** one local instance, a handful of devices. The minimum HA version and the supported frontend browser floor are set in the platform spike (P0.3).
 - **Network:** HA may be served over plain http on the LAN. Section 5.2 covers what that means for credentials.
 
@@ -176,7 +187,8 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 | LED control / Echo Dot | Dropped |
 | Immich screensaver source | Dropped (possible future plugin) |
 | Camera views + device camera | Deferred: design hooks only |
-| Echo Show / Portal / Raspberry Pi targets | Dropped for v1 |
+| Echo Show 8 (2nd gen) target | In v1, gated on P0.6 (feasibility) and brought up in P2.7 |
+| Other Echo Show models, Portal, Raspberry Pi targets | Dropped for v1 |
 | Bluetooth proxy | Deferred indefinitely (no free path without ESPHome) |
 | Plugin ecosystem | Deferred: keep the `window.tabula` JS bridge + action registry as the seam |
 | Voice satellite | Parked until Phase 6 lands; then gated on a Fire OS mic spike |
@@ -358,6 +370,7 @@ Phases 0–2 are written as packets. Phases 3–9 are a roadmap, and each gets i
 | P0.3 HA platform spike | build, deep | P0.1 | dev HA |
 | P0.4 TLP v1 + constants | build, deep | P0.3 | ci |
 | P0.5 Settings schema v1 | build, standard | P0.2r, P0.4 | ci |
+| P0.6 Echo Show 8 feasibility | build, standard | none | hardware |
 | P1.1 Mock device | build, standard | P0.4 | ci |
 | P1.2 Hub, pairing, registration | build, deep | P1.1 | ci |
 | P1.3 Entity platforms | build, standard | P1.2 | ci |
@@ -370,8 +383,9 @@ Phases 0–2 are written as packets. Phases 3–9 are a roadmap, and each gets i
 | P2.4 Screensaver engine | build, standard | P2.1, P1.4 | hardware |
 | P2.5 Notifications and audio | build, standard | P2.4 | hardware |
 | P2.6 Offline-first check | build, standard | P2.2–P2.5 | hardware |
+| P2.7 Echo Show 8 bring-up | build, standard | P0.6 (go), P2.6 | hardware |
 
-Parallel tracks: P0.2 (spec side) and P0.3 (build side) run at the same time. After P0.4, the integration track (P1.x) and the Android codec (P2.0) run in parallel.
+Parallel tracks: P0.2 (spec side), P0.3 and P0.6 (build side) run at the same time. After P0.4, the integration track (P1.x) and the Android codec (P2.0) run in parallel.
 
 ### 7.1 Phase 0 — Charter, spec, spike, protocol
 
@@ -417,6 +431,13 @@ Output: `docs/decisions/0001-ha-platform.md`, recording what worked (with eviden
 - `schema_version: 1`, a role tag on every property, defaults taken from ADR-0002.
 - Python loads it directly.
 - Done when: the schema accepts a fixture of defaults and rejects a set of known-bad fixtures (pytest).
+
+**P0.6 — Echo Show 8 feasibility** (build, standard; hardware)
+
+- Research whether ADB can be enabled on the Echo Show 8 (2nd gen) through its own settings, with no exploits, root or firmware changes.
+- Hardware, read-only: the ADR 0001 item 6 device check plus display, sensor and home-activity queries. Then a sideload test with a small open-source APK.
+- Go if ADB is available by those means, a sideloaded app launches and stays in the foreground, and the WebView is Chromium 67 or later. Record the result in a new ADR and update sections 3 and 4.
+- Done when: the ADR states go or no-go with pasted device output. On no-go, the Echo Show moves to "Deferred" in section 4 and P2.7 is closed.
 
 ### 7.2 Phase 1 — Integration core, driven by the mock device
 
@@ -505,7 +526,13 @@ Output: `docs/decisions/0001-ha-platform.md`, recording what worked (with eviden
 - With HA stopped, the screensaver, clock, brightness curve and cached dashboard behave sensibly. The device re-dials and recovers when HA returns.
 - Written as an ADB-scripted acceptance test in `tools/device/`.
 
-**Phase 2 exit:** the Office Kiosk boots into Tabula, shows the dashboard, idles to a clock, takes brightness, notifications and TTS from HA, and survives an HA restart. DEVICE.md lets someone provision a second Fire tablet from scratch.
+**P2.7 — Echo Show 8 bring-up** (standard; depends on P0.6 with a go result, P2.6; hardware)
+
+- Provision one Echo Show from DEVICE.md, add an Echo Show section and make `tools/device/` handle both device types.
+- Run the P2.1–P2.6 hardware checks on it and fix the differences: screen size, available sensors, Alexa home-screen behavior, device-admin lock and wake.
+- Done when (hardware): the P2.6 acceptance script passes on one Echo Show, and the second is provisioned from DEVICE.md alone and pairs.
+
+**Phase 2 exit:** the Office Kiosk boots into Tabula, shows the dashboard, idles to a clock, takes brightness, notifications and TTS from HA, and survives an HA restart. The second Fire HD 10 Plus is provisioned from DEVICE.md alone and passes the P2.6 acceptance script. If P0.6 said go, both Echo Shows pass P2.7.
 
 ### 7.4 Phases 3–9 — Roadmap
 
@@ -560,6 +587,7 @@ Hooks to preserve, not build:
 | Credential sniffed on a plain-http LAN | Documented; HTTPS recommended in DEVICE.md |
 | Pairing/credential design doesn't work as assumed | P0.3 spike before any Phase 1 code; documented fallback (manual non-admin user + LLAT) |
 | Fire OS WebView too old for the HA frontend | Checked in P0.3 before Phase 1; PF1007L frames not committed to until checked |
+| Echo Show 8 cannot run a sideloaded app without exploits | P0.6 decides before any Echo Show code; no exploits allowed; the Echo Show leaves v1 on no-go, and the Fire tablets carry the milestone |
 | App and integration versions drift | Version negotiation at registration, N-1 support, repair issue on mismatch |
 | Single WS per device; HA restarts | Jittered re-dial; offline-first behavior is a Phase 2 acceptance test (P2.6) |
 | Frontend internals change (external auth, background disconnect, entity filter) | Use only the documented external-auth interface; measure before shimming; entity filter is conditional |
