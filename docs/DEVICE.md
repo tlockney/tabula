@@ -1,9 +1,9 @@
 # Device provisioning and recovery
 
 How a Tabula device (Fire HD 10 Plus, Fire OS 7 / Android 9, API 28) gets an
-APK, its ADB grants and its pairing, and how to recover one. Written by
-P2.1; later packets extend it (Shizuku and the recovery page arrive in
-Phase 4, plan sections 5.9 and 7.4).
+APK, its ADB grants and its pairing, how the Home Assistant side is
+installed, and how to recover one. Written by P2.1; later packets extend it
+(Shizuku and the recovery page arrive in Phase 4, plan sections 5.9 and 7.4).
 
 Everything here is scripted so a hardware check is one paste of output
 (AGENTS.md, "Work packets"). No step roots, unlocks a bootloader or needs
@@ -23,6 +23,64 @@ anything the tablet's own settings do not allow.
 
 With several devices attached, set `ANDROID_SERIAL` so the scripts pick the
 right one.
+
+## Installing the integration on Home Assistant
+
+Provisioning below ends by pairing, and pairing needs the HA side in place
+first: the pair view answers a plain 404 while no Tabula hub is loaded, so a
+tablet has nothing to pair to. One time per HA instance, before the first
+tablet:
+
+Tabula needs HA 2025.1.0 or later (ADR 0001 item 8: a chosen floor, known to
+work, not re-tested below).
+
+1. Copy `integration/custom_components/tabula` from a checkout of this repo
+   into HA's config directory, as `custom_components/tabula` (create
+   `custom_components/` if there is none). The config directory, and how to
+   reach it, depends on the install type:
+   - **HA OS or Supervised**: `/config`. Install the Samba add-on and copy
+     over its `config` share (`smb://homeassistant.local/config` on a Mac,
+     `\\homeassistant.local\config` on Windows), or install the Terminal &
+     SSH add-on (port 22222 by default; enable password auth or add a key in
+     its configuration) and copy with:
+     ```
+     scp -P 22222 -r integration/custom_components/tabula \
+       root@homeassistant.local:/config/custom_components/
+     ```
+   - **Docker (HA Container) or Core**: the directory HA runs from — the
+     host directory bind-mounted at `/config` (`-v /opt/ha/config:/config` in
+     `docker run`), or the one passed to `hass -c`. Copy into it on the host:
+     ```
+     cp -R integration/custom_components/tabula /opt/ha/config/custom_components/
+     ```
+2. Restart HA — however that install restarts: `ha core restart` (OS or
+   Supervised, e.g. through the Terminal & SSH add-on), `docker restart
+   homeassistant` (Container), restarting the service (Core), or the restart
+   option in Settings → System. On startup HA loads the integration and
+   installs the manifest's requirements (`jsonschema`, `referencing`).
+3. Add the hub: Settings → Devices & services → Add integration, search for
+   "Tabula", and submit its dialog. The dialog has no fields — "Set up the
+   Tabula hub. Tablets pair to it from the Tabula app on the tablet." — and
+   the entry "Tabula" appears. A second attempt is refused with "The Tabula
+   hub is already set up." because the hub is a singleton found by unique_id
+   (ADR 0001 item 1); there is nothing else to set up.
+
+Then run "Provisioning a device" below. Pairing's six-digit code is confirmed
+in HA as the discovered Tabula device.
+
+**Upgrading.** Replace `custom_components/tabula` with the new copy and
+restart HA again. The hub entry, its settings and the paired devices live in
+HA's `.storage`, so they survive; paired tablets reconnect on their own once
+HA is back (the P2.6 offline-first behavior, checked by `check_p26.sh`).
+
+**Removing.** Delete the entry first, the folder second — Settings → Devices
+& services → Tabula → the entry's three-dot menu → Delete integration entry —
+then remove `custom_components/tabula` and restart HA. Deleting the entry
+revokes every paired device's user and credential (P1.2; ADR 0001 items
+3-4): tokens first, which also closes each device's live WebSocket, then the
+user. The tablets' credentials stop working and each tablet falls back to
+its pairing screen. Deleting the folder first instead strands the devices'
+invisible system users — the "Leftover system users" case in Recovery below.
 
 ## Provisioning a device
 
