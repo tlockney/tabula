@@ -35,7 +35,7 @@ class TabulaClockBackground(TabulaSettingEntity, TextEntity):
     def __init__(self, hub: TabulaHub, record, description: TabulaEntityDescription) -> None:
         super().__init__(hub, record, description)
         field_ = hub.settings.schema.field("screensaver_clock_background_source")
-        self._attr_native_max = field_.max_length or 255
+        self._attr_native_max = field_.max_length
 
     @property
     def native_value(self) -> str | None:

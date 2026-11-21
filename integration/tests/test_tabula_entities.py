@@ -127,7 +127,7 @@ async def test_disconnect_unavailable_reconnect_restores(hass_setup, server, hub
         if e.unique_id.startswith(paired.device_id)
         and e.disabled_by is None
         and not e.unique_id.endswith("_connected")
-        # settings entities stay available offline (ADR 0015; checked below)
+        # settings entities stay available offline (ADR 0015; test_tabula_setting_entities.py)
         and e.unique_id.removeprefix(f"{paired.device_id}_") not in SETTING_ENTITY_KEYS
     ]
     assert len(ids) >= 10

@@ -59,14 +59,16 @@ class ScreensaverController(
 
     /**
      * The backlight level while the screensaver shows (F-SSV-17); black uses
-     * the lowest. With the separate level switched off (brightness_enabled,
-     * P3.2) the other modes hold nothing, so the panel keeps its current level.
+     * the lowest and dim always dims (F-SSV-07). With the separate level
+     * switched off (brightness_enabled, P3.2) the other modes hold nothing, so
+     * the panel keeps its current level.
      */
     @get:Synchronized
     val brightnessWhileShown: Int?
         get() = when (shown) {
             null -> null
             ScreensaverMode.BLACK -> 0
+            ScreensaverMode.DIM -> brightness
             else -> brightness.takeIf { brightnessEnabled }
         }
 

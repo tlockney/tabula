@@ -101,7 +101,7 @@ def test_every_setting_entity_names_a_shared_schema_leaf():
 async def test_entity_set_follows_the_device_schema_version(
     hass_setup, server, hub, paired, tmp_path
 ):
-    """A schema-1 device gets only the v1 settings entities; schema 2 gets all.
+    """A schema-1 device gets only the v1 settings entities; schema 2 gets all, and back.
 
     Capabilities play no part: settings exist for every paired device.
     """
@@ -122,6 +122,19 @@ async def test_entity_set_follows_the_device_schema_version(
         # persisted, so the entity set survives an HA restart before reconnecting
         stored = runtime.entry.data["devices"][paired.device_id]
         assert stored["schema_version"] == 2
+
+    # and back: a device that re-registers as schema 1 loses the v2-only entities
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=1):
+        await until(
+            lambda: (
+                {
+                    setting
+                    for platform, key, setting in SETTING_ENTITIES
+                    if eid(hass_setup, paired.device_id, platform, key)
+                }
+                == {"screensaver_enabled", "screensaver_idle_timeout"}
+            )
+        )
 
 
 async def test_master_switch_reaches_the_device_as_one_revision(

@@ -153,6 +153,8 @@ class ScreensaverControllerTest {
         )
         c.onCommand(active = true, requested = ScreensaverMode.BLACK, nowMs = t0 + 62_000)
         assertEquals(0, c.brightnessWhileShown, "black keeps its own lowest level either way")
+        c.onCommand(active = true, requested = ScreensaverMode.DIM, nowMs = t0 + 63_000)
+        assertEquals(20, c.brightnessWhileShown, "dim dims either way (F-SSV-07)")
     }
 
     @Test

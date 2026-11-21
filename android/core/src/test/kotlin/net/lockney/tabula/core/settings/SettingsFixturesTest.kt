@@ -55,6 +55,7 @@ class SettingsFixturesTest {
         assertEquals(80, s.screen.brightness)
         assertEquals(true, s.screen.adaptiveBrightness)
         assertEquals(7, s.screensaver.dimBrightness)
+        assertEquals(false, s.screensaver.brightnessEnabled)
         assertEquals(ScreensaverClockFace.Analog, s.screensaver.clock.face)
         assertEquals(700, s.screensaver.clock.fontWeight)
         assertEquals("#FFEEEEEE", s.screensaver.clock.textColor)
