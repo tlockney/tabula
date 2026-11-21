@@ -1,6 +1,6 @@
 // Tabula Android build. Toolchain versions and repositories are pinned in
 // gradle/libs.versions.toml; the reasoning is in
-// docs/decisions/0007-android-toolchain-and-targetsdk.md.
+// docs/decisions/0008-android-toolchain-and-targetsdk.md.
 
 pluginManagement {
     repositories {

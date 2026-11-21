@@ -3,7 +3,7 @@
 // `./gradlew test` exercises the Android toolchain in CI.
 //
 // minSdk per ADR 0001 (Android 7 covers the later PF1007L targets); targetSdk
-// and compileSdk per ADR 0007.
+// and compileSdk per ADR 0008.
 
 plugins {
     alias(libs.plugins.android.application)

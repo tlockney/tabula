@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # make setup-android: verify (and where possible install) the Android build
 # toolchain — a JDK 17-21 and the Android SDK components the pinned AGP needs
-# (platform android-34, build-tools 34.0.0; docs/decisions/0007-*).
+# (platform android-34, build-tools 34.0.0; docs/decisions/0008-*).
 #
 # Network needs, documented in docs/DEVELOPMENT.md: dl.google.com for SDK
 # components via sdkmanager, services.gradle.org for the pinned Gradle

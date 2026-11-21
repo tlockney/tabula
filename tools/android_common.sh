@@ -51,7 +51,7 @@ find_android_sdk() {
     return 1
 }
 
-# The SDK components the pinned AGP needs (docs/decisions/0007-*).
+# The SDK components the pinned AGP needs (docs/decisions/0008-*).
 android_platform=android-34
 android_build_tools=34.0.0
 

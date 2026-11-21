@@ -16,12 +16,12 @@ ADR [0004](decisions/0004-build-and-toolchain.md) records the reasoning.
 | Python | 3.13 | integration, mock device, tools | `.python-version` |
 | uv | 0.9+ | Python environments and dependencies | `uv.lock` |
 | Node | 22+ | website; panel from Phase 5 | `.node-version`, `website/package-lock.json` |
-| JDK | 17–21 | Android build | ADR [0007](decisions/0007-android-toolchain-and-targetsdk.md), `tools/android_common.sh` |
+| JDK | 17–21 | Android build | ADR [0008](decisions/0008-android-toolchain-and-targetsdk.md), `tools/android_common.sh` |
 | Android SDK | platform 34, build-tools 34.0.0 | Android app | `tools/android_common.sh` |
 
 `make setup` runs `tools/bootstrap.sh`, which installs uv from PyPI if it is missing and checks the Node version, then installs locked dependencies.
 
-The Android toolchain is opt-in: `make setup-android` verifies a JDK 17–21 and the Android SDK components (platform `android-34`, build-tools `34.0.0`) and installs the components with `sdkmanager` when the SDK is present but incomplete. Versions and reasoning are in ADR [0007](decisions/0007-android-toolchain-and-targetsdk.md).
+The Android toolchain is opt-in: `make setup-android` verifies a JDK 17–21 and the Android SDK components (platform `android-34`, build-tools `34.0.0`) and installs the components with `sdkmanager` when the SDK is present but incomplete. Versions and reasoning are in ADR [0008](decisions/0008-android-toolchain-and-targetsdk.md).
 
 **Network needs of `make setup-android`** (all pinned or checksum-verified, per the registry-only principle):
 

@@ -1,4 +1,4 @@
-# 0007: Android toolchain and targetSdk
+# 0008: Android toolchain and targetSdk
 
 Status: accepted
 Date: 2026-11-21
