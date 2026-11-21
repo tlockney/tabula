@@ -190,8 +190,10 @@ class TabulaService : Service() {
                 if (!haUrl.isNullOrEmpty()) {
                     store.haUrl = haUrl
                     intent.getStringExtra(EXTRA_NAME)?.let { typed ->
-                        // kept as identity.name: the name HA shows (F-MGT-03, issue #79)
+                        // the name HA shows (F-MGT-03, issue #79); its own key so
+                        // HA's settings pushes do not erase it (issue #100)
                         val name = PairingName.resolve(typed, defaultPairingName(this, store.deviceId))
+                        store.pairingName = name
                         store.settings = store.settings.copy(identity = store.settings.identity.copy(name = name))
                     }
                     startPairing()
@@ -252,8 +254,8 @@ class TabulaService : Service() {
                     store.deviceId,
                     // the typed or default name (issue #79), never the bare
                     // manufacturer: every Fire tablet would pair as "Amazon"
-                    store.settings.identity.name ?: defaultPairingName(this@TabulaService, store.deviceId),
-                    Build.MODEL,
+                    store.nameForPairing(defaultPairingName(this@TabulaService, store.deviceId)),
+                    PairingName.clip(Build.MODEL),
                 ) { status ->
                     TabulaStatus.pairing.value =
                         TabulaStatus.PairingView(status.code, status.deviceId.take(8))
