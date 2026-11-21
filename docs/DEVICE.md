@@ -461,7 +461,7 @@ The entity id is on the tablet's device page in HA (the sensor exists only
 when the tablet has a light sensor, F-HA-02; the Fire HD 10 Plus has one
 next to the front camera). The check runs, in order: the **baseline** (the
 entity is live with device class illuminance, unit lx, state class
-measurement and no diagnostic category, ADR 0019), **covering and
+measurement and no diagnostic category, ADR 0020), **covering and
 uncovering the sensor** (each is a step change, so the value moves within a
 few seconds — a real change goes out at once, F-HA-06), a **steady-room
 window** (leave the room's light alone for three minutes; the state changes

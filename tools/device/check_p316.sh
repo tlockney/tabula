@@ -3,7 +3,7 @@
 #   the illuminance entity exists in HA with device class illuminance and unit
 #   lx, covering and uncovering the light sensor moves the value within a few
 #   seconds, and a steady room produces no more updates than ADR 0002's
-#   ILLUMINANCE_MIN_INTERVAL allows (F-HA-06, ADR 0019).
+#   ILLUMINANCE_MIN_INTERVAL allows (F-HA-06, ADR 0020).
 #
 # Prerequisites: the tablet runs a P3.16 build, is paired, the app is in the
 # foreground with the panel on, and the environment has:
@@ -91,7 +91,7 @@ echo "-- attributes: $(ha_attributes "$TABULA_ILLUMINANCE")"
 python3 -c 'import json,sys; a=json.loads(sys.argv[1]); assert a["device_class"]=="illuminance" and a["unit_of_measurement"]=="lx" and a["state_class"]=="measurement" and "entity_category" not in a, a' \
     "$(ha_attributes "$TABULA_ILLUMINANCE")" \
     || fail "the entity is not the P3.16 illuminance sensor (see attributes above)"
-echo "-- device class illuminance, unit lx, state class measurement, not diagnostic (ADR 0019)"
+echo "-- device class illuminance, unit lx, state class measurement, not diagnostic (ADR 0020)"
 
 step "2. covering and uncovering the sensor moves the value within a few seconds (F-HA-06)"
 ask "Cover the tablet's light sensor completely, then answer y"

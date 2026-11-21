@@ -101,7 +101,7 @@ SENSORS = (
         device_class=SensorDeviceClass.ILLUMINANCE,
         native_unit_of_measurement=LIGHT_LUX,
         state_class=SensorStateClass.MEASUREMENT,
-        # Not diagnostic (ADR 0019): the room's light level, for automations.
+        # Not diagnostic (ADR 0020): the room's light level, for automations.
         capabilities=frozenset({"illuminance"}),
         state_keys=frozenset({"illuminance"}),
         state_key="illuminance",

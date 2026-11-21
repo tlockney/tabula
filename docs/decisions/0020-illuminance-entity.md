@@ -1,4 +1,4 @@
-# 0019: Illuminance sensor entity (P3.16)
+# 0020: Illuminance sensor entity (P3.16)
 
 Status: accepted
 Date: 2026-11-21
@@ -11,7 +11,7 @@ FEATURES F-HA-06 describes an ambient light sensor entity and left open whether 
 ## Decision
 
 1. **F-HA-06 ships.** A new `illuminance` state key (lux, number ≥ 0) is gated by a new `illuminance` capability, additive per PROTOCOL.md 8. The device declares the capability only when the tablet has a light sensor (F-HA-02); the reading comes from the same `LightSensor` listener that feeds adaptive brightness — no second listener.
-2. **Rate limiting (F-HA-06)** is a relative change threshold and a minimum interval for sub-threshold changes, both in ADR 0002 (`ILLUMINANCE_CHANGE_THRESHOLD`, 20 %; `ILLUMINANCE_MIN_INTERVAL`, 30 s), applied by a plain-JVM filter in `android/core`. `STATE_MIN_INTERVAL` still coalesces on top. A supported key with no reading yet is omitted from `register` (PROTOCOL 4.2), and if the sensor stops reporting while the panel is off (F-SCR-14) the last value is held — never `null` or zero.
+2. **Rate limiting (F-HA-06)** is a relative change threshold and a minimum interval for sub-threshold changes, both in ADR 0002 (`ILLUMINANCE_CHANGE_THRESHOLD`, 20 %; `ILLUMINANCE_MIN_INTERVAL`, 30 s), applied by a plain-JVM filter in `android/core`. `STATE_MIN_INTERVAL` still coalesces on top. The filter sanitizes rather than throws: non-finite and negative readings are dropped (the last held value stands) and readings above the schema's 100000 lx bound are clamped to it, so a sensor glitch cannot crash the sensor thread or poison registration (review, PR #108). A supported key with no reading yet is omitted from `register` (PROTOCOL 4.2), and if the sensor stops reporting while the panel is off (F-SCR-14) the last value is held — never `null` or zero.
 3. **The entity is not diagnostic.** It is a real measurement of the room, meant for automations ("lights on when the room is dark"), so the HA sensor has device class `illuminance`, unit `lx`, state class `measurement`, and no entity category. The diagnostic sensors (ADR 0009 item 4) report the tablet; this one reports the room.
 
 ## Consequences

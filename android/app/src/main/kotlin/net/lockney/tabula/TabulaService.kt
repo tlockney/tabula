@@ -48,7 +48,7 @@ class TabulaService : Service() {
     private lateinit var screensaver: ScreensaverManager
 
     /**
-     * The illuminance state key's rate limit (P3.16, ADR 0019): one filter for
+     * The illuminance state key's rate limit (P3.16, ADR 0020): one filter for
      * the service's lifetime, fed by the same [LightSensor] listener that
      * drives adaptive brightness (no second sensor registration).
      */

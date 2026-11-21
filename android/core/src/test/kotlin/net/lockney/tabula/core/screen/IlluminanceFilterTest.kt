@@ -2,7 +2,6 @@ package net.lockney.tabula.core.screen
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class IlluminanceFilterTest {
@@ -66,7 +65,23 @@ class IlluminanceFilterTest {
     }
 
     @Test
-    fun `a negative reading is refused`() {
-        assertFailsWith<IllegalArgumentException> { filter.reading(-0.5, 0) }
+    fun `a reading above the schema bound is clamped to 100000`() {
+        // some Android light sensors report past 100000 lx in direct sun; the
+        // clamped value is what HA sees (review, PR #108)
+        assertEquals(100_000.0, filter.reading(150_000.0, 0))
+        assertEquals(100_000.0, filter.value)
+        assertNull(filter.reading(100_000.0, 1000)) // identical after the clamp
+    }
+
+    @Test
+    fun `negative and non-finite readings are dropped, not thrown`() {
+        filter.reading(100.0, 0)
+        // a sensor glitch inside onSensorChanged must neither crash the app
+        // nor move the held value (review, PR #108)
+        assertNull(filter.reading(-0.5, 10))
+        assertNull(filter.reading(Double.NaN, 20))
+        assertNull(filter.reading(Double.POSITIVE_INFINITY, 30))
+        assertNull(filter.reading(Double.NEGATIVE_INFINITY, 40))
+        assertEquals(100.0, filter.value)
     }
 }

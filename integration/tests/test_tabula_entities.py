@@ -270,7 +270,7 @@ async def test_illuminance_sensor_follows_capability_and_state(
     assert state.attributes["device_class"] == "illuminance"
     assert state.attributes["unit_of_measurement"] == "lx"
     assert state.attributes["state_class"] == "measurement"
-    # not a diagnostic: the room's light, for automations (ADR 0019)
+    # not a diagnostic: the room's light, for automations (ADR 0020)
     assert "entity_category" not in state.attributes
 
     await client.send(frame_fixture("state_delta", id=3, state={"illuminance": 96.0}))

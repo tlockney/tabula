@@ -4,7 +4,7 @@ import kotlin.math.abs
 import net.lockney.tabula.core.Constants
 
 /**
- * The illuminance state key's rate limit (F-HA-06, packet P3.16, ADR 0019):
+ * The illuminance state key's rate limit (F-HA-06, packet P3.16, ADR 0020):
  * a real change goes out at once; small oscillation does not.
  *
  * Every reading is offered to [reading]; the return value is the lux to
@@ -18,7 +18,15 @@ import net.lockney.tabula.core.Constants
  *   is relative to zero.
  * - A smaller change goes out only after `ILLUMINANCE_MIN_INTERVAL` since
  *   the last send, so a drifting room reports at a bounded rate and a steady
- *   room (identical readings) reports nothing.
+ *   room (identical readings) reports nothing. Light sensors report on
+ *   change, so a sub-threshold change reaches HA only when the next reading
+ *   arrives past the interval: a room that drifts and then holds steady
+ *   stays at HA's older value, an error bounded by the threshold (ADR 0002).
+ * - Readings are sanitized, never rejected with an exception: non-finite
+ *   and negative readings are dropped (the last held value stands) and
+ *   anything above the schema's 100000 lx bound is clamped to it. A sensor
+ *   glitch must not crash the sensor thread or poison registration
+ *   (review, PR #108).
  * - [value] always holds the latest reading, even one that was throttled:
  *   registration sends the current value, and if the sensor stops reporting
  *   while the panel is off (F-SCR-14) the last reading is held - never
@@ -44,22 +52,27 @@ class IlluminanceFilter(
 
     /**
      * Offer a reading. Returns the value HA should see (and the caller
-     * reports as `illuminance`), or null when nothing goes out.
+     * reports as `illuminance`), or null when nothing goes out or the
+     * reading was a glitch (non-finite or negative; the last held value
+     * stands). A reading above the schema's 100000 lx bound is clamped.
      */
     @Synchronized
     fun reading(lux: Double, nowMs: Long): Double? {
-        require(lux >= 0.0) { "illuminance must be >= 0, is $lux" }
-        latest = lux
+        // sanitize rather than throw (review, PR #108): this runs inside
+        // onSensorChanged, and the held value feeds registration
+        if (lux.isNaN() || lux.isInfinite() || lux < 0.0) return null
+        val reading = lux.coerceAtMost(100_000.0)
+        latest = reading
         val last = sent
-        if (last == null || abs(lux - last) >= threshold * last) {
-            sent = lux
+        if (last == null || abs(reading - last) >= threshold * last) {
+            sent = reading
             sentAt = nowMs
-            return lux
+            return reading
         }
-        if (lux != last && nowMs - sentAt >= minIntervalMs) {
-            sent = lux
+        if (reading != last && nowMs - sentAt >= minIntervalMs) {
+            sent = reading
             sentAt = nowMs
-            return lux
+            return reading
         }
         return null
     }
