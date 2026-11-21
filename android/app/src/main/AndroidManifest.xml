@@ -28,9 +28,15 @@
              LAN may be plain http (plan 5.2, PROTOCOL 2 threat model); DEVICE.md
              recommends HTTPS. -->
 
+        <!-- singleTask: the kiosk has exactly one window. A wake from the
+             service, a launcher tap or the ongoing notification brings that
+             window forward instead of stacking a new instance (issue #96). It
+             also closes anything above it in the task, such as an open photo
+             picker; acceptable on a kiosk. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

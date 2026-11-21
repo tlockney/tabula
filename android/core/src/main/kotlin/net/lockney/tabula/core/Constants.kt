@@ -139,4 +139,19 @@ object Constants {
 
     /** CLOCK_DIAL_FRACTION: the analog dial's diameter at size=100 %, as a fraction of the panel's smaller side (P3.3, ADR 0018). */
     const val CLOCK_DIAL_FRACTION = 0.60f
+
+    // --- Illuminance reporting (docs/decisions/0002-constants.md,
+    // "Ambient light sensor reporting") -------------------------------------
+
+    /**
+     * ILLUMINANCE_CHANGE_THRESHOLD: relative change (a fraction of the last
+     * value sent) beyond which a reading goes out at once (P3.16, F-HA-06).
+     */
+    const val ILLUMINANCE_CHANGE_THRESHOLD = 0.20
+
+    /**
+     * ILLUMINANCE_MIN_INTERVAL: ms between two sub-threshold sends. Drift
+     * slower than the threshold is reported at most this often (P3.16).
+     */
+    const val ILLUMINANCE_MIN_INTERVAL_MS = 30_000L
 }

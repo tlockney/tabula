@@ -7,7 +7,8 @@ import android.provider.Settings
 /**
  * The OS's user-visible device name: the Bluetooth name (Fire OS shows
  * "Fire Tablet"), else the global device name (API 25+), else null.
- * Neither needs a permission to read.
+ * On Android 12+ a non-system app reading Secure "bluetooth_name" gets a
+ * SecurityException; runCatching turns that into a fallthrough, so keep it.
  */
 internal fun osDeviceName(context: Context): String? {
     val resolver = context.contentResolver

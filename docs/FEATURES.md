@@ -25,6 +25,7 @@ Each entry has a stable ID (for example F-SCR-03) and describes behavior in our 
 | F-SSV | Screensaver | 26 |
 | F-WGT | Screensaver widgets | 9 |
 | F-AAG | At a Glance | 4 |
+| F-PRS | Presence | 12 |
 | F-NTF | On-screen notifications | 12 |
 | F-TTS | Text-to-speech and audio announcements | 11 |
 | F-MED | Media playback | 9 |
@@ -35,13 +36,13 @@ Each entry has a stable ID (for example F-SCR-03) and describes behavior in our 
 | F-LNC | Home launcher | 7 |
 | F-GST | Gestures and actions | 12 |
 | F-HA | Device presence in Home Assistant | 14 |
-| F-EVT | Events reported to HA | 7 |
+| F-EVT | Events reported to HA | 8 |
 | F-MGT | Management from HA | 11 |
 | F-OPT | Dashboard optimizations | 5 |
 | F-UPD | Self-update | 10 |
 | F-JSB | JavaScript bridge | 8 |
 
-255 entries in total. Items dropped or deferred by plan section 4 are listed once, as one-line hooks, in the last section.
+268 entries in total. Items dropped or deferred by plan section 4 are listed once, as one-line hooks, in the last section.
 
 ## Dashboard shell (F-DSH)
 
@@ -93,7 +94,7 @@ Tabula registers a private URL scheme (name: architect picks). A URL shaped `<sc
 - Availability: identical to the action's own rules. A refused link pops a toast giving the reason (e.g. launcher turned off).
 - Kiosk: the restricted-menu allow list (F-KSK-06) is not applied to links. Hiding an entry from the menu while putting a link to it on the dashboard is the intended way to expose one feature under kiosk mode.
 - Not linkable: exit app and restart app; they keep their confirm step.
-- Actions that would switch on a camera or microphone need a genuine user tap; page script and HA cannot fire them this way (applies once such features exist).
+- Actions that would switch on a camera or microphone need a genuine user tap; page script and HA cannot fire them this way. For the camera's own presence rule, see F-PRS-08.
 
 ### F-DSH-10 Links that open other apps
 A second claimed scheme (name: architect picks) opens another installed app by package name. If the app is not installed, a toast says so. Generic browser intent links (which can name any component with arbitrary extras) are refused.
@@ -316,7 +317,7 @@ Touch resets the idle timer. The idle timer stops while another app is in the fo
 The screensaver can be started from the side menu (the menu entry can be hidden), a mapped gesture, the HA "screensaver active" switch, a `tabula.*` service, or the JS bridge.
 
 ### F-SSV-04 Dismissing
-Touch dismisses the screensaver and resets the idle timer, with these exceptions defined by individual modes: edge taps on photo slideshows step slides (F-SSV-12); modes that host interactive content can require a double tap (F-SSV-14, F-SSV-15); the calendar mode closes only through its close button (F-CAL). Other things that dismiss it: turning "screensaver active" off in HA, the postpone button, navigating the dashboard from HA, and enabling view freeze (F-DSH-17). External presence sensors can dismiss it (F-SSV-24).
+Touch dismisses the screensaver and resets the idle timer, with these exceptions defined by individual modes: edge taps on photo slideshows step slides (F-SSV-12); modes that host interactive content can require a double tap (F-SSV-14, F-SSV-15); the calendar mode closes only through its close button (F-CAL). Other things that dismiss it: turning "screensaver active" off in HA, the postpone button, navigating the dashboard from HA, and enabling view freeze (F-DSH-17). Presence can dismiss it too (F-PRS).
 
 ### F-SSV-05 Mode selection
 One active mode at a time, chosen from: clock, weather scene, photo slideshow (several sources), website, HA dashboard view, calendar, dim, black. Each mode has its own settings. A schedule (F-SSV-18) can switch modes by time of day.
@@ -371,14 +372,14 @@ An optional separate backlight level applies while the screensaver shows (except
 HA: switch for screensaver brightness; number for its level.
 
 ### F-SSV-18 Schedule
-An optional list of daily time slots, each with a start time and a mode; a slot lasts until the next one starts, and the last wraps past midnight. No day-of-week variation. Each slot may override: brightness (fixed level, or inherit global/adaptive), panel power-off delay (including "never" even when the global delay is set), presence-sensor dismissal, widgets, At a Glance and the now-playing view. Overrides can only turn off overlays that are configured globally, not invent them. Edits apply live, including to a running screensaver. Crossing into a slot with a different power-off delay restarts that countdown.
+An optional list of daily time slots, each with a start time and a mode; a slot lasts until the next one starts, and the last wraps past midnight. No day-of-week variation. Each slot may override: brightness (fixed level, or inherit global/adaptive), panel power-off delay (including "never" even when the global delay is set), presence dismissal (F-PRS), widgets, At a Glance and the now-playing view. Overrides can only turn off overlays that are configured globally, not invent them. Edits apply live, including to a running screensaver. Crossing into a slot with a different power-off delay restarts that countdown.
 HA: switch to turn the schedule on or off.
 
 ### F-SSV-19 Panel off after a while
 An optional delay after which a running screensaver powers the panel off (requires device admin; constant: architect picks the range). Alternatively a plain black screen at minimum brightness can be shown instead of powering off (no permission needed; nothing is drawn on it, overlays included, until it is woken). Touch on that black screen returns to the dashboard.
 
 ### F-SSV-20 Wake behaviour after panel off
-Unless configured otherwise (below), any wake from panel-off lands on the live dashboard: touch, power button, HA turning "screensaver active" off, a `tabula.*` service that stops the screensaver. One exception is fixed: turning the HA screen light on restores the screensaver (not the dashboard) and its power-off timer starts over, so a morning automation can light the photos and later dismiss to the dashboard. A setting extends that screensaver-preserving wake to chosen wake sources (external presence, power button / any wake Tabula did not cause, touch on the black-screen alternative); with touch selected, touching the dark screen restores the screensaver, and touching again goes on to the dashboard. Under lockdown mode, presence and power-button wakes always keep the screensaver.
+Unless configured otherwise (below), any wake from panel-off lands on the live dashboard: touch, power button, HA turning "screensaver active" off, a `tabula.*` service that stops the screensaver. One exception is fixed: turning the HA screen light on restores the screensaver (not the dashboard) and its power-off timer starts over, so a morning automation can light the photos and later dismiss to the dashboard. A setting extends that screensaver-preserving wake to chosen wake sources (presence (F-PRS), power button / any wake Tabula did not cause, touch on the black-screen alternative); with touch selected, touching the dark screen restores the screensaver, and touching again goes on to the dashboard. Under lockdown mode, presence and power-button wakes always keep the screensaver.
 
 ### F-SSV-21 Overlays on top of the screensaver
 Notifications, timers and the now-playing view may draw over the screensaver. The screensaver honours them as described in F-NTF, F-TMR and F-MED.
@@ -390,8 +391,8 @@ Optional periodic small shifts of screensaver content to avoid image retention (
 Optional fade in and out. Modes that show the live page itself (dim, HA dashboard view) and web content switch without a fade.
 
 ### F-SSV-24 Presence from HA
-A chosen HA occupancy/motion/presence binary sensor can act as a presence source: a transition to on dismisses the screensaver; an on state keeps the idle timer from expiring; a sensor that is already on when a screensaver begins has no effect on that screensaver until it goes off and on again. Options: dismiss only when the panel is off (so a visible slideshow survives people walking by), and postpone-while-present. Presence handling is ignored in lockdown mode.
-Open: device sensors (camera motion/face, proximity) are deferred; the architect may keep the presence-source abstraction general so they plug in later.
+A chosen HA occupancy/motion/presence binary sensor can act as a presence source: a transition to on dismisses the screensaver; an on state keeps the idle timer from expiring; a sensor that is already on when a screensaver begins has no effect on that screensaver until it goes off and on again. Options: dismiss only when the panel is off (so a visible slideshow survives people walking by), and postpone-while-present. Presence handling is ignored in lockdown mode. The tablet's own camera can feed the same rule; the presence area (F-PRS) describes it together with what it adds to this source.
+Open: proximity sensors and hardware person sensors stay deferred (they are not in the plan's Phase 10 scope); the presence-source abstraction stays open to them.
 
 ### F-SSV-25 Interaction with the dashboard
 While a screensaver fully covers the dashboard, dashboard rendering may pause (F-OPT). Automatic view rotation pauses and resumes where it was. The return-to-start timer (F-DSH-15) keeps running behind the screensaver, so the dashboard can be reset without lighting the panel.
@@ -442,6 +443,76 @@ HA icon if set, else the domain default. States shown capitalized as HA presents
 
 ### F-AAG-04 Independent subscription
 The row (and the HA-backed widgets) subscribe only to their own entities over the device's own HA connection while the screensaver is showing, and unsubscribe when it closes. They do not depend on the dashboard page, so they work while the page reloads, shows a non-HA site, or filters its own updates (F-OPT).
+
+## Presence (F-PRS)
+
+### F-PRS-01 One presence rule, several sources
+The tablet keeps a single answer to "is someone here now", and every source the user turns on feeds it: an HA binary sensor (F-SSV-24) and, on hardware with a usable front camera, the camera's own detectors. Each source has its own switch, and with more than one on the rule is satisfied while any of them reports presence. Turning the camera off leaves the HA source working, and the reverse. What presence does is the same whichever source produced it (F-PRS-03).
+- A camera detection is not a single instant. Each one holds its source on for a short window after the trigger was last seen (constant: architect picks), so a single brief movement cannot latch the source on past the window. Everything downstream reads that held state and nothing finer: the idle countdown restarts when the window ends (F-PRS-03), postpone keeps working for as long as it holds (F-PRS-05), and the sensor and events follow it (F-PRS-09, F-EVT-08). An HA source keeps whatever timing its own entity has (F-SSV-24).
+HA: the sources are device settings; the combined answer is the presence binary sensor (F-PRS-09).
+Open: whether the window is one setting for the camera or one per detector, and what its default is.
+
+### F-PRS-02 Camera detectors
+Two detectors can be enabled separately, and either can feed the rule.
+- Motion: reacts to change in the picture, so it works in a dark room. A whole-frame change, such as an exposure shift or a large colour wash across the screen, is discarded, and detection pauses briefly around the app's own transitions so its animations cannot wake it.
+- Face: reacts only when a person is turned towards the tablet, so someone crossing behind it leaves the screensaver alone. It needs light and cannot work in the dark.
+- Precedence: with both enabled, motion wins as the trigger. The cheap change detection is also the gate for the face model, and it runs whether or not motion is switched on as a presence trigger. The face model itself is skipped unless one of three things holds: the camera has only just started, a face turned up a moment ago, or the picture has changed since the last look. An empty room therefore costs no face work.
+- Effect on a person who holds still: while a face is being tracked, the gate keeps the face model running for a short while without new movement (the same window as F-PRS-01), so someone reading the screen does not drop out between frames. Past that, a person who neither moves nor changes expression stops being reported even if they are still looking at the tablet.
+Open: whether that stillness limit is acceptable or whether the face model should be re-asked on a slow timer while the screensaver is up; a timer costs power for a case the hold window already covers.
+- Sensitivity: each detector has its own setting (range: constant, architect picks). For faces it moves the distance at which someone is recognised; for motion it moves how much change counts.
+Open: whether the face setting is one distance control or two (near and far behaviour), and what each default should be.
+
+### F-PRS-03 Dismissing the screensaver
+A presence report dismisses a running screensaver, and the idle countdown starts again from the moment the source clears. A source that is already reporting presence when the screensaver begins does not dismiss it; it has to clear and report again, or a touch has to happen. Where a wake lands when the panel was off is decided by F-SSV-20.
+
+### F-PRS-04 Only after the panel goes off
+An option, shared with the HA source (F-SSV-24), keeps a screensaver that is already visible: presence is ignored while the panel is lit; it acts only once the panel has gone off. A photo slideshow then survives people walking past and still wakes the panel for someone arriving later. The panel counts as off only when it is really powered down, or when the black-screen variant (F-SSV-19) is showing at zero light; a black screensaver at any visible level does not count.
+Open: whether the option applies to every source at once or can be set per source.
+
+### F-PRS-05 Postponing the screensaver
+An option makes presence hold the idle countdown, so the screensaver does not start while the room is occupied. It only works alongside dismissal for the same source. While it is on, the camera has to watch continuously whenever the panel is on, which is the most expensive setting here; the cost is discussed in F-PRS-06.
+
+### F-PRS-06 Camera lifetime, faults and cost
+- Master switch: the camera has its own switch, off on a new device, and nothing touches it until that switch is on (privacy, F-PRS-07).
+- When it runs: only while something needs it — a screensaver is up, the panel is off, or postponing is on with the panel lit. It is released the moment none of those hold, without a lingering timeout.
+- Busy or silent camera: another app holding the camera, a hardware fault, or frames that stop arriving is treated as a fault. Presence then reads as unavailable rather than absent, the tablet reports it, and the camera is retried instead of being left dead.
+- Cost: analysis is light enough for a wall tablet but not free. The frame rate the detectors need is a setting (constant: architect picks), and the load counts against the plan's idle-cost target.
+Open: whether the camera can keep watching while another app covers the screen or the panel is truly off; the plan's spike settles that, and the answer may differ per device type.
+
+### F-PRS-07 Privacy
+- All analysis happens on the device. Frames exist in memory only while they are being analysed: never written to storage, never logged, never uploaded, and never included in a backup or a diagnostics download.
+- Only the state leaves: presence or not, which source produced it, and when it changed. No image, no thumbnail, no description of who was seen.
+- No identification: the face detector answers "a person is looking at the tablet", not "which person", and keeps nothing between frames.
+- Off by default, and turning the master switch off removes the feature from the device's behaviour entirely.
+- The user is told when the camera runs. HA shows it (F-PRS-09), and the tablet shows a sign on screen while it is watching (independent design; the owner asked for presence, not for a hidden camera).
+Open: what that on-screen sign looks like, where it sits, and whether it stays up for the whole camera session or only while a detection is being resolved.
+Open: whether a brief live view of the frames the detector analysed appears after a face wake, as an aiming and sensitivity aid. It is a separate question from the sign and is deferred for now (see the deferred list); resolving the sign without it must not silently drop the aid.
+
+### F-PRS-08 Enabling, consent and permissions
+- The master switch cannot be turned on from HA alone: it needs a person at the tablet, or an ADB grant (independent design, plan section 7.6).
+- First enable asks the OS for camera permission. With the switch on and the permission missing, the entry reads as on but inactive, with a way to grant it; when the OS has stopped offering the prompt, that way opens Android's app settings for the app.
+- With no permission, or with it withdrawn by the OS, the source reports nothing, the rule falls back to its other sources, and the screensaver keeps working. The state says why.
+HA: the master switch and its state; the grant itself can only happen on the tablet.
+Open: whether a grant made over ADB is reflected back to HA as the switch coming on.
+
+### F-PRS-09 What HA sees
+- Presence (binary_sensor): on while any source reports someone there, using the hold window of F-PRS-01 for camera sources; unknown when every source is off or unavailable, never a stale off.
+- Camera active (binary_sensor): on while the camera is running. This is the privacy indicator the plan asks for.
+- Controls: the camera master switch, a switch per detector, the HA source's own picker (F-SSV-24), and sensitivity (candidates; the plan leaves the entity list to the architect).
+- Entities appear wherever the tablet could supply them, whatever the camera switch says (F-HA-02). On a tablet without a usable camera, the camera entities and detector switches are absent, and the presence sensor follows the remaining sources.
+HA: binary sensors and configuration entities, as listed.
+
+### F-PRS-10 Lockdown
+Under lockdown, presence neither dismisses nor postpones the screensaver, and it does not wake the panel; detection may still run for the entities. This matches F-SSV-20's rule that a lockdown wake keeps the screensaver.
+Open: whether reporting to HA continues under lockdown, which would tell an automation that someone is in the room while the tablet is locked.
+
+### F-PRS-11 Schedule
+Screensaver schedule slots (F-SSV-18) can switch each detector off for their window, which also stops the camera when nothing else needs it. That is how a room gets faces in daylight and motion at night, or no camera at all overnight. Overrides can only remove what is configured globally.
+Open: whether sensitivity can be set per slot, or only on and off.
+
+### F-PRS-12 Limits
+- Another app in front: where a rule needs the camera while the tablet is behind another app, the OS may refuse; presence reads unavailable and the tablet reports it (F-PRS-06).
+- No usable camera: a custom image without camera support, a closed physical shutter, or hardware that fails. The settings say so, no camera entities exist, and the remaining sources carry the rule.
 
 ## On-screen notifications (F-NTF)
 
@@ -1063,7 +1134,7 @@ HA: candidate diagnostic entity (or HA repair issue) listing missing permissions
 - Accessibility (shade guard): optional.
 - Location: only for web pages that request geolocation when a page-geolocation setting is on.
 - Install unknown apps: self-update (see that area).
-Camera and microphone grants belong to deferred features.
+- Camera: the presence sensor only (F-PRS-08). Microphone: deferred with the voice work.
 
 ### F-KSK-20 Foreground-app reporting
 The device reports which package is in the foreground. That needs usage access; lacking it, the device can only tell whether Tabula itself is in front.
@@ -1323,6 +1394,10 @@ Emitted on: start, change (time added or removed, pause, resume), cancel, finish
 
 ### F-EVT-07 `tabula_announcement`
 Emitted when an announcement starts and when it ends; the end carries a reason (finished, replaced, stopped, failed). Lets automations, say, turn another speaker down meanwhile. Independent design.
+
+### F-EVT-08 `tabula_presence`
+Emitted when the presence answer changes, and when a source that had been unavailable comes back. Payload: the new state, the source that caused it (camera motion, camera face, HA entity), and whether the change also dismissed or postponed the screensaver. (independent design)
+Open: whether a change caused by several sources at once yields one event or one per source.
 
 ## Management from HA (F-MGT)
 
@@ -1588,7 +1663,7 @@ One-line hooks only. Each is out of scope until a later packet brings it in.
 - Voice satellite entities, voice-interaction events and speaker-identification events: deferred with the voice satellite.
 - Ambient noise sensor: deferred with the microphone (see F-TTS-09 Open).
 - Intercom entities, services and events: deferred.
-- Camera, camera snapshot, motion/person sensors, camera views, RTSP: deferred.
+- Camera snapshot, camera views, camera streams and RTSP: deferred (the camera as a presence sensor lives in F-PRS).
 - LED control entities: deferred.
 - GPS location sensors: deferred (no target hardware has GPS).
 - Shell-command service via privileged helper: dropped.
@@ -1617,7 +1692,7 @@ One-line hooks only. Each is out of scope until a later packet brings it in.
 - Device-owner provisioning and lock-task mode (impossible on Fire; may revisit for other targets).
 - Device reboot via device owner or Shizuku.
 - Fire OS 8-only items (lock-screen dismissal block, wireless-debugging port churn).
-- Camera/microphone/nearby-devices/log-access/all-files permissions (their features are deferred).
+- Microphone, nearby-devices, log-access and all-files permissions (their features are deferred).
 - Android 14 Wi-Fi lock downgrade workaround and MediaTek background-killer workaround (not on target hardware).
 - Remote-admin recovery path (replaced by HA; later off-by-default recovery page).
 - Voice wake-word muting during touch lock (voice dropped).
@@ -1628,7 +1703,6 @@ One-line hooks only. Each is out of scope until a later packet brings it in.
 - Optional usage analytics and crash reporting: dropped; no telemetry leaves the house.
 - Actions for intercom, camera views, music library/assistant, voice satellite.
 - Benchmarks and comparisons against other kiosk browsers: not a behavior, dropped.
-- Pausing the device's own camera / camera views behind the screensaver: device camera dropped.
 - Custom release mirror on a user web server: replaced by HA-mediated delivery (F-UPD-03); revisit if needed.
 - ADB-started update helper bundled in the app: deferred; Shizuku specifics deferred.
 - OS (system) update scheduling for device owners: deferred (not available on Fire OS).
@@ -1654,12 +1728,12 @@ One-line hooks only. Each is out of scope until a later packet brings it in.
 - TTS playback diagnostics capture: deferred.
 - Wake word configuration, wake events and the microphone handoff protocol: dropped with voice.
 - Assist pipeline delegation (native mic upload, buffering, levels): dropped with voice.
-- Camera motion, face and proximity events: dropped with the device camera; revisit if HA-entity-based presence events are wanted.
 - Voice-assistant chime durations and voice-timer pill hand-off: dropped with voice.
 - Intercom status and microphone-yield events: dropped.
 - Plugin APIs on the bridge: deferred; the bridge is the seam they will extend.
 - Night-sky / astronomy screensaver: dropped for v1.
 - Immich photo source: dropped (possible future plugin).
-- Camera-stream screensaver and camera-based motion/face wake: deferred with camera work.
+- Camera-stream screensaver: deferred.
+- Live preview of the frames the detector analysed, shown briefly after a face wake as an aiming aid: deferred (see F-PRS-07).
 - Proximity and hardware person-sensor wake: deferred.
 - Voice wake-word dismissal and voice-timer pills: parked with voice.

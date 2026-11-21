@@ -483,6 +483,31 @@ blank bitmap via `View.draw` (`DashboardView.capture`); if the check
 reports a blank image, the fallback is `PixelCopy` on the window — note
 what you saw in the packet Result either way.
 
+## Hardware check (P3.16, illuminance)
+
+Install a P3.16 build (or later), pair, leave Tabula in front with the panel
+on, then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_ILLUMINANCE=sensor.<tablet>_illuminance \
+TABULA_STEADY_S=180 \
+ANDROID_SERIAL=<serial> tools/device/check_p316.sh
+```
+
+The entity id is on the tablet's device page in HA (the sensor exists only
+when the tablet has a light sensor, F-HA-02; the Fire HD 10 Plus has one
+next to the front camera). The check runs, in order: the **baseline** (the
+entity is live with device class illuminance, unit lx, state class
+measurement and no diagnostic category, ADR 0020), **covering and
+uncovering the sensor** (each is a step change, so the value moves within a
+few seconds — a real change goes out at once, F-HA-06), a **steady-room
+window** (leave the room's light alone for three minutes; the state changes
+in HA's history must stay within ADR 0002's `ILLUMINANCE_MIN_INTERVAL`
+bound of one per 30 s plus two for the window's edges), and a logcat tail
+for the record. Two steps pause to ask the verifier to cover and uncover the
+sensor. Paste the whole output into the packet Result.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:

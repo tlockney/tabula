@@ -81,7 +81,7 @@ The device waits up to `REGISTER_TIMEOUT` for each reply; on timeout it closes t
 
 ### 4.2 `register` → `register_result`
 
-Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and its current `state`: every state key it supports, so HA starts from a complete picture. (The schema checks only that `state` is non-empty, since the same object type carries deltas.)
+Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and its current `state`: every state key it supports, so HA starts from a complete picture. (The schema checks only that `state` is non-empty, since the same object type carries deltas.) A supported state key whose value the device does not have yet — the `illuminance` key before the light sensor's first reading — is omitted from `register` and sent in the first delta that has one; the schema requires a value, so there is no null placeholder.
 
 Integration:
 
@@ -112,6 +112,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `charging` | bool | |
 | `network` | `wifi` \| `ethernet` \| `none` | |
 | `wifi_rssi` | dBm \| null | |
+| `illuminance` | 0–100000 | Ambient light, lux (P3.16); covered by the `illuminance` capability |
 | `current_page` | string \| null | Frontend path shown in the WebView, without query string or fragment |
 | `volume` | 0–100 | Media stream volume |
 | `muted` | bool | |
@@ -201,6 +202,7 @@ HA itself may also return its own codes (`unauthorized`, `unknown_command`, …)
 
 - The device keeps one WebSocket. On close or error it reconnects after a delay: attempt *n* (from 0) waits a uniformly random time in [d/2, d], d = min(`BACKOFF_MAX`, `BACKOFF_BASE` × 2ⁿ). *n* resets once a connection has stayed registered for `BACKOFF_RESET_AFTER`.
 - A reconnect repeats the whole session order (register, subscribe). Registration is idempotent.
+- If the integration's config entry unloads or reloads, the server closes the device's sockets; the device reconnects as above (ADR 0019).
 - Commands in flight when a connection drops are lost; the integration's wait times out and the HA service call fails. The device never replays results on a new connection.
 - The device's keepalive is the `ping` command (section 4); a missing `pong` ends the connection.
 - While disconnected, the device keeps working from cached settings (plan 5.6) and buffers nothing except the latest full state, which it sends with `register`.

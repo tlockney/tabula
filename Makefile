@@ -55,6 +55,16 @@ test: ## Run tests (repo, mock device, integration incl. conformance against it)
 integration-test: ## Custom integration tests (P1.2+), including the mock e2e pair
 	$(UV) run pytest integration/tests
 
+# HA-version matrix (ADR 0001 item 8): one leg per supported release. The
+# pytest-homeassistant-custom-component (phacc) version pins its homeassistant
+# release exactly; legs resolve from PyPI into build/ha-matrix/, so the
+# project's uv.lock is never edited. HA_PYTHON is required by newer phacc
+# releases (0.13.375+, HA 2026.10, needs 3.14).
+.PHONY: test-ha-matrix
+test-ha-matrix: ## Integration tests on one HA release: HA_PHACC=<phacc version> [HA_PYTHON=<python>]
+	@test -n "$(HA_PHACC)" || { echo "usage: make test-ha-matrix HA_PHACC=<pytest-homeassistant-custom-component version> [HA_PYTHON=<python>]" >&2; exit 2; }
+	@tools/ha_matrix.sh "$(HA_PHACC)" "$(HA_PYTHON)"
+
 # --- Mock device ---
 
 .PHONY: mock-test

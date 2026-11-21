@@ -41,4 +41,21 @@ class PairingNameTest {
         assertEquals(64, clipped.codePointCount(0, clipped.length))
         assertEquals(64, PairingName.default("y".repeat(80), null, id).length)
     }
+
+    @Test
+    fun `the field filter bounds input in code points, not UTF-16 units`() {
+        val full = "📱".repeat(63) // 63 code points, 126 chars
+        assertEquals(null, PairingName.limitInsert(full, full.length, full.length, "📱"))
+        assertEquals("", PairingName.limitInsert(full + "x", full.length + 1, full.length + 1, "y"))
+        assertEquals("ab", PairingName.limitInsert(full.dropLast(2), 124, 124, "abc"))
+        // replacing a range frees its code points
+        assertEquals(null, PairingName.limitInsert(full + "x", 0, 2, "z"))
+        assertEquals("z", PairingName.limitInsert(full + "x", 0, 2, "zz"))
+    }
+
+    @Test
+    fun `clip bounds the model sent at pairing`() {
+        assertEquals("KFTRPWI", PairingName.clip("KFTRPWI"))
+        assertEquals(64, PairingName.clip("m".repeat(90)).length)
+    }
 }

@@ -11,6 +11,7 @@ Use a dedicated test device: the suite registers it, sends state and opens extra
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -21,6 +22,26 @@ import pytest
 from mockdevice.pairing import refresh_access_token
 from mockdevice.store import DeviceStore
 from mockdevice.testserver import TestServer
+
+# Opening any aiohttp ClientSession creates an async DNS resolver; with aiodns
+# (a homeassistant dependency) that is a pycares channel, which starts a
+# daemon thread named "_run_safe_shutdown_loop" that lives for the rest of the
+# process. The phacc pin (0.13.316) exempts exactly that thread from its
+# verify_cleanup teardown; the floor harness (phacc 0.13.201, HA 2025.1)
+# predates the exemption, so there the first test to open a client session
+# would fail teardown for a thread that exists on every harness (ADR 0001
+# item 8). Starting it once here, before any test's thread snapshot, keeps
+# the teardown assertion meaningful on every leg. The resolver is kept
+# referenced on purpose: it owns the thread.
+_PRESERVED_RESOLVER: aiohttp.resolver.AsyncResolver | None = None
+
+
+async def _start_aiohttp_resolver_thread() -> None:
+    global _PRESERVED_RESOLVER
+    _PRESERVED_RESOLVER = aiohttp.resolver.AsyncResolver()
+
+
+asyncio.run(_start_aiohttp_resolver_thread())
 
 
 @pytest.fixture(autouse=True)
