@@ -95,6 +95,38 @@ plan rules out. The P2.1 boot-start observation on an Echo Show is therefore
 skipped; if the ADR's device check ever overturns the no-go, P2.7 owns the
 bring-up.
 
+## Hardware check (P2.2)
+
+After provisioning, pairing and letting the app reach its dashboard, run:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+ANDROID_SERIAL=<serial> tools/device/check_p22.sh
+```
+
+It verifies, with pasted evidence for each step:
+
+1. the service is running and the phase is CONNECTED;
+2. the device's WebView version and how it updates — the output ADR 0001
+   item 6 has been waiting for (every read-only command from that ADR);
+3. the dashboard loaded with the device credential: the app's
+   `dashboard: loaded` page-finished log line, the external-auth bridge's
+   answered log line, and HA's current-page sensor reading the loaded
+   path (F-DSH-01, F-NAV-02);
+4. navigation stays inside the WebView: it calls `tabula.navigate` from HA
+   to `/profile` (a page every user can open), waits for the page-finished
+   line for that path, and fails if the window focus left `net.lockney.tabula`
+   (a link that opened outside, e.g. in a browser, fails the check);
+5. screen off/on (`input keyevent KEYCODE_POWER` each way, 15 s apart)
+   doesn't reload: any new `dashboard: loaded` line after the toggle fails
+   the check, and HA's current-page sensor is unchanged;
+6. the full dashboard and service log.
+
+The exit status is 0 only when every step's evidence appeared. Step 4 uses
+`ha_query.py --navigate`, which targets the tablet by its persisted
+device_id over HA's WebSocket and fails when the service call fails, so a
+navigation that never reached the device cannot pass silently.
+
 ## Recovery (before Phase 4's recovery page)
 
 Recovery is ADB-only until Phase 4 (plan 5.9). All of these preserve ADB

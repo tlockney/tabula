@@ -78,3 +78,10 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Diagnostic state reported to HA while connected: battery level, charging, network type, Wi-Fi signal strength, app version | F-HA-05, F-HA-09 | P2.1 |
 | A credential revoked in HA returns the tablet to its pairing screen | independent design (ADR 0001 item 2) | P2.1 |
 | A terminal pairing failure (refused request, bad nonce, unreachable server) shows an error on the pairing screen instead of failing silently | independent design (PROTOCOL.md section 2.5) | P2.1 |
+| The main screen is a full-screen WebView of the HA frontend, signed in with the pairing credential through the frontend's external-auth bridge; no login page is shown and no token is injected into the page | F-DSH-01, ADR 0001 item 3 | P2.2 |
+| Dashboard links stay in the WebView; top-level navigation off the HA origin is blocked, and links naming app actions run them without the page navigating | F-DSH-01, F-DSH-09, ADR 0001 item 3 | P2.2 |
+| tabula://reload and tabula://clear-cache links on a dashboard run the app's reload and clear-cache actions; an unknown action or scheme shows a toast with the reason | F-DSH-09 | P2.2 |
+| app://package links on a dashboard open another installed app by package name; an uninstalled package shows a toast | F-DSH-10 | P2.2 |
+| The reload and clear-cache buttons in HA drive the dashboard WebView, failing with an error when no dashboard is showing; tabula.navigate opens an HA frontend path in the WebView, refusing paths that would leave the HA origin | F-HA-08, F-NAV-01, PROTOCOL.md 4.5 | P2.2 |
+| The current-page sensor follows the page the WebView has finished loading, as a path without query string or fragment | F-NAV-02, PROTOCOL.md 4.4 | P2.2 |
+| The dashboard survives the screen turning off and on without reloading; the frontend itself suspends its socket after five minutes hidden and reconnects on return without a reload | F-DSH-01, ADR 0011 | P2.2 |

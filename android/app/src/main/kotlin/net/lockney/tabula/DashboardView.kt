@@ -126,22 +126,23 @@ class DashboardView(
     private inner class Bridge {
         @JavascriptInterface
         fun getExternalAuth(payload: String) {
-            scope.launch { answer { bridge.getExternalAuth(payload, onHaOrigin()) } }
+            scope.launch { answer("getExternalAuth") { bridge.getExternalAuth(payload, onHaOrigin()) } }
         }
 
         @JavascriptInterface
         fun revokeExternalAuth(payload: String) {
-            scope.launch { answer { bridge.revokeExternalAuth(payload, onHaOrigin()) } }
+            scope.launch { answer("revokeExternalAuth") { bridge.revokeExternalAuth(payload, onHaOrigin()) } }
         }
 
         @JavascriptInterface
         fun externalBus(message: String) {
-            scope.launch { answer { bridge.externalBus(message, onHaOrigin()) } }
+            scope.launch { answer("externalBus") { bridge.externalBus(message, onHaOrigin()) } }
         }
     }
 
-    private suspend fun answer(js: suspend () -> String?) {
-        val script = js() ?: return
+    private suspend fun answer(what: String, js: suspend () -> String?) {
+        val script = js() ?: return // refused: off origin, bad payload, or nothing to say
+        Log.i(TAG, "bridge $what: answered")
         main.post { runCatching { view.evaluateJavascript(script, null) } }
     }
 
