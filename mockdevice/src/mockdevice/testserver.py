@@ -79,6 +79,10 @@ class DeviceRecord:
     last_upload: bytes | None = None
     upload_command_id: str | None = None
     upload_before_result: bool = False
+    # Feature sections of this device's /test/report entry, keyed by feature.
+    # Each feature writes its own key where it handles the device, so the
+    # report itself never needs editing (keeps parallel changes apart).
+    report: dict[str, Any] = field(default_factory=dict)
 
 
 class TestServer:
@@ -119,13 +123,9 @@ class TestServer:
         app.router.add_post("/api/tabula/screenshot", self._screenshot)
         # Test hooks (not part of TLP): what the Python tests and the Android
         # JVM integration test drive the server with over HTTP.
-        app.router.add_post("/test/confirm", self._test_confirm)
-        app.router.add_post("/test/command", self._test_command)
-        app.router.add_get("/test/report", self._test_report)
-        app.router.add_post("/test/entity", self._test_entity)
-        app.router.add_post("/test/forecast", self._test_forecast)
-        app.router.add_post("/test/display", self._test_display)
-        app.router.add_post("/test/drop", self._test_drop)
+        # A hook is any `_test_<name>` method, served at /test/<name>, so adding
+        # one touches no shared list.
+        app.router.add_route("*", "/test/{hook}", self._test_hook)
         self._runner = web.AppRunner(app)
         self.url = ""
 
@@ -318,6 +318,12 @@ class TestServer:
         # The command is still open here, so the client really did upload
         # before answering - the ordering the protocol requires.
         record.upload_before_result = (id(record.current), command_id) in self._results
+        record.report["screenshot"] = {
+            "uploaded": True,
+            "bytes": len(body),
+            "command_id": command_id,
+            "before_result": record.upload_before_result,
+        }
         response = {"status": "stored", "bytes": len(body)}
         self.codec.validate("http_screenshot_response", response)
         return web.json_response(response)
@@ -473,6 +479,13 @@ class TestServer:
     # so an external client (the Android JVM integration test) can confirm a
     # pairing, send a command and read the server's view.
 
+    async def _test_hook(self, request: web.Request) -> web.Response:
+        name = request.match_info["hook"]
+        handler = getattr(self, f"_test_{name}", None) if name.isidentifier() else None
+        if handler is None or name == "hook":
+            return web.json_response({"error": "unknown_hook"}, status=404)
+        return await handler(request)
+
     async def _test_confirm(self, request: web.Request) -> web.Response:
         body = await self._body(request)
         if body is None or "device_id" not in body or "code" not in body:
@@ -566,12 +579,7 @@ class TestServer:
                         "ha_subscriptions": self.ha.report(record.current)
                         if record.current
                         else [],
-                        "screenshot": {
-                            "uploaded": record.last_upload is not None,
-                            "bytes": len(record.last_upload or b""),
-                            "command_id": record.upload_command_id,
-                            "before_result": record.upload_before_result,
-                        },
+                        **record.report,
                     }
                     for device_id, record in self.devices.items()
                 },

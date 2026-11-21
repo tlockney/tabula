@@ -253,6 +253,7 @@ async def test_screenshot_command_uploads_before_answering(server, store, start)
     assert result["ok"] is True
     assert record.last_upload == SCREENSHOT_JPEG
     assert record.upload_before_result is True
+    assert record.report["screenshot"]["before_result"] is True
     # The capture is consumed: a new capture starts empty.
     assert running.client.device.last_screenshot is None
 
