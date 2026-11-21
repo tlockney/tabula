@@ -187,6 +187,6 @@ echo "-- last-capture sensor after the restart: $(ha_state "$TABULA_LAST_CAPTURE
 ask "In HA: does the image entity still show the screenshot from step 3 after the restart?"
 
 step "6. service log for the record"
-adb shell logcat -d -v time -s "$service_tag:I" "$service_tag:W" | tail -40
+adb shell logcat -d -v time -s "$service_tag:I" | tail -40
 
 completed=1

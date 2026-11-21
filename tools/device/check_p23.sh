@@ -125,7 +125,7 @@ wait_for "the adaptive switch to read off" 10 ha_state_is "$TABULA_ADAPTIVE" off
 echo "-- adaptive switch: $(ha_state "$TABULA_ADAPTIVE"); HA light: $(ha_state "$TABULA_LIGHT")"
 
 step "6. screen log for the record"
-adb shell logcat -d -s TabulaScreen:I TabulaScreen:W TabulaService:I | tail -40
+adb shell logcat -d -s TabulaScreen:I TabulaService:I | tail -40
 
 echo
 echo "P2.3 hardware check complete; paste everything above into the packet Result."

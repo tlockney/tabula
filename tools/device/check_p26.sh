@@ -121,11 +121,11 @@ tap_centre() { # only while the screensaver shows: the overlay takes the touch
     adb shell input tap $((w / 2)) $((h / 2))
     echo "-- tapped the centre of the screen"
 }
-service_log() { adb shell logcat -d -v time -s "$service_tag:I" "$service_tag:W"; }
+service_log() { adb shell logcat -d -v time -s "$service_tag:I"; }
 service_log_lines() { # service_log_lines <pattern> -> count of matching lines
     service_log | grep -cF "$1" || true
 }
-log_tags=(-s "$service_tag:I" "$service_tag:W" "$dash_tag:I" "$dash_tag:W")
+log_tags=(-s "$service_tag:I" "$dash_tag:I")
 wait_for_log() { # wait_for_log <pattern> <timeout seconds>
     local pattern="$1" timeout="$2" waited=0
     until adb shell logcat -d "${log_tags[@]}" 2>/dev/null | grep -F "$pattern" | tail -1 | tee /dev/stderr; do
@@ -365,7 +365,7 @@ wait_s="$(seconds_until "$next")"
 echo "-- screensaver switch: $(ha_state "$TABULA_SCREENSAVER") (off); next screensaver: $next (in ${wait_s}s)"
 page_before="$(ha_state "$TABULA_CURRENT_PAGE")"
 echo "-- current page: $page_before; HA light: $(ha_state "$TABULA_LIGHT")"
-loaded_before="$(adb shell logcat -d -s "$dash_tag:I" "$dash_tag:W" | grep -cF 'dashboard: loaded' || true)"
+loaded_before="$(adb shell logcat -d -s "$dash_tag:I" | grep -cF 'dashboard: loaded' || true)"
 echo "-- 'dashboard: loaded' lines so far: $loaded_before"
 
 step "3. HA goes down; the app keeps its head"
@@ -421,7 +421,7 @@ else
     echo "-- system brightness after the tap: $level_after (left the screensaver level $saver_level)"
 fi
 ask "Is the dashboard back - the same page as before, served from the WebView's own cache?"
-loaded_now="$(adb shell logcat -d -s "$dash_tag:I" "$dash_tag:W" | grep -cF 'dashboard: loaded' || true)"
+loaded_now="$(adb shell logcat -d -s "$dash_tag:I" | grep -cF 'dashboard: loaded' || true)"
 (( loaded_now <= loaded_before )) \
     || fail "the dashboard reloaded during the outage ($loaded_before -> $loaded_now loads): F-DSH-04 says leave the page up"
 echo "-- 'dashboard: loaded' lines still: $loaded_now (no reload; the page was never re-fetched)"
@@ -467,7 +467,7 @@ echo "-- HA's registry and entity states after recovery:"
 UV_CONFIG_FILE="$here/../uv.toml" \
     uv run --directory "$here/../.." python tools/device/ha_query.py \
     --ha "$TABULA_HA_URL" "$(device_id)"
-loaded_now="$(adb shell logcat -d -s "$dash_tag:I" "$dash_tag:W" | grep -cF 'dashboard: loaded' || true)"
+loaded_now="$(adb shell logcat -d -s "$dash_tag:I" | grep -cF 'dashboard: loaded' || true)"
 (( loaded_now <= loaded_before )) \
     || fail "the dashboard reloaded during recovery ($loaded_before -> $loaded_now loads)"
 echo "-- the WebView rode the whole outage on one load ($loaded_before -> $loaded_now)"
@@ -489,7 +489,7 @@ echo "-- re-registered ${took}s after Wi-Fi came back (a stuck backoff counter w
 
 step "9. full service and dashboard log for the record"
 service_log | tail -80
-adb shell logcat -d -v time -s "$dash_tag:I" "$dash_tag:W" | tail -20
+adb shell logcat -d -v time -s "$dash_tag:I" | tail -20
 
 # the closing line prints from the restore trap, after anything it restored;
 # the EXIT trap runs when the script falls off the end here as well
