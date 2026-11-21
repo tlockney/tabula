@@ -238,8 +238,13 @@ class MainActivity : Activity() {
         val fallbackName = defaultPairingName(this, store.deviceId)
         val nameInput = EditText(this).apply {
             hint = fallbackName
-            setText(store.settings.identity.name ?: fallbackName)
-            filters = arrayOf(android.text.InputFilter.LengthFilter(PairingName.MAX_LENGTH))
+            setText(store.nameForPairing(fallbackName))
+            // the bound counts code points, as the schema does, not UTF-16 units
+            filters = arrayOf(
+                android.text.InputFilter { source, start, end, dest, dstart, dend ->
+                    PairingName.limitInsert(dest, dstart, dend, source.subSequence(start, end))
+                },
+            )
             setSingleLine(true)
         }
         native.addView(nameInput, LinearLayout.LayoutParams(
