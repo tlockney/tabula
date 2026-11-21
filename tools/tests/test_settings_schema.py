@@ -12,7 +12,10 @@ settings (plan 5.6). These tests pin what the packets require:
   spot invalid/EXPECTED.json records (same convention as the TLP fixtures);
 - every property carries a role tag, and every default is transcribed from
   docs/decisions/0002-constants.md ("Phase 1-2 behavior defaults" and
-  "Settings schema v2 (P3.1)").
+  "Settings schema v2 (P3.1)") — and, for the v2 leaves, that the ADR's v2
+  section really carries each leaf's default and bounds in one of its table
+  rows (the photos gap found in PR #73's second review is what this guards
+  against; a missing row fails the test).
 """
 
 from __future__ import annotations
@@ -224,6 +227,49 @@ def test_leaf_roles_match_spec() -> None:
 def test_defaults_match_adr_0002() -> None:
     for path, prop in leaves(schema()):
         assert prop.get("default") == LEAF_SPEC[path][1], path
+
+
+def test_v2_defaults_and_bounds_are_documented_in_adr_0002() -> None:
+    """Every settings-v2 leaf's default and bounds live in ADR 0002's v2 section.
+
+    Constants are chosen by the architect and recorded in the ADR (AGENTS.md,
+    "Code style"): one table row must carry the leaf's name together with its
+    default, every numeric bound, and every enum member. The photos table
+    missing from the first version of the v2 section (PR #73's second review)
+    is the case this test exists for — a schema leaf without its ADR row
+    fails here, not silently.
+    """
+    adr = (ROOT / "docs" / "decisions" / "0002-constants.md").read_text(encoding="utf-8")
+    section = adr.split("### Settings schema v2 (P3.1)", 1)[1]
+    section = section.split("### Phase 1-2 behavior defaults", 1)[0]
+    rows = [line.lower() for line in section.splitlines() if line.startswith("|")]
+
+    v1 = json.loads(V1_SCHEMA_PATH.read_text(encoding="utf-8"))
+    v1_paths = {path for path, _ in leaves(v1)}
+
+    for path, prop in leaves(schema()):
+        if path in v1_paths:
+            continue
+        name = path[-1]
+        expected: list[str] = []
+        if prop.get("type") != "array" and prop.get("default") is not None:
+            expected.append(str(prop["default"]).lower())
+        for key in ("minimum", "maximum", "minLength", "maxLength", "maxItems"):
+            if key in prop:
+                expected.append(str(prop[key]))
+        if prop.get("type") == "array":
+            expected.append("[]")
+            for key in ("minLength", "maxLength"):
+                if isinstance(prop.get("items"), dict) and key in prop["items"]:
+                    expected.append(str(prop["items"][key]))
+        if "enum" in prop:
+            expected += [member.lower() for member in prop["enum"]]
+
+        documented = any(name in row and all(token in row for token in expected) for row in rows)
+        assert documented, (
+            f"{'/'.join(path)}: no row in ADR 0002's settings-v2 section carries "
+            f"its default/bounds {expected}"
+        )
 
 
 def test_every_leaf_traces_to_a_feature() -> None:

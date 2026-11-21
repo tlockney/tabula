@@ -114,7 +114,6 @@ class Codegen:
         self.class_names: set[str] = set()
         self.enum_defs: list[str] = []  # enum class sources, in first-use order
         self.pattern_defs: list[str] = []  # private Regex vals
-        self._enum_index: dict[str, str] = {}  # enum values tuple -> class name
         self._pattern_index: dict[str, str] = {}  # schema pattern -> val name
 
     def unique(self, name: str, what: str) -> str:
@@ -166,7 +165,6 @@ class Codegen:
             self.enum_defs.append(
                 f"/** Schema enum for {path}. */\n@Serializable\nenum class {cls} {{\n{cases},\n}}"
             )
-            self._enum_index["\x00".join(values)] = cls
             return cls, f"{cls}.{kotlin_name(default, upper=True)}", []
 
         ptype = prop.get("type")
@@ -246,7 +244,6 @@ class Codegen:
                 f"/** Schema enum for {path}[]. */\n@Serializable\n"
                 f"enum class {cls} {{\n{cases},\n}}"
             )
-            self._enum_index["\x00".join(values)] = cls
             return cls, []
         match items.get("type"):
             case "integer":

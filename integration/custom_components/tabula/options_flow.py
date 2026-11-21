@@ -20,7 +20,7 @@ touch the entry's options - the entry keeps what it had.
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import voluptuous as vol
 import yaml
@@ -40,9 +40,6 @@ from .settings import (
     schedule_settings_push,
     set_path,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 def _validator(field: SettingsField) -> Any:

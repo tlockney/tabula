@@ -133,7 +133,7 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | show_am_pm | default true | Pair with 12-hour: the marker is what makes 12-hour legible. |
 | show_date | default true | A wall clock wants the date; F-SSV-08 lists it as an option. |
 | size | 25–400 %, default 100 | Percent of the mode's base size; the floor keeps a misconfigured tiny clock visible, the ceiling keeps it on the panel. |
-| text_color, background_color | `#RRGGBB` or `#AARRGGBB` (Android order), default white / black | Android's `Color.parseColor` forms; alpha-first 8-digit matches what the device parses without translation. |
+| text_color, background_color | `#RRGGBB` or `#AARRGGBB` (Android order), defaults `#FFFFFFFF` (white) / `#FF000000` (black) | Android's `Color.parseColor` forms; alpha-first 8-digit matches what the device parses without translation. White on black is the readable-from-across-the-room pair. |
 | background_source | 0–2048 chars, default "" (none) | Empty, a local file path, or a URL; 2048 is the common URL limit used elsewhere (ADR 0002). |
 | background_refresh | 0–86400 s, default 0 (never) | F-SSV-09's re-fetch interval; a day is the longest sensible periodic refresh, 0 disables it. |
 | background_darken | 0–100 %, default 40 | The readability layer's darkening strength; 40 keeps the face readable over a mid-tone photo without hiding it. |
@@ -149,6 +149,21 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | hide_overlays | default true | Widgets and At a Glance in full color would light the room (F-SSV-10). |
 | power_off_delay | 0–1440 minutes, default 0 (never) | Minutes of night mode before the panel turns off (F-SSV-10); a day bounds it, 0 keeps the panel on. The countdown itself is F-SSV-19 (later phase); the key no-ops until then. |
 | black_screen_alternative | default false | The alternative in F-SSV-10 for sensors that stop reporting at panel-off; opt-in. |
+
+**Photo slideshow (`screensaver.photos`, F-SSV-12).** The `media_browser` note at the top of this section applies to `source`: it is a value now so P3.9 adds no schema bump.
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| source | `folder` \| `picker` \| `url` \| `media_browser`, default `folder` | F-SSV-12's four sources. A folder is the zero-setup default: it needs only a path — no on-device picker interaction, no HA round trip. |
+| folder_path | 0–2048 chars, default "" | The device-local folder for the folder source (F-SSV-12); 2048 is the URL-length bound used elsewhere in ADR 0002 and far beyond any real path. Empty with any other source. |
+| image_url | empty or `http(s)://`, 0–4096 chars, default "" | The single-image URL source (F-SSV-12), fetched fresh for each slide; the scheme and length bounds match `play_media.url` (ADR 0002). |
+| slide_interval | 5–3600 s, default 300 | Five seconds is the shortest a photo registers on a wall panel; an hour makes the slideshow effectively one static photo. Five minutes is the digital-frame rhythm. |
+| transition | `none` \| `crossfade` \| `slide` \| `zoom` \| `pan_zoom` \| `random`, default `crossfade` | F-SSV-12's list; `pan_zoom` is the slow pan-and-zoom (stills only). Crossfade never fully covers either photo, so nothing pops mid-change on a slow panel. |
+| fit | `letterbox` \| `smart_fill` \| `fill`, default `smart_fill` | F-SSV-12's three fits. Smart fill is the least-lossy default on a mixed collection: the full photo with only a small crop when shapes nearly match, blurred darkened bars when they differ a lot. |
+| shuffle | default false | In-order is the neutral default; shuffle suits curated frames and is one switch away (F-SSV-12). |
+| include_subfolders | default false | Explicit scope by default: a stray subfolder of screenshots never joins the playlist unnoticed (F-SSV-12). |
+| edge_taps | default true | The edge zones are the slideshow's only remote-free control on a wall tablet (F-SSV-12); on by default, and a tap elsewhere still dismisses. |
+| exif_details | default false | The EXIF overlay is for curating a collection, not for reading across a room (F-SSV-12); off unless asked for. |
 
 **Weather scene (`screensaver.weather`, F-SSV-11), website (`screensaver.website`, F-SSV-13/14), dim level, pixel shift, fade.**
 
@@ -186,12 +201,12 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | vignette | 0–100 %, default 0 | The adjustable dark vignette behind widgets (F-WGT-01) defaults off: it is a legibility fix for photo backgrounds, not a look every dashboard wants. |
 | per-widget `enabled` | default false each | Widgets are opt-in; a corner assignment survives a disabled widget (F-WGT-01). |
 | corners | `tl` \| `tr` \| `bl` \| `br`; defaults: small_clock `tl`, weather `tr`, forecast `br`, battery `bl`, entity `tr` | Five widgets, four corners: the defaults cannot be collision-free, and it does not matter — only enabled widgets draw, the device resolves a shared corner (F-WGT-01), and the defaults spread the common set as widely as possible. |
-| small_clock: show_date / hour_24 / color | defaults true / false / white | Mirrors the big clock's date and 12-hour defaults (F-WGT-03). |
+| small_clock: show_date / hour_24 / color | defaults true / false / `#FFFFFFFF` (white) | Mirrors the big clock's date and 12-hour defaults (F-WGT-03). |
 | weather: entity_id, place_name | default "" | Same shapes as the weather scene's fields (F-WGT-04); hidden until an entity is chosen. |
 | forecast: entity_id / days / include_today | default "" / 1–10, default 5 / default true | A work week of rows at the default (F-WGT-05); ten is every day a panel can fit with day name, icon and high/low. |
 | battery: show_percent / only_when_low | defaults true / false | F-WGT-06's options; the percentage is the widget's point. |
-| entity: entity_id / attribute / name | defaults "" / "" (the state) / "" (the entity's name) | F-WGT-09; empty strings mean "not overridden", which the device reads as state, own name. |
-| entity.visible_values | 0–10 strings, default [] | F-WGT-09's show-only-for-these-values list; ten distinct values covers every practical binary/multi state without becoming a table. |
+| entity: entity_id / attribute / name | defaults "" / 0–64 chars, default "" (the state) / 0–64 chars, default "" (the entity's name) | F-WGT-09; empty strings mean "not overridden", which the device reads as state, own name. 64 chars is the identifiers-and-labels bound (ADR 0002): an attribute key and a widget label are labels. |
+| entity.visible_values | 0–10 strings of 0–64 chars each, default [] | F-WGT-09's show-only-for-these-values list; ten distinct values covers every practical binary/multi state without becoming a table, and 64 chars per value is the identifiers-and-labels bound (ADR 0002). |
 
 **Schedule (`schedule`, F-SSV-18).**
 
