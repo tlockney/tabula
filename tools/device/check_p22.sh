@@ -32,7 +32,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 
 ha_query() { # ha_query [args...] - run tools/device/ha_query.py in the repo env
     UV_CONFIG_FILE="$here/../uv.toml" \
-        uv run --directory "$here/.." python tools/device/ha_query.py \
+        uv run --directory "$here/../.." python tools/device/ha_query.py \
         --ha "$TABULA_HA_URL" --token "$TABULA_HA_TOKEN" "$@"
 }
 
