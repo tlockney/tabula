@@ -1,4 +1,4 @@
-# 0011: The frontend's background-disconnect behavior
+# 0012: The frontend's background-disconnect behavior
 
 Status: accepted
 Date: 2026-11-21

@@ -34,7 +34,7 @@ import net.lockney.tabula.ha.TokenRefresher
  * actions without navigating (F-DSH-09) and `app://` links opening another
  * installed app (F-DSH-10). The WebView is never paused by the activity, so
  * the screen turning off does not reload the dashboard (F-DSH-01); what the
- * frontend does while the page is hidden is ADR 0011, and no shim is built.
+ * frontend does while the page is hidden is ADR 0012, and no shim is built.
  *
  * The thread-safe decision logic lives in :ha (`ExternalAuthBridge`,
  * `DashboardLinks`) and is unit-tested on the JVM; this class is the Android

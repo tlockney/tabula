@@ -84,4 +84,4 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | app://package links on a dashboard open another installed app by package name; an uninstalled package shows a toast | F-DSH-10 | P2.2 |
 | The reload and clear-cache buttons in HA drive the dashboard WebView, failing with an error when no dashboard is showing; tabula.navigate opens an HA frontend path in the WebView, refusing paths that would leave the HA origin | F-HA-08, F-NAV-01, PROTOCOL.md 4.5 | P2.2 |
 | The current-page sensor follows the page the WebView has finished loading, as a path without query string or fragment | F-NAV-02, PROTOCOL.md 4.4 | P2.2 |
-| The dashboard survives the screen turning off and on without reloading; the frontend itself suspends its socket after five minutes hidden and reconnects on return without a reload | F-DSH-01, ADR 0011 | P2.2 |
+| The dashboard survives the screen turning off and on without reloading; the frontend itself suspends its socket after five minutes hidden and reconnects on return without a reload | F-DSH-01, ADR 0012 | P2.2 |

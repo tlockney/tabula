@@ -31,7 +31,7 @@ import kotlin.math.roundToInt
  * authenticated session must not outlive the credential.
  *
  * The WebView is never paused here, so the screen turning off does not
- * reload the dashboard; the frontend's own background behavior is ADR 0011.
+ * reload the dashboard; the frontend's own background behavior is ADR 0012.
  *
  * Plain framework views on purpose: the pinned compileSdk 34 toolchain
  * (ADR 0008) predates current Compose runtimes, so the native UI layers that
