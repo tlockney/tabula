@@ -146,6 +146,21 @@ async def test_upload_requires_jpeg_content_type(hass_setup, server, hub, sessio
         assert resp.status == 400
         assert (await resp.json())["error"] == "invalid_request"
 
+    # The media type is matched with parameters (charset etc.) ignored, not as
+    # an exact header string (review).
+    pending = await registered.screenshot(hub_runtime)
+    async with session.post(
+        f"{server}{UPLOAD}",
+        data=SCREENSHOT_JPEG,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tabula-Command-Id": pending.command_id,
+            "Content-Type": "image/jpeg; charset=binary",
+        },
+    ) as resp:
+        assert resp.status == 200
+        assert (await resp.json())["status"] == "stored"
+
 
 async def test_upload_refuses_more_than_the_cap(hass_setup, server, hub, session, paired):
     hub_runtime = TabulaHub.get(hass_setup)
@@ -172,8 +187,7 @@ async def test_upload_stores_and_answers(hass_setup, server, hub, session, paire
     assert hub_runtime is not None
     registered = Registered(hub_runtime, paired)
     pending = await registered.screenshot(hub_runtime)
-    record = hub_runtime.devices[paired.device_id]
-    assert record.screenshot_delivered is False
+    assert not hub_runtime.screenshot_uploaded(pending.command_id)
 
     token = await _device_token(session, server, paired)
     async with session.post(
@@ -189,7 +203,7 @@ async def test_upload_stores_and_answers(hass_setup, server, hub, session, paire
         body = await resp.json()
     hub_runtime.tlp.validate("http_screenshot_response", body)
     assert body == {"status": "stored", "bytes": len(SCREENSHOT_JPEG)}
-    assert record.screenshot_delivered is True
+    assert hub_runtime.screenshot_uploaded(pending.command_id)
     assert hub_runtime.screenshots.image(paired.device_id) == SCREENSHOT_JPEG
 
     # The command still settles normally afterwards (upload first, then result).
@@ -269,9 +283,8 @@ async def test_capture_button_round_trip(hass_setup, tablet):
     await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
     await hass.async_block_till_done()
 
-    # The upload arrived and was stored; the marker said the screen was on.
-    record = hub.devices[paired.device_id]
-    assert record.screenshot_delivered is True
+    # The upload arrived and was stored: the capture flow saw its command's
+    # upload, so the screen was on.
     assert hub.screenshots.image(paired.device_id) == SCREENSHOT_JPEG
 
     # The timestamp sensor moved (F-HA-12)...
@@ -308,16 +321,61 @@ async def test_screen_off_serves_the_placeholder(hass_setup, tablet):
     await hass.async_block_till_done()
     await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
 
-    # The command answered ok with no upload: the marker never set, the stored
-    # image was dropped, and the entity serves the placeholder.
-    record = hub.devices[paired.device_id]
-    assert record.screenshot_delivered is False
+    # The command answered ok with no upload for ITS command id: the capture
+    # flow read screen-off, the stored image was dropped, and the entity serves
+    # the placeholder.
     assert hub.screenshots.image(paired.device_id) is None
     image = await _image_entity(hass, paired)
     assert await image.async_image() == PLACEHOLDER
     # The timestamp still moved: a capture ran, it just found the screen off.
     sensor = entity_id(hass, "sensor", paired, "last_capture")
     assert hass.states.get(sensor).state != "unknown"
+
+
+async def test_overlapping_captures_read_their_own_upload(hass_setup, server, session, paired):
+    """The screen-on/off marker is per command, not per device (review).
+
+    Capture B is already pending when capture A's upload lands (screen on).
+    B's command then answers ok with no upload of its own, so B must read
+    screen-off - not A's upload - and drop the image A stored. A per-device
+    marker would see A's upload and keep it.
+    """
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    registered = Registered(hub_runtime, paired)
+    record = hub_runtime.devices[paired.device_id]
+    token = await _device_token(session, server, paired)
+
+    async def start_capture() -> Pending:
+        task = asyncio.create_task(hub_runtime.async_capture(record))
+        await asyncio.sleep(0)  # the command goes out synchronously within the task
+        _, event = registered.session.connection.sent[-1]
+        return Pending(event["command_id"], task)
+
+    capture_b = await start_capture()
+    capture_a = await start_capture()
+
+    # A's upload lands while both commands are still pending.
+    async with session.post(
+        f"{server}{UPLOAD}",
+        data=SCREENSHOT_JPEG,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tabula-Command-Id": capture_a.command_id,
+            "Content-Type": "image/jpeg",
+        },
+    ) as resp:
+        assert resp.status == 200
+
+    capture_a.settle_ok(hub_runtime, registered.session)
+    capture_b.settle_ok(hub_runtime, registered.session)
+    await asyncio.gather(capture_a.task, capture_b.task)
+
+    # Both markers were consumed with their captures.
+    assert not hub_runtime.screenshot_uploaded(capture_a.command_id)
+    assert not hub_runtime.screenshot_uploaded(capture_b.command_id)
+    # B ran last and read its own (missing) upload as screen-off.
+    assert hub_runtime.screenshots.image(paired.device_id) is None
 
 
 async def test_last_capture_survives_a_reload(hass_setup, tablet, hub):

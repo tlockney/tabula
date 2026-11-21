@@ -300,7 +300,7 @@ class TestServer:
         command_id = request.headers.get("X-Tabula-Command-Id", "")
         if self.pending_screenshots.get(command_id) != device_id:
             return self._http_error(409, "no_pending_screenshot")
-        if request.headers.get("Content-Type") != "image/jpeg":
+        if request.content_type != "image/jpeg":  # media type, parameters ignored
             return self._http_error(400, "invalid_request")
         body = await request.read()
         if len(body) > SCREENSHOT_MAX_BYTES:

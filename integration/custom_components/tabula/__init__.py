@@ -138,9 +138,6 @@ class DeviceRecord:
     # P3.13: when the last button-started capture completed (RFC 3339),
     # persisted so the timestamp sensor survives an HA restart (F-HA-12).
     last_capture: str | None = None
-    # Runtime marker: an upload arrived for the screenshot command still
-    # pending; async_capture reads it to tell screen-on from screen-off.
-    screenshot_delivered: bool = False
 
     @property
     def connected(self) -> bool:
@@ -185,7 +182,7 @@ class TabulaHub:
         self.by_user: dict[str, str] = {}
         # Per-device settings documents and revisions (settings.py, plan 5.6).
         self.settings = SettingsStore(hass)
-        # The latest screenshot per device, in the media dir (P3.13, PROTOCOL 5).
+        # The latest screenshot per device, outside HA's media dir (P3.13, PROTOCOL 5).
         self.screenshots = ScreenshotStore(hass)
         # Strong refs, keyed by the connection object; entries are removed when the
         # subscription's cleanup runs (socket close) and when a newer registration
@@ -198,9 +195,27 @@ class TabulaHub:
         # (device_id, command_id) -> the command waiting for its result. A result
         # settles it only when it arrives on the connection the command went out on.
         self.result_futures: dict[tuple[str, str], PendingCommand] = {}
+        # Screenshot command ids whose upload landed (upload view -> async_capture,
+        # P3.13). Per command, not per device, so overlapping captures cannot
+        # read each other's uploads (review).
+        self._screenshot_uploads: set[str] = set()
         self._unsub: list[Any] = []
         # device_id -> cancel callback of the pending entry's expiry timer.
         self._pending_timers: dict[str, Any] = {}
+
+    def note_screenshot_upload(self, command_id: str) -> None:
+        """An upload landed for a still-pending screenshot command (view)."""
+        self._screenshot_uploads.add(command_id)
+
+    def screenshot_uploaded(self, command_id: str) -> bool:
+        """Whether that capture's upload landed (consumed by async_capture)."""
+        return command_id in self._screenshot_uploads
+
+    def _consume_screenshot_upload(self, command_id: str) -> bool:
+        """Read and drop the marker once its capture settles (bounded set)."""
+        delivered = command_id in self._screenshot_uploads
+        self._screenshot_uploads.discard(command_id)
+        return delivered
 
     # --- lookups -----------------------------------------------------------
 
@@ -544,13 +559,20 @@ class TabulaHub:
         pending.future.set_result(frame)
 
     async def async_command(
-        self, record: DeviceRecord, command: str, args: dict[str, Any]
+        self,
+        record: DeviceRecord,
+        command: str,
+        args: dict[str, Any],
+        command_id: str | None = None,
     ) -> dict[str, Any]:
         """Send one command and wait for its result; returns the result's data.
 
         Raises HomeAssistantError when the device is offline, did not declare the
         command's capability, answers with an error (NACK), or does not answer
         within COMMAND_TIMEOUT (SCREENSHOT_TIMEOUT for screenshot).
+
+        ``command_id`` lets the caller own the id (the capture flow keys its
+        upload marker by it); a fresh one is minted when it is None.
         """
         caps = COMMAND_CAPABILITIES[command]
         if caps and not caps & set(record.capabilities):
@@ -558,7 +580,7 @@ class TabulaHub:
         session = record.current
         if session is None or session.subscription_id is None:
             raise _command_error("command_offline", command)
-        command_id = ulid_now()
+        command_id = command_id or ulid_now()
         event = {"command_id": command_id, "command": command, "args": args}
         frame = {"id": session.subscription_id, "type": "event", "event": event}
         # Strict sender (PROTOCOL.md 4.0): a frame we would send invalid is a bug
@@ -609,16 +631,23 @@ class TabulaHub:
         capture began; it becomes the record's ``last_capture`` - persisted,
         pushed to the timestamp sensor, and untouched by any other path - only
         when the command succeeds, so a failed capture does not move it. The
-        upload view's marker tells screen-on from screen-off: no upload during
-        the command means the screen was off, the stored image is dropped and
-        the image entity serves the placeholder instead (F-MGT-07, ADR 0014).
+        upload view's marker tells screen-on from screen-off, keyed by THIS
+        capture's command id so overlapping captures cannot read each other's
+        uploads (review): no upload for this command means the screen was off,
+        the stored image is dropped and the image entity serves the placeholder
+        instead (F-MGT-07, ADR 0014).
         """
-        record.screenshot_delivered = False
+        command_id = ulid_now()
         started = _utc_now()
-        await self.async_command(record, "screenshot", {})
+        try:
+            await self.async_command(record, "screenshot", {}, command_id=command_id)
+            delivered = self._consume_screenshot_upload(command_id)
+        finally:
+            # A failed, timed-out or NACKed capture must not leak its marker.
+            self._screenshot_uploads.discard(command_id)
         record.last_capture = started
         self._persist()
-        if not record.screenshot_delivered:
+        if not delivered:
             await self.screenshots.remove(record.device_id)
         self.notify_update(record, {"last_capture"})
         async_dispatcher_send(self.hass, SIGNAL_SCREENSHOT.format(record.device_id))

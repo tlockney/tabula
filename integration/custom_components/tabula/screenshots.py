@@ -8,9 +8,13 @@ command's ``tabula/result`` (the mock and the app both follow this order).
 The view resolves the device from the token (no device ID in the path), accepts
 the upload only while that command ID names a still-pending ``screenshot``
 command on the device's current connection (``409 no_pending_screenshot``
-otherwise, PROTOCOL.md 6), and stores the image in the media dir - one file per
-device, never the config store. The image entity (image.py) serves the stored
-image, or the bundled placeholder when there is none (F-MGT-07, ADR 0014).
+otherwise, PROTOCOL.md 6), and stores the image in the integration's own
+directory under the config dir - one file per device, never the config store.
+That directory is not HA's media dir, so captures do not appear in the media
+browser (a dashboard screenshot is not the user's media); the config dir is
+inside HA's backup set, so captures still survive a backup (review).
+The image entity (image.py) serves the stored image, or the bundled placeholder
+when there is none (F-MGT-07, ADR 0014).
 """
 
 from __future__ import annotations
@@ -36,17 +40,20 @@ PLACEHOLDER = (Path(__file__).parent / "screenshot_placeholder.jpg").read_bytes(
 
 
 class ScreenshotStore:
-    """The latest capture per device, in the media dir (packet P3.13 item 3).
+    """The latest capture per device, outside HA's media dir (packet P3.13).
 
     One JPEG per device, overwritten in place, so a device's storage is
     bounded at ``SCREENSHOT_MAX_BYTES``. A capture with the screen off removes
-    it, so the entity serves the placeholder again. File IO runs in the
-    executor; ``image()`` is already called there by the image entity.
+    it, so the entity serves the placeholder again. Stored under the config
+    dir (``config/tabula/screenshots``), not the media dir, so captures stay
+    out of the media browser; the config dir is inside HA's backup set.
+    File IO runs in the executor; ``image()`` is already called there by the
+    image entity.
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._dir = Path(hass.config.path("media", DOMAIN))
+        self._dir = Path(hass.config.path(DOMAIN, "screenshots"))
 
     def _path(self, device_id: str) -> Path:
         return self._dir / f"{device_id}.jpg"
@@ -102,7 +109,9 @@ class TabulaScreenshotView(HomeAssistantView):
                 "no_pending_screenshot",
                 f"No pending screenshot command for {command_id!r}",
             )
-        if request.headers.get("Content-Type") != "image/jpeg":
+        if request.content_type != "image/jpeg":
+            # request.content_type is the media type with parameters (charset
+            # etc.) stripped, so a parametered sender is still accepted.
             return _http_error(
                 tlp,
                 HTTPStatus.BAD_REQUEST,
@@ -133,10 +142,12 @@ class TabulaScreenshotView(HomeAssistantView):
                 tlp, HTTPStatus.BAD_REQUEST, "invalid_request", "The upload was empty"
             )
         await hub.screenshots.store(record.device_id, data)
-        # The capture flow (TabulaHub.async_capture) reads this marker when the
-        # command's result lands: an upload before the result means the screen
-        # was on; no upload means it was off and the placeholder is served.
-        record.screenshot_delivered = True
+        # The capture flow (TabulaHub.async_capture) reads this per-command
+        # marker when the command's result lands: an upload before the result
+        # means the screen was on; no upload means it was off and the
+        # placeholder is served. Keyed by the command, so overlapping
+        # captures cannot read each other's uploads (review).
+        hub.note_screenshot_upload(command_id)
         async_dispatcher_send(hub.hass, SIGNAL_SCREENSHOT.format(record.device_id))
         _LOGGER.debug("screenshot stored for %s (%d bytes)", record.device_id, len(data))
         body = {"status": "stored", "bytes": len(data)}
