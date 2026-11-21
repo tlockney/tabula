@@ -1,12 +1,16 @@
-// The kiosk application module. From P2.1 this hosts the foreground service
-// and UI; until then it only wires the core module into an Android build so
-// `./gradlew test` exercises the Android toolchain in CI.
+// The kiosk application module: the foreground service, boot receiver, pairing
+// screen, Keystore-backed credential storage and the device sensors (packet
+// P2.1). The protocol state machine lives in :ha; the codec and generated
+// settings in :core.
 //
 // minSdk 24 per plan section 3, "Baselines" (Android 7 keeps the later
 // PF1007L targets reachable); targetSdk and compileSdk per ADR 0008.
+// coreLibraryDesugaring is required because :core uses java.time, which
+// predates API 26 (ADR 0008).
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
@@ -30,9 +34,20 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":ha"))
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 }

@@ -1,2 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- TLP pairing, the HA WebSocket and the sensors (packet P2.1) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- The service's ongoing notification (API 33+); without it the service still runs -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".TabulaApp"
+        android:allowBackup="false"
+        android:label="Tabula"
+        android:usesCleartextTraffic="true">
+        <!-- allowBackup=false: the pairing credential must never leave the
+             device (plan 5.2). Cleartext traffic is allowed because HA on the
+             LAN may be plain http (plan 5.2, PROTOCOL 2 threat model); DEVICE.md
+             recommends HTTPS. -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".TabulaService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Starts the service after boot when the device is already paired. A
+             freshly installed app is in the stopped state and gets no boot
+             broadcast until launched once (docs/DEVICE.md). -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
