@@ -22,8 +22,12 @@ ADR [0004](decisions/0004-build-and-toolchain.md) records the reasoning.
 
 ## Common tasks
 
+Work happens in a git worktree, one per branch (AGENTS.md, "Git"):
+
 ```sh
-make setup      # once per clone; safe to re-run
+make worktree BRANCH=p1-3-entity-platforms
+cd .worktrees/p1-3-entity-platforms
+make setup      # once per worktree; safe to re-run
 make check      # before every push
 make fmt        # fix formatting
 make site-dev   # website with live reload

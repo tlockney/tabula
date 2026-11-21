@@ -1,6 +1,9 @@
 # Build output
 /build/
 
+# Git worktrees (AGENTS.md, "Worktrees")
+/.worktrees/
+
 # Python
 .venv/
 __pycache__/

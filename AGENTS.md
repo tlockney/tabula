@@ -8,7 +8,7 @@ The repository is the only shared memory. Everything you need is in the repo plu
 
 1. Read this file.
 2. Read your packet in `docs/packets/` and every file it lists under "Read first".
-3. Run `make setup`, then `make check` to confirm a clean baseline.
+3. Create a worktree for your branch (see "Git"), then run `make setup` and `make check` inside it to confirm a clean baseline.
 
 Background: `docs/PLAN.md` (the plan), `docs/decisions/` (ADRs), `docs/DEVELOPMENT.md` (toolchain and environments).
 
@@ -111,6 +111,8 @@ GitHub issues are the unit of delegation. Each packet has one issue (template "P
 
 ## Git
 
+- All development happens in a git worktree, never in the primary checkout. The primary checkout stays on `main` and clean; it is only used to create worktrees and pull.
+- One worktree per branch, under `.worktrees/` (ignored by git): `make worktree BRANCH=p1-3-entity-platforms` creates `.worktrees/p1-3-entity-platforms` on a new branch from `origin/main`. Run `make setup` inside it. Remove it with `git worktree remove` after the pull request merges.
 - Branch per packet; pull request per branch.
 - Commit messages describe the change. No tool or agent attribution trailers (`Co-Authored-By`, session links, "generated with" footers) and no links to chat threads or sessions. The same applies to pull request descriptions and issue comments.
 - AI agents are used openly in this project; attribution is left out so history stays uniform across many tools, not to hide it.

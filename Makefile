@@ -53,6 +53,15 @@ site: ## Build the website into build/site
 site-dev: ## Serve the website with live reload
 	$(NPM) run dev
 
+# --- Worktrees ---
+
+.PHONY: worktree
+worktree: ## Create .worktrees/$(BRANCH) on a new branch from origin/main
+	@test -n "$(BRANCH)" || { echo "usage: make worktree BRANCH=name" >&2; exit 2; }
+	git fetch origin main
+	git worktree add -b "$(BRANCH)" ".worktrees/$(BRANCH)" origin/main
+	@echo "next: cd .worktrees/$(BRANCH) && make setup"
+
 # --- Housekeeping ---
 
 .PHONY: clean
