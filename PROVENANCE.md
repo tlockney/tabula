@@ -65,6 +65,13 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | tabula_media fires when media finishes; tabula_page when the page changes | independent design (PROTOCOL.md 4.7) | P1.5 |
 | Deleting a tablet's HA device also deletes its stored settings document | independent design (plan 5.6) | P1.5 |
 | Settings-mapped entity actions (keep screen on, adaptive brightness, screensaver brightness and mode) write the HA-owned settings document and push like any edit, never a bare command | F-MGT-01, F-HA-11 | P1.5 |
+| Entity actions send device commands; an offline tablet, an undeclared capability, a refusal or no answer in time fails the action with an error | F-HA-14, PROTOCOL.md 4.6, ADR 0010 | P1.4 |
+| `notify.send_message` shows a text notification on the tablet | F-NTF-01 | P1.4 |
+| `tabula.notify` with title, level, duration, icon, chime and replace-by-tag | F-NTF-01, F-NTF-02, F-HA-14 | P1.4 |
+| `tabula.navigate` opens an HA frontend path on the tablet | F-NAV-01 | P1.4 |
+| `tabula.screensaver` starts or stops the screensaver, optionally in a given mode | F-SSV-03, F-SSV-05, F-HA-14 | P1.4 |
+| `tts.speak` and `media_player.play_media` play on the tablet speaker; announcements are flagged; HA media is sent as a path the tablet fetches without its credential | F-TTS-01, F-TTS-02, ADR 0001 item 5, ADR 0010 | P1.4 |
+| A manual brightness change through the screen light turns adaptive brightness off | plan 5.5; F-SCR-07 open question settled in ADR 0010 | P1.4 |
 | The tablet's pairing screen asks for the HA address, then shows the code and the device ID to confirm in Home Assistant | independent design (ADR 0001, PROTOCOL.md section 2) | P2.1 |
 | The pairing credential is stored on the device encrypted under an Android Keystore key and excluded from backups | independent design (plan 5.2, ADR 0001) | P2.1 |
 | A foreground service with an ongoing notification keeps the HA connection alive, holds a Wi-Fi wake lock, and starts on boot after one manual launch | F-KSK-09 | P2.1 |

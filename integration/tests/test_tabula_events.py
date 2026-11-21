@@ -11,7 +11,7 @@ import asyncio
 
 from custom_components.tabula import TabulaHub
 from helpers import frame_fixture, ws_connect
-from homeassistant.core import Event
+from homeassistant.core import Event, callback
 
 
 async def _registered_subscribed(session, server, paired):
@@ -26,6 +26,9 @@ async def _registered_subscribed(session, server, paired):
 def _listen(hass, names):
     seen: list[Event] = []
 
+    # @callback: runs inside async_fire, so the list is complete once the
+    # websocket reply arrives (a plain function would run in the executor).
+    @callback
     def catch(event: Event) -> None:
         seen.append(event)
 

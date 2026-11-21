@@ -127,7 +127,7 @@ Every command event has `command_id` (unique per device for the integration's li
 | Command (`$defs`) | `args` | Capability |
 | --- | --- | --- |
 | `set_settings` (`command_set_settings`) | `revision`, `schema_version`, `settings` (full document, validated against the settings schema, P0.5) | always |
-| `screen` (`command_screen`) | `on`, `brightness` (at least one) | `screen` / `brightness` |
+| `screen` (`command_screen`) | `on`, `brightness` (at least one). A `brightness` turns adaptive brightness off on the device (plan 5.5); the device reports `brightness` and `adaptive_brightness: false` in one state delta | `screen` / `brightness` |
 | `notify` (`command_notify`) | `message`; optional `title`, `level` (`info`, `success`, `warning`, `error`; FEATURES F-NTF-02), `duration` (s, 0 = until dismissed), `icon` (`mdi:…`), `chime`, `tag` (same tag replaces) | `notifications` |
 | `play_media` (`command_play_media`) | `url` (absolute http(s) without userinfo, or a `/` path resolved against the device's HA base URL), `media_type`, `announce`, optional `volume`. The device never attaches its HA token when fetching it (ADR 0001 item 5). | `audio` |
 | `media_control` (`command_media_control`) | `action`: pause, resume, stop, seek (needs `position`, seconds), next, previous, set_volume (needs `volume`), mute, unmute. `seek` on a stream that cannot seek, and `next`/`previous` without a queue, get `failed` (FEATURES F-MED-01) | `audio` |

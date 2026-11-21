@@ -29,6 +29,24 @@ PAIR_MAX_BODY = 4096  # bytes
 # WebSocket session (ADR 0002)
 FRAME_MAX_BYTES = 256 * 1024
 COMMAND_TIMEOUT = 10.0  # s; awaiting a command's tabula/result (PROTOCOL.md 4.6)
+SCREENSHOT_TIMEOUT = 30.0  # s
+
+# Command -> capabilities, any of which allows it (PROTOCOL.md 4.5); empty means
+# always allowed. The integration never sends a command the device did not declare.
+COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
+    "set_settings": frozenset(),
+    "screen": frozenset({"screen", "brightness"}),
+    "notify": frozenset({"notifications"}),
+    "play_media": frozenset({"audio"}),
+    "media_control": frozenset({"audio"}),
+    "screensaver": frozenset({"screensaver"}),
+    "navigate": frozenset({"navigation"}),
+    "reload": frozenset(),
+    "restart_app": frozenset(),
+    "clear_cache": frozenset(),
+    "log_subscription": frozenset({"logs"}),
+    "screenshot": frozenset({"screenshot"}),
+}
 
 # Per-device system users (ADR 0001 items 2-4): local_only=True by default,
 # group user via homeassistant.auth.const.GROUP_ID_USER, names "Tabula <id8>".

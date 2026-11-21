@@ -196,7 +196,8 @@ async def test_entities_survive_reload_unavailable(hass_setup, server, hub, sess
     assert hass_setup.states.get(eid).state == STATE_UNAVAILABLE
 
 
-async def test_commands_raise_until_p1_4(hass_setup, server, hub, session, paired):
+async def test_command_before_subscribe_raises(hass_setup, server, hub, session, paired):
+    """Registered but not subscribed: nothing can carry the command (PROTOCOL.md 4.1)."""
     client = await ws_connect(session, server, paired.refresh_token)
     await register(client, paired)
     await hass_setup.async_block_till_done()
