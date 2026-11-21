@@ -161,7 +161,7 @@
         "brightness": null,
         "power_off_delay": null,
         "presence_dismiss": null,
-        "widgets": false,
+        "widgets": null,
         "at_a_glance": null
       }
     ]

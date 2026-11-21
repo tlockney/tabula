@@ -31,9 +31,20 @@ class SettingsFixturesTest {
 
     @Test
     fun `v1 fixtures still decode with v2 defaults filled`() {
-        for (name in listOf("defaults.json", "empty.json", "full.json")) {
+        // defaults and empty v1 documents equal the generated defaults; the
+        // v1 full document keeps its v1 values and gets v2 keys at defaults
+        for (name in listOf("defaults.json", "empty.json")) {
             assertEquals(Settings(), SettingsCodec.decode(File(v1, name).readText()), name)
         }
+        val old = SettingsCodec.decode(File(v1, "full.json").readText())
+        assertEquals(ScreensaverMode.Weather, old.screensaver.mode)
+        assertEquals(120, old.screensaver.idleTimeout)
+        assertEquals(35, old.screensaver.brightness)
+        // the v2 keys the v1 document never had decode at their defaults
+        assertEquals(10, old.screensaver.dimBrightness)
+        assertEquals(ScreensaverClockFace.Digital, old.screensaver.clock.face)
+        assertEquals(true, old.widgets.shown)
+        assertEquals(emptyList<ScheduleSlots>(), old.schedule.slots)
     }
 
     @Test
@@ -66,7 +77,7 @@ class SettingsFixturesTest {
         assertEquals(true, s.widgets.smallClock.enabled)
         assertEquals(WidgetsBatteryCorner.Bl, s.widgets.battery.corner)
         assertEquals(listOf("open", "opening"), s.widgets.entity.visibleValues)
-        assertEquals(120, s.notifications.defaultDuration)
+        assertEquals(0, s.notifications.defaultDuration)
         assertEquals(2, s.notifications.maxVisible)
         assertEquals(80, s.audio.mediaVolume)
         assertEquals(AudioAnnounceVolumeBoost.None, s.audio.announceVolumeBoost)
