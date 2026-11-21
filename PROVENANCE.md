@@ -131,6 +131,11 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A switch over the separate screensaver backlight level (screensaver.brightness_enabled): off, the screensaver keeps the panel's current level; dim and black keep theirs | F-SSV-17 | P3.2 |
 | A new idle timeout starts the screensaver countdown over; an unchanged one leaves it running | F-HA-11 | P3.2 |
 | Writing the clock background source is always a new revision and push, identical value or not | F-SSV-09 | P3.2 |
+| While the screensaver shows, the device subscribes to exactly the entities its At a Glance row, widgets and weather scene need, over its own HA connection, and unsubscribes when it closes. Last-known values stay through a dropped connection, and it subscribes again on reconnect | F-AAG-04, F-SSV-11, F-WGT-04, F-WGT-09 | P3.5 |
+| A configured entity HA does not have shows as unavailable, never as a gap | F-AAG-03 | P3.5 |
+| Daily forecasts for the weather scene and forecast widget come from HA's forecast subscription. A weather entity without a daily forecast yields none | F-SSV-11, F-WGT-05 | P3.5 |
+| States are shown with HA's translations, icons and display precision, falling back as HA's frontend does | F-AAG-03 | P3.5 |
+| Calendar mode opens no entity subscription | F-AAG-01, F-WGT-01 | P3.5 |
 | The screenshot capture action asks the device for a capture; the image entity shows the latest stored capture and refreshes when a new one lands | F-MGT-07, F-HA-12, PROTOCOL 5 | P3.13 |
 | The image entity serves the screen-off placeholder (a designed slate, not a black frame) whenever no capture is stored: with the screen off the device captures and uploads nothing and still ACKs | F-MGT-07, ADR 0014 | P3.13 |
 | The `last_capture` timestamp records when a capture was started by the action, is set only when the capture succeeds, persists across restarts, and is untouched by ordinary image fetches | F-HA-12 | P3.13 |

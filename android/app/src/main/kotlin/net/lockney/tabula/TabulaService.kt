@@ -16,8 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import net.lockney.tabula.ha.CredentialRevoked
+import net.lockney.tabula.ha.EntityDataConnection
+import net.lockney.tabula.ha.HaChannel
 import net.lockney.tabula.ha.OkHttpExchange
 import net.lockney.tabula.ha.OkHttpWsTransportFactory
 import net.lockney.tabula.ha.PairingClient
@@ -43,6 +46,20 @@ class TabulaService : Service() {
     private lateinit var lightSensor: LightSensor
     private lateinit var screen: ScreenManager
     private lateinit var screensaver: ScreensaverManager
+
+    /**
+     * HA core commands on the live TLP connection, null between connections;
+     * the screensaver's entity data rides it (ADR 0017, packet P3.5).
+     */
+    private val haChannel = MutableStateFlow<HaChannel?>(null)
+    private val entityData by lazy {
+        EntityDataConnection(
+            channels = haChannel,
+            scope = scope,
+            language = { java.util.Locale.getDefault().language },
+            log = { Log.i(TAG, it) },
+        )
+    }
     private lateinit var notifications: NotificationsManager
     private lateinit var chime: NotificationChime
     private lateinit var audio: MediaManager
@@ -103,6 +120,7 @@ class TabulaService : Service() {
             show = { mode -> TabulaStatus.screensaver.value = mode },
             holdBrightness = screen::setOverride,
             scope = scope,
+            entityData = entityData::start,
         )
         screensaver.applySettings(store.settings)
         screensaver.setPanelOn(panel.isOn)
@@ -189,6 +207,7 @@ class TabulaService : Service() {
 
     override fun onDestroy() {
         screensaver.stop()
+        entityData.stop()
         notifications.stop()
         chime.release()
         audio.close()
@@ -348,9 +367,12 @@ class TabulaService : Service() {
                     TabulaStatus.phase.value = Phase.REJECTED
                 }
             }
+            val channelJob = launch { client.channel.collect { haChannel.value = it } }
             try {
                 client.run(events)
             } finally {
+                channelJob.cancel()
+                haChannel.value = null
                 screen.listener = null
                 screensaver.listener = null
                 audio.listener = null
