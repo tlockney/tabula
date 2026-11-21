@@ -20,3 +20,4 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0012](0012-frontend-background-disconnect.md) | The frontend's background-disconnect behavior (P2.2) | accepted |
 | [0013](0013-screensaver-engine.md) | Screensaver engine (P2.4) | accepted |
 | [0015](0015-settings-entities.md) | Settings entities (P3.2) | accepted |
+| [0017](0017-entity-data-connection.md) | Entity data connection (P3.5); amends PLAN 5.1 | accepted |

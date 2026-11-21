@@ -226,6 +226,7 @@ HTTP (unauthenticated, rate-limited; pairing only):
 - Commands flow down the subscription. Each command frame carries a `command_id`; the device answers with `tabula/result {command_id, ok, error?}`. The integration awaits the result with a timeout and raises `HomeAssistantError` on NACK or timeout.
 - Binary data goes over HTTP, not the WebSocket. That includes screenshots and anything large later.
 - Reconnect: the device re-dials with jittered exponential backoff. Re-registration is idempotent; the newest connection replaces the old one.
+- **HA core data on the same socket (ADR 0017):** while the screensaver shows, the device also sends a few HA core commands on this connection. It subscribes with `subscribe_entities` to the explicit list its overlays need, subscribes to forecasts with `weather/subscribe_forecast`, and fetches display data with `list_for_display`, `get_translations` and `get_icons`. These commands use the same id counter as the `tabula/*` frames. TLP itself is unchanged.
 - **Connection binding:** every `tabula/*` command resolves the device from the authenticated user, never from a `device_id` in the payload. A device's credential cannot read or act for another device.
 
 ### 5.2 Pairing and credentials
