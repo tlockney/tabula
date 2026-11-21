@@ -31,4 +31,10 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 
 | Behavior | Source | Packet |
 | --- | --- | --- |
-| (none yet) | | |
+| Device settings: device name and HA base URL (connection keys, the only ones recovery may change) | F-MGT-03, F-MGT-11 | P0.5 |
+| Device settings: screen brightness, adaptive brightness, keep screen on | F-SCR-01, F-SCR-04, F-SCR-05 | P0.5 |
+| Device settings: screensaver enabled, idle timeout, mode, screensaver brightness | F-SSV-01, F-SSV-05, F-SSV-17 | P0.5 |
+| Device settings: notification default duration, default level, per-level chime, max visible | F-NTF-02, F-NTF-05, F-NTF-07, F-NTF-09 | P0.5 |
+| Device settings: media volume | F-TTS-07 | P0.5 |
+| Default values for every v1 setting | independent design (ADR 0002) | P0.5 |
+| Announcements play at the current volume; no volume boost | independent design (ADR 0002) | P0.5 |
