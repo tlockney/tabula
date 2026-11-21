@@ -30,6 +30,12 @@ FIXTURES = ROOT / "schema" / "fixtures" / "tlp" / "v1"
 BUNDLED = ROOT / "integration" / "custom_components" / "tabula" / "tlp-v1.schema.json"
 SETTINGS_SCHEMA = ROOT / "schema" / "settings.schema.json"
 SETTINGS_BUNDLED = ROOT / "integration" / "custom_components" / "tabula" / "settings.schema.json"
+# The frozen settings schema v1 backs the integration's translate-down
+# (migrations/, plan 5.4); it is frozen, never regenerated.
+SETTINGS_V1_SCHEMA = ROOT / "schema" / "settings.schema.v1.json"
+SETTINGS_V1_BUNDLED = (
+    ROOT / "integration" / "custom_components" / "tabula" / "settings.schema.v1.json"
+)
 
 
 SHARED_DEFS = {"device_id", "command_id", "capability", "error_code", "error", "state", "log_line"}
@@ -129,6 +135,7 @@ def check_bundled_copy() -> list[str]:
     for repo, bundled in (
         (SCHEMA, BUNDLED),
         (SETTINGS_SCHEMA, SETTINGS_BUNDLED),
+        (SETTINGS_V1_SCHEMA, SETTINGS_V1_BUNDLED),
     ):
         if not bundled.is_file():
             errors.append(f"{bundled.relative_to(ROOT)} is missing (copy it from schema/)")

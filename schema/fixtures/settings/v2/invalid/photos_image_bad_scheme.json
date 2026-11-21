@@ -1,0 +1,137 @@
+{
+  "screen": {
+    "brightness": 60,
+    "adaptive_brightness": false,
+    "keep_screen_on": true
+  },
+  "screensaver": {
+    "enabled": true,
+    "idle_timeout": 300,
+    "mode": "clock",
+    "brightness": 20,
+    "dim_brightness": 10,
+    "clock": {
+      "face": "digital",
+      "font_family": "sans-serif",
+      "font_weight": 400,
+      "hour_24": false,
+      "show_seconds": false,
+      "show_am_pm": true,
+      "show_date": true,
+      "size": 100,
+      "text_color": "#FFFFFFFF",
+      "background_color": "#FF000000",
+      "background_source": "",
+      "background_refresh": 0,
+      "background_darken": 40
+    },
+    "night_mode": {
+      "enabled": false,
+      "light_threshold": 10,
+      "hysteresis_lux": 2,
+      "hide_background": true,
+      "hide_overlays": true,
+      "power_off_delay": 0,
+      "black_screen_alternative": false
+    },
+    "weather": {
+      "entity_id": "",
+      "place_name": "",
+      "clock_overlay": false,
+      "info_bar": true,
+      "lightning": false
+    },
+    "photos": {
+      "source": "folder",
+      "folder_path": "",
+      "image_url": "file:///x.jpg",
+      "slide_interval": 300,
+      "transition": "crossfade",
+      "fit": "smart_fill",
+      "shuffle": false,
+      "include_subfolders": false,
+      "edge_taps": true,
+      "exif_details": false
+    },
+    "website": {
+      "url": "",
+      "zoom": 100,
+      "double_tap_dismiss": false
+    },
+    "pixel_shift": {
+      "enabled": false,
+      "interval": 300,
+      "amplitude": 4
+    },
+    "fade": {
+      "enabled": false
+    }
+  },
+  "notifications": {
+    "default_duration": 10,
+    "default_level": "info",
+    "chime_by_level": {
+      "info": false,
+      "success": false,
+      "warning": true,
+      "error": true
+    },
+    "max_visible": 3
+  },
+  "audio": {
+    "media_volume": 50,
+    "announce_volume_boost": "none"
+  },
+  "at_a_glance": {
+    "entities": [],
+    "style": "pill",
+    "hide_names": false,
+    "monochrome_icons": false,
+    "scale": 100,
+    "font": "sans-serif"
+  },
+  "widgets": {
+    "shown": true,
+    "scale": 100,
+    "font": "sans-serif",
+    "vignette": 0,
+    "small_clock": {
+      "enabled": false,
+      "corner": "tl",
+      "show_date": true,
+      "hour_24": false,
+      "color": "#FFFFFFFF"
+    },
+    "weather": {
+      "enabled": false,
+      "corner": "tr",
+      "entity_id": "",
+      "place_name": ""
+    },
+    "forecast": {
+      "enabled": false,
+      "corner": "br",
+      "entity_id": "",
+      "days": 5,
+      "include_today": true
+    },
+    "battery": {
+      "enabled": false,
+      "corner": "bl",
+      "show_percent": true,
+      "only_when_low": false
+    },
+    "entity": {
+      "enabled": false,
+      "corner": "tr",
+      "entity_id": "",
+      "attribute": "",
+      "name": "",
+      "visible_values": []
+    }
+  },
+  "schedule": {
+    "enabled": false,
+    "slots": []
+  }
+}

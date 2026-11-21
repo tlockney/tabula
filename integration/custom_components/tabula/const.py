@@ -13,7 +13,7 @@ HUB_UNIQUE_ID = "tabula-hub"
 # v1 is the only major, so both are 1).
 PROTOCOL_VERSION = 1
 SUPPORTED_PROTOCOL_VERSIONS = {1}
-SCHEMA_VERSION = 1  # settings schema (P0.5); documents are stored at this version
+SCHEMA_VERSION = 2  # settings schema (P0.5, extended by P3.1); documents are stored at this version
 
 # Pairing (ADR 0002)
 PAIR_CODE_DIGITS = 6

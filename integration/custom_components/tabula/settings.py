@@ -63,18 +63,24 @@ class SettingsError(ValueError):
 
 @dataclass(frozen=True)
 class SettingsField:
-    """One editable leaf of the settings schema, addressed by its full path."""
+    """One editable leaf of the settings schema, addressed by its full path.
+
+    ``type`` is "array" for list-valued leaves (settings v2); ``array_items``
+    then says whether the items are scalars or objects, which is what decides
+    the options-flow editor (options_flow.py).
+    """
 
     path: tuple[str, ...]
     role: str
     feature: str
-    type: str  # JSON schema type: "integer", "boolean" or "string"
+    type: str  # JSON schema type: "integer", "boolean", "string" or "array"
     enum: tuple[str, ...] | None = None
     minimum: int | None = None
     maximum: int | None = None
     min_length: int | None = None
     max_length: int | None = None
     default: Any = NO_DEFAULT  # NO_DEFAULT: no schema default (unset)
+    array_items: str | None = None  # "scalar" | "object" when type is "array"
 
     @property
     def key(self) -> str:
@@ -112,7 +118,27 @@ def _fields() -> tuple[SettingsField, ...]:
             if prop.get("type") == "object":
                 walk(prop["properties"], (*path, name))
                 continue
-            # Enum-only leaves carry no "type"; every v1 enum is strings.
+            if prop.get("type") == "array":
+                # List-valued leaves (settings v2): the leaf is the whole
+                # array; its items' own structure stays inside the schema and
+                # is validated there. The options flow picks its editor from
+                # array_items.
+                items = prop.get("items")
+                out.append(
+                    SettingsField(
+                        path=(*path, name),
+                        role=prop["x-tabula-role"],
+                        feature=prop["x-tabula-feature"],
+                        type="array",
+                        maximum=prop.get("maxItems"),
+                        default=prop.get("default", NO_DEFAULT),
+                        array_items="object"
+                        if isinstance(items, dict) and items.get("type") == "object"
+                        else "scalar",
+                    )
+                )
+                continue
+            # Enum-only leaves carry no "type"; every enum is strings.
             out.append(
                 SettingsField(
                     path=(*path, name),
@@ -158,7 +184,10 @@ class SettingsSchema:
         document: dict[str, Any] = {}
         for field_ in _fields():
             if field_.default is not NO_DEFAULT:
-                set_path(document, field_.path, field_.default)
+                # A deep copy per leaf: array defaults ([] for settings v2)
+                # are mutable, and every call must return an independent
+                # document.
+                set_path(document, field_.path, copy.deepcopy(field_.default))
         return document
 
     def fields(self) -> tuple[SettingsField, ...]:
@@ -256,14 +285,25 @@ class SettingsStore:
             self._devices[device_id] = DeviceSettings(revision, document)
 
     def _merge_defaults(self, settings: dict[str, Any]) -> dict[str, Any]:
-        """A stored document upgraded to the current schema version."""
-        document = self.schema.defaults()
-        for group, values in settings.items():
-            if isinstance(values, dict):
-                document.setdefault(group, {}).update(values)
-            else:
-                document[group] = values
-        return document
+        """A stored document upgraded to the current schema version.
+
+        Nested objects merge recursively (settings v2 nests groups under
+        ``screensaver`` and per-widget objects under ``widgets``), so a
+        partial nested document keeps the defaults of the keys it omits.
+        Arrays and ``null`` (the schedule's "inherit") are values, not groups:
+        they replace, not merge.
+        """
+
+        def merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+            document = dict(base)
+            for key, value in override.items():
+                if isinstance(value, dict) and isinstance(document.get(key), dict):
+                    document[key] = merge(document[key], value)
+                else:
+                    document[key] = value
+            return document
+
+        return merge(self.schema.defaults(), settings)
 
     async def async_save(self, device_id: str, settings: dict[str, Any]) -> DeviceSettings:
         """Fill defaults, validate and store the next revision of a document."""

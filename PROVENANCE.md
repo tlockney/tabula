@@ -113,3 +113,16 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | Play, pause, stop, seek, volume and mute reach the device's media channel, reported as volume, muted and media state; next and previous fail (no queue), and stopping nothing is a no-op | F-MED-01, F-TTS-06, F-TTS-07, PROTOCOL 4.4-4.5 | P2.5 |
 | Every playback reaches a terminal state: the end, a stop or a fetch/decode failure is reported as a `tabula_media` (`media_finished`) event with its reason | F-TTS-10, PROTOCOL 4.7 | P2.5 |
 | The media volume is a device setting HA owns (audio.media_volume) and the device applies to its music stream; a per-call volume applies for that playback | F-TTS-07, plan 5.6, ADR 0002 | P2.5 |
+| Settings schema v2: clock face options (digital/analog, system font family and weight, 12/24-hour, seconds, AM/PM, date, size, colors), optional background image (path or URL) with a re-fetch interval and a darkening layer | F-SSV-08, F-SSV-09 | P3.1 |
+| Settings schema v2: clock night mode keys (light threshold and hysteresis in lux from the tablet's own sensor, hide background, hide overlays, night power-off delay, black-screen alternative) | F-SSV-10 | P3.1 |
+| Settings schema v2: weather scene keys (weather entity, place name, clock overlay, info bar, lightning) | F-SSV-11 | P3.1 |
+| Settings schema v2: photo slideshow keys (folder/picker/URL/media-browser source, interval, transition, fit, shuffle, subfolders, edge taps, EXIF details) | F-SSV-12 | P3.1 |
+| Settings schema v2: website mode keys (URL, zoom, double-tap dismissal) | F-SSV-13, F-SSV-14 | P3.1 |
+| Settings schema v2: dim mode has its own backlight level (screensaver.dim_brightness), no longer borrowing the screensaver brightness | F-SSV-07; ADR 0013 item 4 follow-up | P3.1 |
+| Settings schema v2: pixel shift (enabled, interval, amplitude) and fade (enabled) | F-SSV-22, F-SSV-23 | P3.1 |
+| Settings schema v2: At a Glance keys (bounded entity list in display order, pill/plain style, hide names, monochrome icons, scale, font) | F-AAG-01, F-AAG-02 | P3.1 |
+| Settings schema v2: corner widget keys (global shown/scale/font/vignette; per-widget enabled, corner and options for the small clock, weather, forecast, battery and entity widgets) | F-WGT-01, F-WGT-03 to F-WGT-06, F-WGT-09 | P3.1 |
+| Settings schema v2: the screensaver schedule (enabled; bounded slots of start time, mode, and brightness/power-off/presence/widgets/At a Glance overrides where null means inherit) | F-SSV-18 | P3.1 |
+| A stored settings document from schema v1 loads as v2 with nested defaults filled recursively, without bumping its revision | plan 5.4, plan 5.6 | P3.1 |
+| A device on settings schema v1 receives its settings document translated down: every v2-only key, nested ones included, is pruned against the frozen v1 schema | plan 5.4, PROTOCOL 4.5 | P3.1 |
+| The options flow edits the list-valued settings (At a Glance entities, widget visible values, schedule slots) as multi-line text — one item per line, YAML for the slots — parsed and validated against the schema on submit | independent design (packet P3.1) | P3.1 |
