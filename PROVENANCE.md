@@ -126,3 +126,8 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A stored settings document from schema v1 loads as v2 with nested defaults filled recursively, without bumping its revision | plan 5.4, plan 5.6 | P3.1 |
 | A device on settings schema v1 receives its settings document translated down: every v2-only key, nested ones included, is pruned against the frozen v1 schema | plan 5.4, PROTOCOL 4.5 | P3.1 |
 | The options flow edits the list-valued settings (At a Glance entities, widget visible values, schedule slots) as multi-line text — one item per line, YAML for the slots — parsed and validated against the schema on submit | independent design (packet P3.1) | P3.1 |
+| HA switches for the screensaver master switch, the separate screensaver brightness, the screensaver schedule and the screensaver widgets; a number for the idle timeout; a text entity for the clock background source. Each shows HA's stored setting and writes it as one revision and one push | F-HA-11, F-SSV-01, F-SSV-09, F-SSV-17, F-SSV-18, F-WGT-01 | P3.2 |
+| Settings entities exist when the device's settings schema version knows their key, and stay available while the device is offline (a write lands when it reconnects) | independent design (ADR 0015) | P3.2 |
+| A switch over the separate screensaver backlight level (screensaver.brightness_enabled): off, the screensaver keeps the panel's current level; dim and black keep theirs | F-SSV-17 | P3.2 |
+| A new idle timeout starts the screensaver countdown over; an unchanged one leaves it running | F-HA-11 | P3.2 |
+| Writing the clock background source is always a new revision and push, identical value or not | F-SSV-09 | P3.2 |

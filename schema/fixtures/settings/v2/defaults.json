@@ -9,6 +9,7 @@
     "idle_timeout": 300,
     "mode": "clock",
     "brightness": 20,
+    "brightness_enabled": true,
     "dim_brightness": 10,
     "clock": {
       "face": "digital",

@@ -42,6 +42,13 @@ def _v1_schema() -> dict[str, Any]:
     return json.loads(_BUNDLED_V1_SCHEMA.read_text(encoding="utf-8"))
 
 
+def frozen_schema(version: int) -> dict[str, Any]:
+    """The frozen schema document of an older settings version (only 1 so far)."""
+    if version != 1:
+        raise ValueError(f"no frozen settings schema for version {version}")
+    return _v1_schema()
+
+
 def _prune_to_v1(document: dict[str, Any]) -> dict[str, Any]:
     """Translate a settings document at version 2 down to version 1.
 

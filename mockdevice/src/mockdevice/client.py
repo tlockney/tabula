@@ -151,8 +151,13 @@ class TLPClient:
         os_version: str = "python",
         backoff: Backoff | None = None,
         on_registered: Callable[[Frame], None] | None = None,
+        schema_version: int = SCHEMA_VERSION,
     ) -> None:
         self.ha_url = ha_url.rstrip("/")
+        # The settings schema version it registers with: the mock stays on 1 by
+        # default (it does not validate settings), and a test can claim a newer
+        # one to see what HA sends a device on that version (P3.2).
+        self.schema_version = schema_version
         self.store = store
         self.device = device
         self.codec = codec or Codec()
@@ -259,7 +264,7 @@ class TLPClient:
                 "type": "tabula/register",
                 "device_id": self.store.device_id,
                 "protocol_version": PROTOCOL_VERSION,
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": self.schema_version,
                 "app_version": __version__,
                 **self.identity,
                 "capabilities": self.device.capabilities,

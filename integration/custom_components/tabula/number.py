@@ -1,15 +1,16 @@
-"""Screensaver brightness (plan 5.5). Volume lives on the media player."""
+"""Screensaver brightness (plan 5.5) and the idle timeout setting (P3.2, F-HA-11).
+Volume lives on the media player."""
 
 from __future__ import annotations
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TabulaHub
-from .entity import TabulaEntity, TabulaEntityDescription, setup_platform
+from .entity import TabulaEntity, TabulaEntityDescription, TabulaSettingEntity, setup_platform
 
 SCREENSAVER_BRIGHTNESS = TabulaEntityDescription(
     key="screensaver_brightness",
@@ -37,6 +38,40 @@ class TabulaScreensaverBrightness(TabulaEntity, NumberEntity):
         await self.async_set_setting("screensaver_brightness", round(value))
 
 
+IDLE_TIMEOUT = TabulaEntityDescription(
+    key="screensaver_idle_timeout",
+    translation_key="screensaver_idle_timeout",
+    entity_category=EntityCategory.CONFIG,
+    setting="screensaver_idle_timeout",  # F-SSV-01; a new value restarts the countdown
+)
+
+
+class TabulaIdleTimeout(TabulaSettingEntity, NumberEntity):
+    """Seconds without interaction before the screensaver starts (F-SSV-01).
+
+    Bounds come from the schema (ADR 0002), so they cannot drift from what
+    the store validates. The device starts its countdown over when the value
+    changes (F-HA-11).
+    """
+
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, hub: TabulaHub, record, description: TabulaEntityDescription) -> None:
+        super().__init__(hub, record, description)
+        field_ = hub.settings.schema.field("screensaver_idle_timeout")
+        self._attr_native_min_value = field_.minimum
+        self._attr_native_max_value = field_.maximum
+
+    @property
+    def native_value(self) -> float | None:
+        return self.setting_value
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.async_write_setting(round(value))
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -46,4 +81,7 @@ async def async_setup_entry(
         setup_platform(
             hass, hub, async_add_entities, [SCREENSAVER_BRIGHTNESS], TabulaScreensaverBrightness
         )
+    )
+    entry.async_on_unload(
+        setup_platform(hass, hub, async_add_entities, [IDLE_TIMEOUT], TabulaIdleTimeout)
     )

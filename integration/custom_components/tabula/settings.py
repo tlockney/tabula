@@ -31,12 +31,13 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 from . import migrations
-from .const import DOMAIN, SCHEMA_VERSION
+from .const import DOMAIN, SCHEMA_VERSION, SIGNAL_SETTINGS_UPDATE
 
 if TYPE_CHECKING:
     from . import DeviceRecord, TabulaHub
@@ -198,6 +199,29 @@ class SettingsSchema:
         """Leaves the options flow may set (F-MGT-03): not hardware facts."""
         return tuple(f for f in _fields() if f.role in EDITABLE_ROLES)
 
+    def field(self, key: str) -> SettingsField:
+        """The leaf with this flat key; KeyError when the schema has none."""
+        for field_ in _fields():
+            if field_.key == key:
+                return field_
+        raise KeyError(key)
+
+    def since(self, key: str) -> int:
+        """The settings schema version that introduced this leaf (P3.2).
+
+        A leaf the frozen v1 schema knows is 1; any other is the current
+        version (2 is the only later one so far - a v3 adds its own frozen
+        copy and this walks it the same way). Settings entities exist only
+        for devices whose registered schema_version knows their key, since an
+        older device never receives it (plan 5.4, migrations.DOWNS).
+        """
+        node: Any = migrations.frozen_schema(1)
+        for part in self.field(key).path:
+            node = node.get("properties", {}).get(part)
+            if node is None:
+                return SCHEMA_VERSION
+        return 1
+
 
 def get_path(document: dict[str, Any] | None, path: tuple[str, ...]) -> Any:
     """The value at ``path``, or NO_DEFAULT when any part of it is absent."""
@@ -248,6 +272,7 @@ class SettingsStore:
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._devices: dict[str, DeviceSettings] = {}
         self.schema = SettingsSchema()
@@ -258,6 +283,19 @@ class SettingsStore:
         if stored is None:
             return None
         return DeviceSettings(stored.revision, copy.deepcopy(stored.settings))
+
+    def value(self, device_id: str, key: str) -> Any:
+        """One leaf of the device's document by flat key (settings entities, P3.2).
+
+        A device with no stored document reads the schema default: that is
+        what it runs with, and what the first save will store.
+        """
+        field_ = self.schema.field(key)
+        stored = self._devices.get(device_id)
+        value = get_path(stored.settings, field_.path) if stored is not None else NO_DEFAULT
+        if value is NO_DEFAULT:
+            value = field_.default
+        return None if value is NO_DEFAULT else copy.deepcopy(value)
 
     def revision(self, device_id: str) -> int:
         """The revision register_result reports (0 until a document is stored)."""
@@ -313,6 +351,8 @@ class SettingsStore:
         stored = DeviceSettings(old.revision + 1 if old is not None else 1, document)
         self._devices[device_id] = stored
         await self._store.async_save(self._data())
+        # settings entities (P3.2) show HA's copy: every save refreshes them
+        async_dispatcher_send(self._hass, SIGNAL_SETTINGS_UPDATE.format(device_id))
         return DeviceSettings(stored.revision, copy.deepcopy(stored.settings))
 
     async def async_remove(self, device_id: str) -> None:
