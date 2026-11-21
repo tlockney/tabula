@@ -22,5 +22,6 @@
   "state_delta.brightness_range": "state/brightness",
   "state_delta.empty": "state",
   "state_delta.page_with_query": "state/current_page",
-  "state_delta.unknown_key": "state"
+  "state_delta.unknown_key": "state",
+  "state_delta.negative_illuminance": "state/illuminance"
 }

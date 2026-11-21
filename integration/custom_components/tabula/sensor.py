@@ -1,4 +1,4 @@
-"""Sensors (plan 5.5): battery, connectivity, current page, next screensaver, app version."""
+"""Sensors (plan 5.5): battery, connectivity, current page, next screensaver, app version, illuminance."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, SIGNAL_STRENGTH_DECIBELS_MILLIWATT, EntityCategory
+from homeassistant.const import LIGHT_LUX, PERCENTAGE, SIGNAL_STRENGTH_DECIBELS_MILLIWATT, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -89,6 +89,17 @@ SENSORS = (
         entity_category=EntityCategory.DIAGNOSTIC,
         state_keys=frozenset({"app_version"}),
         state_key="app_version",
+    ),
+    TabulaSensorDescription(
+        key="illuminance",
+        translation_key="illuminance",
+        device_class=SensorDeviceClass.ILLUMINANCE,
+        native_unit_of_measurement=LIGHT_LUX,
+        state_class=SensorStateClass.MEASUREMENT,
+        # Not diagnostic (ADR 0019): the room's light level, for automations.
+        capabilities=frozenset({"illuminance"}),
+        state_keys=frozenset({"illuminance"}),
+        state_key="illuminance",
     ),
     # The last capture started by the capture button (F-HA-12, P3.13): not a
     # device state key - it lives on the record, persisted, and only the

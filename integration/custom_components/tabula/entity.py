@@ -18,6 +18,7 @@ capability "covered by none", so those entities always exist):
 | screensaver | screensaver_active, _mode, _brightness; next_screensaver | switch, select,
 |  |  | number, sensor |
 | battery | battery_level, charging | sensor, binary_sensor |
+| illuminance | illuminance | sensor (P3.16, not diagnostic; ADR 0019) |
 | audio | volume, muted, media_state | media_player |
 | notifications | (none) | notify |
 | navigation | current_page | sensor |

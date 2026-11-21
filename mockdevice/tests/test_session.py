@@ -68,6 +68,19 @@ async def test_register_subscribe_and_state(server, store, start):
     assert store.ha_device_id == record.ha_device_id
 
 
+async def test_illuminance_round_trip(server, store, start):
+    """The capability is accepted, register carries the reading and a delta reaches HA (P3.16)."""
+    device = MockDevice(base_url=server.url)
+    running = await start(store, device)
+    record = await server.wait_registered(store.device_id)
+    assert "illuminance" in device.capabilities
+    assert "illuminance" in running.client.accepted_capabilities
+    assert record.state["illuminance"] == 128.5  # the complete picture (PROTOCOL 4.2)
+    device.update(illuminance=64.0)
+    await wait_for(lambda: record.state["illuminance"] == 64.0)
+
+
+
 @pytest.mark.parametrize(
     ("command", "args", "check"),
     [
