@@ -572,6 +572,30 @@ Hooks to preserve, not build:
 - A `camera_view` slot in navigation, plus an ADR noting the WebRTC gap in the Fire WebView.
 - The `window.tabula` bridge + action registry as the plugin seam, with an ADR on the manifest concept.
 
+### 7.5 Packets and dependencies (Phase 3)
+
+Written by the architect in issue #21's breakdown (`docs/packets/P3.*`; issue numbers are filled in when the packet issues open). The settings schema bumps to v2 (P3.1); the only TLP change is P3.9's capability-gated `slide` command, which is additive and does not bump the protocol major (PROTOCOL 8). Device facts the Phase 2 hardware checks (#15–#20) have not verified yet are handled inside the packets: P3.4, P3.7 and P3.10 start with timeboxed device spikes; P3.10 alternatively waits on #16.
+
+| Packet | Side, tier | Depends on | Verification |
+| --- | --- | --- | --- |
+| P3.1 Settings schema v2 and options flow | build, deep | none | ci |
+| P3.2 Settings entities | build, standard | P3.1 | ci |
+| P3.3 Clock faces and background image | build, standard | P3.1 | hardware |
+| P3.4 Clock night mode | build, standard | P3.3 | hardware |
+| P3.5 Entity data connection (subscribe_entities) | build, deep | P3.1 | ci |
+| P3.6 At a Glance row | build, standard | P3.4, P3.5 | hardware |
+| P3.7 Weather screensaver | build, deep | P3.5 | hardware |
+| P3.8 Gallery core (photo slideshow) | build, deep | P3.1 | hardware |
+| P3.9 Gallery media browser and slide buttons | build, standard | P3.8 | hardware |
+| P3.10 Website mode | build, standard | P3.1, #16 or spike | hardware |
+| P3.11 Corner widgets | build, standard | P3.5, P3.6 | hardware |
+| P3.12 Screensaver schedule | build, standard | P3.1 | hardware |
+| P3.13 Screenshots (capture, upload, image entity) | build, standard | none | hardware |
+
+Parallel tracks after P3.1: the clock track (P3.3 → P3.4 → P3.6), the entity-data track (P3.5 → P3.6/P3.7/P3.11), the gallery track (P3.8 → P3.9), and P3.10, P3.12 and P3.13 independently. P3.13 has no Phase 3 dependency and can run immediately. Integration-side work (P3.1, P3.2, P3.13's view and entities, P3.9's buttons) is separated from Android rendering wherever the sides can move at their own pace.
+
+Out of Phase 3 scope, recorded for later: F-SSV-15 (HA dashboard view mode), F-SSV-19/F-SSV-20 (panel off after a while, wake behavior), F-SSV-24 (HA presence source), the postpone action, and F-WGT-07/F-WGT-08 (alarm and calendar widgets, Phase 6).
+
 ## 8. Testing and validation
 
 - **Protocol:** golden fixtures in `schema/fixtures/` are the contract. The mock device, the integration tests and the Android codec tests all validate against them.
