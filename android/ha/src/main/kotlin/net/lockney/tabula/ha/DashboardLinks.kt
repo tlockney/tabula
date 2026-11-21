@@ -115,6 +115,31 @@ object DashboardLinks {
         return path
     }
 
+    /**
+     * Resolve a `play_media` command's [url] (PROTOCOL 4.5): an absolute
+     * http(s) URL without userinfo passes through (media may live anywhere),
+     * and a `/` path resolves against [haOrigin] — the HA base URL the device
+     * already reaches HA on. Null when the result is not such a URL. The wire
+     * codec has validated the shape (Wire.playUrl); this re-checks because
+     * the command handler may be fed by other callers. The device never
+     * attaches its HA token to the fetch (ADR 0001 item 5): HA-hosted media
+     * goes out signed or unauthenticated, so no credential is needed.
+     */
+    fun resolvePlayUrl(url: String, haOrigin: URI): String? {
+        val trimmed = url.trim()
+        val absolute = runCatching { URI(trimmed) }.getOrNull()?.takeIf { it.isAbsolute }
+        if (absolute != null) {
+            val scheme = absolute.scheme?.lowercase()
+            if (scheme != "http" && scheme != "https") return null
+            if (absolute.rawUserInfo != null || absolute.host.isNullOrBlank()) return null
+            return absolute.toString()
+        }
+        if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null
+        val resolved = runCatching { haOrigin.resolve(trimmed) }.getOrNull() ?: return null
+        if (!resolved.isAbsolute || resolved.host.isNullOrBlank()) return null
+        return resolved.toString()
+    }
+
     private fun sameOrigin(uri: URI, haOrigin: URI): Boolean {
         val scheme = uri.scheme?.lowercase() ?: return false
         if (scheme != haOrigin.scheme?.lowercase()) return false

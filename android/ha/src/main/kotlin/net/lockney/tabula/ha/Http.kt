@@ -31,6 +31,30 @@ interface HttpExchange {
 class HttpException(val status: Int, message: String) : IOException(message)
 
 /**
+ * Media audio download (packet P2.5, PROTOCOL 4.5): fetch [url] into [file]
+ * with **no** Authorization header - HA's TTS proxy and signed media URLs
+ * need none (ADR 0001 item 5) - and refuse redirects like every other Tabula
+ * request. Blocking work runs on the IO dispatcher.
+ */
+class MediaFetcher(private val client: OkHttpClient = OkHttpExchange.noRedirectClient()) {
+    suspend fun fetch(url: String, file: java.io.File) {
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder().url(url).build()
+            client.newCall(request).execute().use { response ->
+                if (response.code in 300..399) {
+                    throw HttpException(response.code, "media redirect to ${response.header("Location")} not followed")
+                }
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "media fetch failed: HTTP ${response.code}")
+                }
+                val body = response.body ?: throw IOException("media response has no body")
+                file.outputStream().use { out -> body.byteStream().copyTo(out) }
+            }
+        }
+    }
+}
+
+/**
  * [HttpExchange] over OkHttp; blocking calls run on the IO dispatcher.
  *
  * Redirects are never followed: these requests carry the pairing nonce or the

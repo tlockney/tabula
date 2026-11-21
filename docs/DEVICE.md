@@ -147,6 +147,38 @@ plan rules out. The P2.1 boot-start observation on an Echo Show is therefore
 skipped; if the ADR's device check ever overturns the no-go, P2.7 owns the
 bring-up.
 
+## Hardware check (P2.5, notifications and audio)
+
+Install a P2.5 build, open Tabula so its window is in front, and give HA a
+TTS entity if it has none (Settings → Devices & services → Add integration →
+Text-to-Speech, e.g. the Google Translate one; its entity id is on its
+device page). Then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_MEDIA=media_player.<tablet>_speaker TABULA_TTS=tts.google_translate_com \
+ANDROID_SERIAL=<serial> tools/device/check_p25.sh
+```
+
+The entity ids are on the tablet's device page in HA. The script records
+`tabula_notification` and `tabula_media` events in the background, then
+checks:
+
+1. the app runs and the media player entity is available;
+2. `tabula.notify` with a title, `level: warning` and `chime: true` shows a
+   card at the top of the screen and chimes;
+3. the same `tag` again replaces the card;
+4. a card with `duration: 5` removes itself;
+5. over a screensaver started from HA, a card draws on top, and tapping the
+   card removes the card but leaves the screensaver up (F-NTF-12);
+6. `tts.speak` to the tablet's media player is audible and the entity shows
+   `playing` and then `idle` again;
+7. `media_player.volume_set` and `volume_mute` reach the device's media
+   channel and are reported back;
+8. HA received at least six `tabula_notification` events (shown, replaced,
+   timed out, tapped) and at least one `tabula_media` (`media_finished`)
+   event.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:

@@ -59,6 +59,15 @@ object TabulaStatus {
     /** The screensaver mode on screen, or null (P2.4). Written by [ScreensaverManager]. */
     val screensaver = MutableStateFlow<ScreensaverMode?>(null)
 
+    /**
+     * The notification card stack, newest first (P2.5). Written by
+     * [NotificationsManager], rendered by the activity's cards overlay.
+     */
+    val notifications = MutableStateFlow<List<net.lockney.tabula.core.notifications.NotificationCards.Card>>(emptyList())
+
+    /** A card was tapped; the service dismisses that card only (F-NTF-08). */
+    val cardDismiss = MutableSharedFlow<String>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
     /** A touch on the app's window; the service restarts the idle timer (F-SSV-02). */
     val userActivity = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 

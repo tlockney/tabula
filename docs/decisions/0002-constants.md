@@ -103,6 +103,13 @@ Manual brightness from HA (the light entity, the `screen` command) is applied at
 | --- | --- | --- |
 | `SCREENSAVER_EVENT_BUFFER` | 16 events | Screensaver start and stop events wait here for the TLP session; the oldest are dropped past this. A connected session drains it at once, and one that registers drops what came before, so the bound only caps memory while HA is down. |
 
+### Notifications and media (P2.5)
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `NOTIFICATION_EVENT_BUFFER` | 16 events | Notification shown and dismissed events wait here for the TLP session, with the same bounds and drop-oldest rule as `SCREENSAVER_EVENT_BUFFER`: a burst of cards while HA is down cannot grow without limit, a connected session drains it at once, and one that registers drops what came before. |
+| `MEDIA_EVENT_BUFFER` | 16 events | `media_finished` events wait here for the TLP session; same reasoning. Playback only starts from an HA command, so at most a couple are ever pending. |
+
 The idle timeout, mode and brightness defaults are in "Phase 1–2 behavior defaults" below.
 
 ### Phase 1–2 behavior defaults

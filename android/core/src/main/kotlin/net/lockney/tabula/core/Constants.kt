@@ -83,4 +83,10 @@ object Constants {
 
     /** SCREENSAVER_EVENT_BUFFER: screensaver events kept while they wait for the session (P2.4). */
     const val SCREENSAVER_EVENT_BUFFER = 16
+
+    /** NOTIFICATION_EVENT_BUFFER: notification events kept while they wait for the session (P2.5). */
+    const val NOTIFICATION_EVENT_BUFFER = 16
+
+    /** MEDIA_EVENT_BUFFER: media_finished events kept while they wait for the session (P2.5). */
+    const val MEDIA_EVENT_BUFFER = 16
 }

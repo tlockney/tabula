@@ -6,6 +6,9 @@ import kotlinx.serialization.json.put
 import net.lockney.tabula.core.settings.SettingsCodec
 import net.lockney.tabula.core.tlp.Commands
 import net.lockney.tabula.core.tlp.ErrorCode
+import net.lockney.tabula.core.tlp.MediaControlArgs
+import net.lockney.tabula.core.tlp.NotifyArgs
+import net.lockney.tabula.core.tlp.PlayMediaArgs
 import net.lockney.tabula.core.tlp.ScreenArgs
 import net.lockney.tabula.core.tlp.ScreensaverArgs
 import net.lockney.tabula.core.tlp.SetSettingsArgs
@@ -15,13 +18,13 @@ import net.lockney.tabula.ha.DashboardLinks
 
 /**
  * The commands a P2.2 device runs (PROTOCOL 4.5): set_settings applies
- * HA's document (plan 5.6) and hands it to screen control, screen (P2.3)
+ * HA's document (plan 5.6) and hands it to every manager, screen (P2.3)
  * goes to [screen] when the app declared screen control, restart_app asks
  * the service to restart the app process, reload and clear_cache drive the
  * dashboard WebView through the [DashboardBus] (the command fails when no
- * dashboard is showing), and navigate loads an HA frontend path the origin
- * check allows. screensaver (P2.4) goes to [screensaver] when the app
- * declared it.
+ * dashboard is showing), navigate loads an HA frontend path the origin
+ * check allows, screensaver (P2.4) goes to [screensaver], notify (P2.5) to
+ * [notifications], and play_media and media_control (P2.5) to [audio].
  */
 class TabulaCommands(
     private val store: TabulaStore,
@@ -29,6 +32,8 @@ class TabulaCommands(
     private val dashboard: DashboardBus = DashboardBus(),
     private val screen: ScreenControl? = null,
     private val screensaver: ScreensaverControl? = null,
+    private val notifications: NotificationControl? = null,
+    private val audio: AudioControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
@@ -50,6 +55,17 @@ class TabulaCommands(
         Commands.SCREENSAVER -> screensaver?.let { control ->
             val parsed = Tlp.json.decodeFromJsonElement(ScreensaverArgs.serializer(), args)
             control.command(parsed.active, parsed.mode)
+        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        Commands.NOTIFY -> notifications?.let { control ->
+            control.show(Tlp.json.decodeFromJsonElement(NotifyArgs.serializer(), args))
+        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        Commands.PLAY_MEDIA -> audio?.let { control ->
+            val parsed = Tlp.json.decodeFromJsonElement(PlayMediaArgs.serializer(), args)
+            control.play(parsed.url, parsed.mediaType, parsed.announce, parsed.volume)
+        } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
+        Commands.MEDIA_CONTROL -> audio?.let { control ->
+            val parsed = Tlp.json.decodeFromJsonElement(MediaControlArgs.serializer(), args)
+            control.control(parsed.action, parsed.volume, parsed.position)
         } ?: CommandHandler.Reply.Error(ErrorCode.UNSUPPORTED_COMMAND, "not declared: $command")
         Commands.RELOAD -> dashboardAction("reload the dashboard") { dashboard.reload() }
         Commands.CLEAR_CACHE -> dashboardAction("clear the cache") { dashboard.clearCache() }
@@ -101,6 +117,8 @@ class TabulaCommands(
         connectionRevision = parsed.revision
         screen?.applySettings(settings)
         screensaver?.applySettings(settings)
+        notifications?.applySettings(settings)
+        audio?.applySettings(settings)
         return CommandHandler.Reply.Ok(buildJsonObject { put("revision", parsed.revision) })
     }
 }
