@@ -104,6 +104,8 @@ shown_count() { # logcat background show lines so far
 fail_count() { # logcat background failure lines so far
     adb logcat -d -s TabulaClock:W 2>/dev/null | grep -c "background: load failed" || true
 }
+loads_above() { (( $(load_count) > $1 )); }
+fails_above() { (( $(fail_count) > $1 )); }
 
 bg_url="http://$host_ip:$port/clock-bg.jpg"
 serve_dir="$(mktemp -d)"
@@ -151,7 +153,7 @@ ask "Have you saved face = digital in HA?"
 sleep 2
 loads_before="$(load_count)"
 set_background "$bg_url"
-wait_for "the background load to reach the device" 15 bash -c "(( \$(load_count) > $loads_before ))"
+wait_for "the background load to reach the device" 15 loads_above "$loads_before"
 shown_before="$(shown_count)"
 sleep 3
 ask "Does the tablet show the digital clock over the photo, darkened (the darkening layer, F-SSV-09)?"
@@ -160,7 +162,7 @@ ask "Is the clock still readable across the room?"
 step "5. a broken URL keeps the previous image"
 fails_before="$(fail_count)"
 set_background "http://$host_ip:$port/missing.jpg"
-wait_for "the failed load to reach the device" 15 bash -c "(( \$(fail_count) > $fails_before ))"
+wait_for "the failed load to reach the device" 15 fails_above "$fails_before"
 sleep 3
 ask "Does the tablet still show the previous photo behind the clock (nothing cleared)?"
 
@@ -169,7 +171,7 @@ cp "$photos_dir"/p38-2.jpg "$serve_dir/clock-bg.jpg"
 [[ -f "$serve_dir/clock-bg.jpg" ]] || fail "no p38-2.jpg in $photos_dir"
 loads_before="$(load_count)"
 set_background "$bg_url"  # the same URL, the same value: still a fresh load
-wait_for "the same-URL reload to reach the device" 15 bash -c "(( \$(load_count) > $loads_before ))"
+wait_for "the same-URL reload to reach the device" 15 loads_above "$loads_before"
 sleep 3
 ask "Has the photo behind the clock changed to the other test photo (the same URL, reloaded)?"
 ha_state_is "$TABULA_SCREENSAVER" on || fail "the reload dismissed the screensaver (it must not)"
