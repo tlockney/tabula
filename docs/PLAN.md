@@ -4,7 +4,7 @@ Nov 21, 2026 · Thomas Lockney
 
 > Imported into the repository on 2026-11-21 (P0.1). This file is now the canonical copy; change it by pull request. Section 6 was updated at import to match ADRs 0004 and 0005.
 
-Tabula is an Apache-2.0 Android kiosk app plus a Home Assistant integration, built clean-room from public docs only. Phases 0–2 (dashboard, clock, HA control on the Office Kiosk tablet) are the first milestone. The plan works with any mix of people, agents and models.
+Tabula is an Apache-2.0 Android kiosk app plus a Home Assistant integration, built clean-room from public docs only. Phases 0–2 (dashboard, clock, HA control on the Fire tablets, and on the Echo Shows if P0.6 finds them feasible) are the first milestone. The plan works with any mix of people, agents and models.
 
 ## Overview
 
@@ -60,7 +60,7 @@ These are roles, not models. Any capable executor can fill one, but one context 
 | Implementer | Build | Executes one packet: code + tests + docs | Standard (Deep for security, protocol, concurrency) |
 | Reviewer | Build | Independently reviews a finished packet against its brief and the definition of done | Deep; preferably a different model family from the implementer |
 | Mechanic | Build | Scaffolding, renames, formatting, regenerating fixtures | Light |
-| Hardware verifier | Build | Runs ADB/device checks on the Office Kiosk and pastes output into the packet | Thomas (owns the Mac and tablet) |
+| Hardware verifier | Build | Runs ADB/device checks on the target devices (section 3) and pastes output into the packet | Thomas (owns the Mac and the devices) |
 
 Capability tiers are defined by what the work needs, so the plan never names a model:
 
@@ -155,15 +155,26 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 
 ## 3. Context and assumptions
 
-- **First target:** Amazon Fire HD 10 Plus (11th gen, Fire OS 7 / Android 9, API 28), wall-mounted as "Office Kiosk" and managed over ADB from the Mac.
-- **Later targets:** PF1007L photo frames (low-spec Android). Their WebView may be too old for the current HA frontend; P0.3 checks this before they are committed to.
-- **Baselines:** minSdk 24 (Android 7), revisited after P0.3's WebView check. targetSdk is set in an ADR during P2.0. Design for weak SoCs.
+- **v1 targets:**
+
+  | Device | Count | Status |
+  | --- | --- | --- |
+  | Amazon Fire HD 10 Plus (11th gen, Fire OS 7 / Android 9, API 28), 1920×1200 | 2 | First target. "Office Kiosk" is built and accepted first (Phase 2); the second unit is provisioned from DEVICE.md alone |
+  | Amazon Echo Show 8 (2nd gen), 1280×800 expected (to be confirmed by P0.6) | 2 | In v1, gated on the P0.6 feasibility check; boot start checked early in P2.1; brought up in P2.7 after the Fire tablets pass P2.6 |
+
+  All units are managed over ADB from the Mac.
+- **Later targets:** PF1007L photo frames (low-spec Android). They need a WebView of Chromium 67 or later (ADR 0001); check one before committing to them.
+- **Baselines:** minSdk 24 (Android 7), revisited after P0.3's WebView check. targetSdk is set in an ADR during P2.0. Design for weak SoCs, and lay out the native UI (screensavers, cards, pairing screen) for both 1920×1200 and the Echo Show's resolution (expected 1280×800) from the start.
 - **Fire OS constraints:**
   - No launcher replacement and no device owner, so lockdown means start-on-boot + screen pinning + overlay.
   - `RECORD_AUDIO` can be revoked at boot or on Wi-Fi reconnect.
   - Amazon WebView has no WebRTC.
   - Provisioning is done over ADB (`pm grant`, `appops set`, deviceidle whitelist, `dpm set-active-admin`). `DEVICE.md` documents it from Phase 2.
   - Silent APK install needs Shizuku or device owner.
+- **Echo Show 8 constraints (unverified until P0.6):**
+  - Expected: no app store for third-party apps, so Tabula must be sideloaded over ADB. Whether ADB can be enabled without exploits is the open question.
+  - The Alexa home screen owns the device. Whether a sideloaded app stays in the foreground is checked in P0.6; whether it can start on boot is checked in P2.1, the first packet with an app that has a boot receiver.
+  - Exploits, rooting, bootloader unlocking and firmware downgrades are out of bounds. If the device needs any of them, it moves to Deferred.
 - **HA:** one local instance, a handful of devices. The minimum HA version and the supported frontend browser floor are set in the platform spike (P0.3).
 - **Network:** HA may be served over plain http on the LAN. Section 5.2 covers what that means for credentials.
 
@@ -176,7 +187,8 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 | LED control / Echo Dot | Dropped |
 | Immich screensaver source | Dropped (possible future plugin) |
 | Camera views + device camera | Deferred: design hooks only |
-| Echo Show / Portal / Raspberry Pi targets | Dropped for v1 |
+| Echo Show 8 (2nd gen) target | In v1, gated on P0.6 (feasibility) and brought up in P2.7 |
+| Other Echo Show models, Portal, Raspberry Pi targets | Dropped for v1 |
 | Bluetooth proxy | Deferred indefinitely (no free path without ESPHome) |
 | Plugin ecosystem | Deferred: keep the `window.tabula` JS bridge + action registry as the seam |
 | Voice satellite | Parked until Phase 6 lands; then gated on a Fire OS mic spike |
@@ -324,7 +336,7 @@ tabula/
 │   ├── DEVELOPMENT.md           toolchain, cloud VMs, CI
 │   ├── FEATURES.md              spec-side output: behavior in our words, no constants
 │   ├── PROTOCOL.md              TLP v1
-│   ├── DEVICE.md                ADB provisioning + recovery runbook (Fire HD 10 Plus)
+│   ├── DEVICE.md                ADB provisioning + recovery runbook (Fire HD 10 Plus, Echo Show 8)
 │   ├── decisions/               ADRs (0001 HA platform, 0002 constants, …)
 │   └── packets/                 work packets + results
 ├── schema/
@@ -358,6 +370,7 @@ Phases 0–2 are written as packets. Phases 3–9 are a roadmap, and each gets i
 | P0.3 HA platform spike | build, deep | P0.1 | dev HA |
 | P0.4 TLP v1 + constants | build, deep | P0.3 | ci |
 | P0.5 Settings schema v1 | build, standard | P0.2r, P0.4 | ci |
+| P0.6 Echo Show 8 feasibility | build, standard | none | hardware |
 | P1.1 Mock device | build, standard | P0.4 | ci |
 | P1.2 Hub, pairing, registration | build, deep | P1.1 | ci |
 | P1.3 Entity platforms | build, standard | P1.2 | ci |
@@ -370,8 +383,9 @@ Phases 0–2 are written as packets. Phases 3–9 are a roadmap, and each gets i
 | P2.4 Screensaver engine | build, standard | P2.1, P1.4 | hardware |
 | P2.5 Notifications and audio | build, standard | P2.4 | hardware |
 | P2.6 Offline-first check | build, standard | P2.2–P2.5 | hardware |
+| P2.7 Echo Show 8 bring-up | build, standard | P0.6 (go), P2.6 | hardware |
 
-Parallel tracks: P0.2 (spec side) and P0.3 (build side) run at the same time. After P0.4, the integration track (P1.x) and the Android codec (P2.0) run in parallel.
+Parallel tracks: P0.2 (spec side), P0.3 and P0.6 (build side) run at the same time. After P0.4, the integration track (P1.x) and the Android codec (P2.0) run in parallel.
 
 ### 7.1 Phase 0 — Charter, spec, spike, protocol
 
@@ -417,6 +431,13 @@ Output: `docs/decisions/0001-ha-platform.md`, recording what worked (with eviden
 - `schema_version: 1`, a role tag on every property, defaults taken from ADR-0002.
 - Python loads it directly.
 - Done when: the schema accepts a fixture of defaults and rejects a set of known-bad fixtures (pytest).
+
+**P0.6 — Echo Show 8 feasibility** (build, standard; hardware)
+
+- Research whether ADB can be enabled on the Echo Show 8 (2nd gen) through its own settings, with no exploits, root or firmware changes.
+- Hardware, read-only: the ADR 0001 item 6 device check plus display, sensor and home-activity queries. Then a sideload test with the F-Droid client APK.
+- Go if ADB is available by those means, a sideloaded app launches, stays resumed while idle and can be relaunched after leaving it, and the WebView is Chromium 67 or later. Start on boot is not part of the gate; P2.1 checks it.
+- Done when: a new ADR states go or no-go with pasted device output. On no-go, the Echo Show moves to Deferred everywhere it appears (sections 3, 4, 7.0, 7.3 and 9) and P2.7 is closed as not planned.
 
 ### 7.2 Phase 1 — Integration core, driven by the mock device
 
@@ -475,7 +496,7 @@ Output: `docs/decisions/0001-ha-platform.md`, recording what worked (with eviden
 
 - Foreground service, boot receiver, pairing screen (code + device\_id), nonce and claim, Keystore-backed credential storage, persisted device\_id and the WS client (auth, register with versions, command loop, ACKs, backoff, heartbeat). Battery, charging, connectivity and app-version sensors.
 - Start `docs/DEVICE.md`: the ADB provisioning steps this phase needs (install, `pm grant`, `appops set` for WRITE\_SETTINGS, deviceidle whitelist, `dpm set-active-admin`) as a script in `tools/device/`, plus ADB recovery steps.
-- Done when (hardware): the tablet pairs and appears in HA; airplane mode makes it unavailable; reconnect brings it back (ADB-scripted check + HA state query).
+- Done when (hardware): the tablet pairs and appears in HA; airplane mode makes it unavailable; reconnect brings it back (ADB-scripted check + HA state query). If P0.6 said go, the same build is provisioned on one Echo Show per DEVICE.md, launched and paired, then rebooted, and the hardware verifier records whether the service starts on boot. If P0.6 has not concluded, this observation is skipped and noted.
 
 **P2.2 — Dashboard WebView** (deep; depends on P2.1; hardware)
 
@@ -505,7 +526,15 @@ Output: `docs/decisions/0001-ha-platform.md`, recording what worked (with eviden
 - With HA stopped, the screensaver, clock, brightness curve and cached dashboard behave sensibly. The device re-dials and recovers when HA returns.
 - Written as an ADB-scripted acceptance test in `tools/device/`.
 
-**Phase 2 exit:** the Office Kiosk boots into Tabula, shows the dashboard, idles to a clock, takes brightness, notifications and TTS from HA, and survives an HA restart. DEVICE.md lets someone provision a second Fire tablet from scratch.
+**P2.7 — Echo Show 8 bring-up** (standard; depends on P0.6 with a go result, P2.6; hardware)
+
+- Provision one Echo Show from DEVICE.md, add an Echo Show section and make `tools/device/` handle both device types.
+- Run the P2.1–P2.6 hardware checks on it and fix the differences: screen size, available sensors, Alexa home-screen behavior, device-admin lock and wake.
+- Done when (hardware): the P2.6 acceptance script passes on one Echo Show, and the second is provisioned from DEVICE.md alone and pairs. This is the Echo Show exit below.
+
+**Phase 2 exit:** the Office Kiosk boots into Tabula, shows the dashboard, idles to a clock, takes brightness, notifications and TTS from HA, and survives an HA restart. The second Fire HD 10 Plus is provisioned from DEVICE.md alone and passes the P2.6 acceptance script. P2.6 checks this exit.
+
+**Echo Show exit** (only if P0.6 said go; checked by P2.7): one Echo Show passes the P2.6 acceptance script, and the second is provisioned from DEVICE.md alone and pairs.
 
 ### 7.4 Phases 3–9 — Roadmap
 
@@ -534,7 +563,7 @@ Each phase gets a packet breakdown by the architect (`docs/packets/P{n}-*.md`) b
   - Alarms via AlarmManager (they work with HA down), with ringing UI, snooze, sunrise ramp and events.
   - Timers in v1 mirror HA timer entities onto the device. Assist voice timers come with Phase 7 through `assist_satellite`.
   - Read-only calendar views and a calendar screensaver.
-- **Phase 7 — Voice (gated).** P7.0 is a Fire OS mic-persistence spike. If it passes, implement an `assist_satellite` entity in the integration and stream audio through the Assist pipeline API (per the ADR-0001 notes): wake word on device, overlay, chimes, cross-device arbitration of our own design. If it fails, voice targets non-Fire hardware only.
+- **Phase 7 — Voice (gated).** P7.0 is a mic-persistence spike on each Fire OS device type in use (the Fire tablet, and the Echo Show if it is in v1 and runs Fire OS). For each device type that passes, implement an `assist_satellite` entity in the integration and stream audio through the Assist pipeline API (per the ADR-0001 notes): wake word on device, overlay, chimes, cross-device arbitration of our own design. Device types that fail get no voice; voice may then target other hardware only.
 - **Phase 8 — Media (gated).** Following other HA media players, a DLNA renderer, a now-playing overlay, Music Assistant. EQ, echo cancellation and AirPlay only if voice lands.
 - **Phase 9 — Intercom (future).** HA as the directory. Direct device-to-device PCM audio with our own framing. Signaling over TLP.
 
@@ -560,6 +589,8 @@ Hooks to preserve, not build:
 | Credential sniffed on a plain-http LAN | Documented; HTTPS recommended in DEVICE.md |
 | Pairing/credential design doesn't work as assumed | P0.3 spike before any Phase 1 code; documented fallback (manual non-admin user + LLAT) |
 | Fire OS WebView too old for the HA frontend | Checked in P0.3 before Phase 1; PF1007L frames not committed to until checked |
+| Echo Show 8 cannot run a sideloaded app without exploits | P0.6 decides before any Echo Show code; no exploits allowed; on no-go the Echo Show moves to Deferred and the Fire tablets carry the milestone |
+| Echo Show 8 blocks start on boot | Checked in P2.1 on one Echo Show, before the rest of Phase 2; if blocked, the architect decides in an ADR whether a manual start is acceptable or the Echo Show moves to Deferred |
 | App and integration versions drift | Version negotiation at registration, N-1 support, repair issue on mismatch |
 | Single WS per device; HA restarts | Jittered re-dial; offline-first behavior is a Phase 2 acceptance test (P2.6) |
 | Frontend internals change (external auth, background disconnect, entity filter) | Use only the documented external-auth interface; measure before shimming; entity filter is conditional |
