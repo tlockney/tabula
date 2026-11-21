@@ -18,6 +18,7 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
+from mockdevice import hacore
 from mockdevice.codec import Codec, Frame, FrameError
 from mockdevice.constants import (
     ACCESS_TOKEN_LIFETIME,
@@ -108,6 +109,8 @@ class TestServer:
         self._results: dict[tuple[int, str], asyncio.Future[Frame]] = {}
         self.pending_screenshots: dict[str, str] = {}  # command_id -> device_id (P3.13)
         self._registered = asyncio.Condition()
+        # HA core's screensaver-data commands (ADR 0017), on the same socket
+        self.ha = hacore.HaCore()
         app = web.Application()
         app.router.add_post("/auth/token", self._token)
         app.router.add_get("/api/websocket", self._websocket)
@@ -119,6 +122,10 @@ class TestServer:
         app.router.add_post("/test/confirm", self._test_confirm)
         app.router.add_post("/test/command", self._test_command)
         app.router.add_get("/test/report", self._test_report)
+        app.router.add_post("/test/entity", self._test_entity)
+        app.router.add_post("/test/forecast", self._test_forecast)
+        app.router.add_post("/test/display", self._test_display)
+        app.router.add_post("/test/drop", self._test_drop)
         self._runner = web.AppRunner(app)
         self.url = ""
 
@@ -336,13 +343,19 @@ class TestServer:
             return ws
         await ws.send_json({"type": "auth_ok", "ha_version": "test"})
         session = Session(ws=ws, device_id=device_id)
-        async for msg in ws:
-            if msg.type is not WSMsgType.TEXT:
-                continue
-            frame = json.loads(msg.data)
-            reply = await self._handle(session, frame)
-            if reply is not None:
-                await ws.send_json(reply)
+        try:
+            async for msg in ws:
+                if msg.type is not WSMsgType.TEXT:
+                    continue
+                frame = json.loads(msg.data)
+                if frame.get("type") in hacore.COMMANDS and self._fresh_id(session, frame):
+                    await self.ha.handle(session, frame, ws.send_json)
+                    continue
+                reply = await self._handle(session, frame)
+                if reply is not None:
+                    await ws.send_json(reply)
+        finally:
+            self.ha.drop_owner(session)
         record = self.devices.get(device_id)
         if record and record.current is session:
             record.current = None
@@ -360,6 +373,15 @@ class TestServer:
     @staticmethod
     def _ack(msg_id: int) -> Frame:
         return {"id": msg_id, "type": "result", "success": True, "result": None}
+
+    @staticmethod
+    def _fresh_id(session: Session, frame: Frame) -> bool:
+        """HA's shared id rule for a core command; a reused id falls through to id_reuse."""
+        msg_id = frame.get("id")
+        if not isinstance(msg_id, int) or msg_id <= session.last_id:
+            return False
+        session.last_id = msg_id
+        return True
 
     async def _handle(self, session: Session, frame: Frame) -> Frame | None:
         msg_id = frame.get("id")
@@ -479,6 +501,58 @@ class TestServer:
             return web.json_response({"error": "not_connected"}, status=409)
         return web.json_response({"result": frame})
 
+    async def _test_entity(self, request: web.Request) -> web.Response:
+        """Set (`state`, optional `attributes`) or remove (`remove: true`) an HA entity."""
+        body = await self._body(request)
+        if body is None or not isinstance(body.get("entity_id"), str):
+            return web.json_response({"error": "invalid_request"}, status=400)
+        if body.get("remove"):
+            await self.ha.remove(body["entity_id"])
+        elif isinstance(body.get("state"), str):
+            attributes = body.get("attributes")
+            await self.ha.set_state(
+                body["entity_id"],
+                body["state"],
+                attributes if isinstance(attributes, dict) else None,
+            )
+        else:
+            return web.json_response({"error": "invalid_request"}, status=400)
+        return web.json_response({"ok": True})
+
+    async def _test_forecast(self, request: web.Request) -> web.Response:
+        body = await self._body(request)
+        if (
+            body is None
+            or not isinstance(body.get("entity_id"), str)
+            or body.get("forecast_type") not in hacore.FORECAST_TYPES
+            or not isinstance(body.get("forecast"), list)
+        ):
+            return web.json_response({"error": "invalid_request"}, status=400)
+        await self.ha.set_forecast(body["entity_id"], body["forecast_type"], body["forecast"])
+        return web.json_response({"ok": True})
+
+    async def _test_display(self, request: web.Request) -> web.Response:
+        """Replace the display data: `registry`, flat `translations`, `icons` per category."""
+        body = await self._body(request)
+        if body is None:
+            return web.json_response({"error": "invalid_request"}, status=400)
+        if isinstance(body.get("registry"), list):
+            self.ha.registry = body["registry"]
+        if isinstance(body.get("translations"), dict):
+            self.ha.translations = body["translations"]
+        if isinstance(body.get("icons"), dict):
+            self.ha.icons.update(body["icons"])
+        return web.json_response({"ok": True})
+
+    async def _test_drop(self, request: web.Request) -> web.Response:
+        """Close a device's live connection, as a network drop or HA restart would."""
+        body = await self._body(request)
+        record = self.devices.get(str((body or {}).get("device_id")))
+        if record is None or record.current is None:
+            return web.json_response({"error": "not_connected"}, status=409)
+        await record.current.ws.close()
+        return web.json_response({"ok": True})
+
     async def _test_report(self, request: web.Request) -> web.Response:
         return web.json_response(
             {
@@ -489,6 +563,9 @@ class TestServer:
                         "registered": record.current is not None,
                         "state": record.state,
                         "capabilities": record.capabilities,
+                        "ha_subscriptions": self.ha.report(record.current)
+                        if record.current
+                        else [],
                         "screenshot": {
                             "uploaded": record.last_upload is not None,
                             "bytes": len(record.last_upload or b""),
@@ -499,5 +576,6 @@ class TestServer:
                     for device_id, record in self.devices.items()
                 },
                 "received_frames": len(self.received),
+                "ha_commands": [frame["type"] for frame in self.ha.commands],
             }
         )

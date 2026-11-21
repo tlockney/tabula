@@ -159,7 +159,7 @@ async def navigate(ha_url: str, token: str, device_id: str, path: str) -> int:
             service="navigate",
             target={"device_id": ha_device_id},
             return_response=False,
-            data={"path": path},
+            service_data={"path": path},
         )
         if result is None:
             return 1

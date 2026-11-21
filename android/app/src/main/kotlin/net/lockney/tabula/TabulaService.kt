@@ -16,8 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import net.lockney.tabula.ha.CredentialRevoked
+import net.lockney.tabula.ha.EntityDataConnection
+import net.lockney.tabula.ha.HaChannel
 import net.lockney.tabula.ha.OkHttpExchange
 import net.lockney.tabula.ha.OkHttpWsTransportFactory
 import net.lockney.tabula.ha.PairingClient
@@ -43,6 +46,20 @@ class TabulaService : Service() {
     private lateinit var lightSensor: LightSensor
     private lateinit var screen: ScreenManager
     private lateinit var screensaver: ScreensaverManager
+
+    /**
+     * HA core commands on the live TLP connection, null between connections;
+     * the screensaver's entity data rides it (ADR 0017, packet P3.5).
+     */
+    private val haChannel = MutableStateFlow<HaChannel?>(null)
+    private val entityData by lazy {
+        EntityDataConnection(
+            channels = haChannel,
+            scope = scope,
+            language = { java.util.Locale.getDefault().language },
+            log = { Log.i(TAG, it) },
+        )
+    }
     private lateinit var notifications: NotificationsManager
     private lateinit var chime: NotificationChime
     private lateinit var audio: MediaManager
@@ -103,6 +120,7 @@ class TabulaService : Service() {
             show = { mode -> TabulaStatus.screensaver.value = mode },
             holdBrightness = screen::setOverride,
             scope = scope,
+            entityData = entityData::start,
         )
         screensaver.applySettings(store.settings)
         screensaver.setPanelOn(panel.isOn)
@@ -171,6 +189,11 @@ class TabulaService : Service() {
                 val haUrl = intent.getStringExtra(EXTRA_HA_URL)?.trim()?.trimEnd('/')
                 if (!haUrl.isNullOrEmpty()) {
                     store.haUrl = haUrl
+                    intent.getStringExtra(EXTRA_NAME)?.let { typed ->
+                        // kept as identity.name: the name HA shows (F-MGT-03, issue #79)
+                        val name = PairingName.resolve(typed, defaultPairingName(this, store.deviceId))
+                        store.settings = store.settings.copy(identity = store.settings.identity.copy(name = name))
+                    }
                     startPairing()
                 }
             }
@@ -189,6 +212,7 @@ class TabulaService : Service() {
 
     override fun onDestroy() {
         screensaver.stop()
+        entityData.stop()
         notifications.stop()
         chime.release()
         audio.close()
@@ -226,7 +250,9 @@ class TabulaService : Service() {
                 val paired = PairingClient(http).pair(
                     haUrl,
                     store.deviceId,
-                    Build.MANUFACTURER?.takeIf { it.isNotBlank() },
+                    // the typed or default name (issue #79), never the bare
+                    // manufacturer: every Fire tablet would pair as "Amazon"
+                    store.settings.identity.name ?: defaultPairingName(this@TabulaService, store.deviceId),
                     Build.MODEL,
                 ) { status ->
                     TabulaStatus.pairing.value =
@@ -348,9 +374,12 @@ class TabulaService : Service() {
                     TabulaStatus.phase.value = Phase.REJECTED
                 }
             }
+            val channelJob = launch { client.channel.collect { haChannel.value = it } }
             try {
                 client.run(events)
             } finally {
+                channelJob.cancel()
+                haChannel.value = null
                 screen.listener = null
                 screensaver.listener = null
                 audio.listener = null
@@ -476,6 +505,7 @@ class TabulaService : Service() {
         const val ACTION_PAIR = "net.lockney.tabula.action.PAIR"
         const val ACTION_UNPAIR = "net.lockney.tabula.action.UNPAIR"
         const val EXTRA_HA_URL = "ha_url"
+        const val EXTRA_NAME = "name"
         private const val TAG = "TabulaService"
         private const val CHANNEL_ID = "tabula_connection"
         private const val NOTIFICATION_ID = 1

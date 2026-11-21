@@ -246,6 +246,19 @@ class MainActivity : Activity() {
         native.addView(input, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { bottomMargin = dp(16) })
+        // the name HA shows for this tablet (F-MGT-03); the default tells
+        // identical tablets apart (issue #79)
+        text("Device name", bold = false)
+        val fallbackName = defaultPairingName(this, store.deviceId)
+        val nameInput = EditText(this).apply {
+            hint = fallbackName
+            setText(store.settings.identity.name ?: fallbackName)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(PairingName.MAX_LENGTH))
+            setSingleLine(true)
+        }
+        native.addView(nameInput, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { bottomMargin = dp(16) })
         val button = Button(this).apply { text = "Pair with Home Assistant" }
         button.setOnClickListener {
             val url = input.text.toString().trim().trimEnd('/')
@@ -256,7 +269,8 @@ class MainActivity : Activity() {
             startService(
                 Intent(this, TabulaService::class.java)
                     .setAction(TabulaService.ACTION_PAIR)
-                    .putExtra(TabulaService.EXTRA_HA_URL, url),
+                    .putExtra(TabulaService.EXTRA_HA_URL, url)
+                    .putExtra(TabulaService.EXTRA_NAME, PairingName.resolve(nameInput.text.toString(), fallbackName)),
             )
         }
         native.addView(button)

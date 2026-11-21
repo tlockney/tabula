@@ -53,8 +53,8 @@ wait_for_log() { # wait_for_log <pattern> <timeout seconds>
 step "1. service running and connected"
 adb shell pidof "$pkg"
 adb shell dumpsys activity services "$pkg" | grep -A2 -i tabula || true
-echo "waiting up to 120s for the CONNECTED phase"
-wait_for_log "phase: CONNECTED" 120
+# Connection is gated on HA's live state in step 3 (the CONNECTED log line
+# is written once, at connect, and may be long gone from the buffer).
 
 step "2. WebView version (ADR 0001 item 6)"
 adb shell getprop ro.product.model
@@ -76,7 +76,19 @@ device_id="$(
 )"
 echo "device_id: ${device_id:-NOT FOUND}"
 [[ -n "$device_id" ]] || { echo "run-as failed: is this the debug build?" >&2; exit 1; }
+ha_query "$device_id" | grep -E '^binary_sensor\.[a-z0-9_]*connectivity: state=on' \
+    || { echo "HA does not show the tablet connected" >&2; exit 1; }
+# The dashboard may have loaded long before this script started, so force a
+# fresh load through HA's reload button (which also exercises the command
+# path) and wait for that load.
+reload_button="$(ha_query "$device_id" | sed -n 's/^\(button\.[a-z0-9_]*reload_dashboard\):.*/\1/p' | head -1)"
+[[ -n "$reload_button" ]] || { echo "no reload_dashboard button for this tablet in HA" >&2; exit 1; }
+adb shell input keyevent 224   # wake the panel; a dismissed screensaver shows the dashboard
 adb shell logcat -c
+echo "pressing $reload_button in HA"
+curl -fsS -o /dev/null -X POST -H "Authorization: Bearer ${TABULA_HA_TOKEN}" \
+    -H "Content-Type: application/json" -d "{\"entity_id\": \"$reload_button\"}" \
+    "${TABULA_HA_URL%/}/api/services/button/press"
 echo "waiting up to 180s for the dashboard to load (page finished log line)"
 wait_for_log "dashboard: loaded" 180
 echo "-- the external-auth bridge answered the frontend:"

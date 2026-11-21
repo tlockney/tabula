@@ -9,7 +9,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
+import net.lockney.tabula.core.screensaver.EntityNeeds
 import net.lockney.tabula.core.screensaver.ScreensaverController
+import net.lockney.tabula.core.settings.AtAGlance
 import net.lockney.tabula.core.settings.Screensaver
 import net.lockney.tabula.core.settings.Settings
 import net.lockney.tabula.core.tlp.EventName
@@ -25,12 +27,14 @@ class ScreensaverManagerTest {
     private val shown = mutableListOf<ScreensaverMode?>()
     private val held = mutableListOf<Int?>()
     private val published = mutableListOf<StateDelta>()
+    private val needs = mutableListOf<EntityNeeds>()
     private val manager = ScreensaverManager(
         controller = ScreensaverController(),
         show = { shown += it },
         holdBrightness = { held += it },
         scope = scope,
         now = { t0 + scope.testScheduler.currentTime },
+        entityData = { needs += it },
     ).also { it.listener = { delta -> published += delta } }
 
     private fun settings(timeoutS: Int = 60, mode: SettingsMode = SettingsMode.Clock, enabled: Boolean = true) =
@@ -154,5 +158,25 @@ class ScreensaverManagerTest {
         scope.advanceTimeBy(600_000)
         scope.runCurrent()
         assertEquals(2, shown.size)
+    }
+
+    @Test
+    fun `the entity subscription opens with the screensaver, follows settings, closes on dismissal`() {
+        val glance = settings().copy(atAGlance = AtAGlance(entities = listOf("lock.front")))
+        manager.applySettings(glance)
+        manager.setForeground(true)
+        manager.start()
+        scope.runCurrent()
+        assertTrue(needs.all { it.isEmpty }, "nothing while the dashboard shows")
+
+        scope.advanceTimeBy(60_001)
+        scope.runCurrent()
+        assertEquals(listOf("lock.front"), needs.last().entityIds, "opened with the screensaver (F-AAG-04)")
+
+        manager.applySettings(glance.copy(atAGlance = AtAGlance(entities = listOf("lock.front", "sensor.temp"))))
+        assertEquals(listOf("lock.front", "sensor.temp"), needs.last().entityIds, "re-targeted while showing")
+
+        manager.onActivity()
+        assertTrue(needs.last().isEmpty, "closed on dismissal")
     }
 }
