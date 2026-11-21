@@ -95,7 +95,7 @@ class GalleryEngineTest {
 
         // the replaced slide's bitmap is released only after the transition
         // ran out (the view clears the old image at the animation's end,
-        // ADR 0014), and exactly once
+        // ADR 0016), and exactly once
         scope.advanceTimeBy(Constants.GALLERY_TRANSITION_MS + Constants.GALLERY_RELEASE_MARGIN_MS - 1)
         scope.runCurrent()
         assertEquals(0, released.size, "no release before the transition and margin have run out")

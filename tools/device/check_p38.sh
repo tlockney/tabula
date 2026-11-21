@@ -9,7 +9,7 @@
 # Prerequisites: the tablet runs a P3.8 build, is provisioned
 # (tools/device/provision.sh) and paired, the app is in the foreground with
 # the panel on, and the photos settings are configured in HA (the entry's
-# Configure page; the settings apply when the screensaver starts, ADR 0014):
+# Configure page; the settings apply when the screensaver starts, ADR 0016):
 #   screensaver mode: photos
 #   photos source: folder, folder path: /storage/emulated/0/Android/data/net.lockney.tabula/files/photos
 #   slide interval: 5 s, transition: crossfade, fit: smart fill,
@@ -22,13 +22,13 @@
 #                            tools/device/gen_test_photos.py into build/test-photos
 #   TABULA_SLIDE_INTERVAL_S  the configured slide interval, seconds (default 5)
 #   TABULA_MEM_BOUND_MB      the memory bound, MiB (default 48; reasoning in
-#                            docs/decisions/0014 and the packet Result)
+#                            docs/decisions/0016 and the packet Result)
 #   ANDROID_SERIAL          optional, picks the tablet when several are attached
 #
 # The test photos get onto the device by ADB push into the app's external
 # files directory (the configured folder path): the shell can write it on the
 # HD 10 Plus, and the app can read its own directory without any storage
-# permission (ADR 0014). The picker route (the notification's "Pick photos"
+# permission (ADR 0016). The picker route (the notification's "Pick photos"
 # action, SAF) is documented in DEVICE.md and can be checked by hand.
 #
 # The script cleans up after itself: a trap turns the screensaver switch off

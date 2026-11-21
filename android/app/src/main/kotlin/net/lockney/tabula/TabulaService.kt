@@ -437,7 +437,7 @@ class TabulaService : Service() {
             PendingIntent.FLAG_IMMUTABLE,
         )
         // the picker source's photo picker (P3.8, F-SSV-12): the only
-        // device-side UI surface the kiosk has (ADR 0014)
+        // device-side UI surface the kiosk has (ADR 0016)
         val pickPhotos = PendingIntent.getActivity(
             this,
             1,

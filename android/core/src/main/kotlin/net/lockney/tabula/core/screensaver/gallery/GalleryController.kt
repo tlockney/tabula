@@ -85,7 +85,7 @@ class GalleryController(
     private val history = ArrayDeque<String>()
     private var cursor = 0
 
-    /** Whether [start] found content to show (the app falls back to the clock otherwise, ADR 0014). */
+    /** Whether [start] found content to show (the app falls back to the clock otherwise, ADR 0016). */
     @get:Synchronized
     val started: Boolean
         get() = running
@@ -160,7 +160,7 @@ class GalleryController(
         val fit = fitFor(config.fit, photoW, photoH, config.width, config.height)
         val old = current
         current = Slide(handle)
-        // the interval restarts when a slide shows (ADR 0014)
+        // the interval restarts when a slide shows (ADR 0016)
         dueMs = now() + config.intervalMs
         val effects = buildList {
             // the replaced slide's release precedes the show of its successor;

@@ -1,4 +1,4 @@
-# 0014: Gallery core
+# 0016: Gallery core
 
 Status: accepted
 Date: 2026-11-21

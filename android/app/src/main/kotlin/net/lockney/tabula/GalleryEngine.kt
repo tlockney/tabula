@@ -18,7 +18,7 @@ import net.lockney.tabula.core.screensaver.gallery.PhotoDetails
  * The photo slideshow (packet P3.8): carries out [GalleryController]'s
  * decisions - decoding each slide at panel resolution, fetching the URL
  * source's photo fresh each slide, rendering each show, and releasing the
- * replaced slide's bitmap once its transition has ended (ADR 0014: the view
+ * replaced slide's bitmap once its transition has ended (ADR 0016: the view
  * clears the old ImageView at the animation's end, and
  * GALLERY_RELEASE_MARGIN_MS covers the jitter, so a recycled bitmap is
  * never drawn).
@@ -51,7 +51,7 @@ class GalleryEngine(
 
     /**
      * Begin the slideshow; false when the controller found no content, in
-     * which case the caller falls back to the clock stand-in (ADR 0014).
+     * which case the caller falls back to the clock stand-in (ADR 0016).
      */
     fun start(config: GalleryController.Config): Boolean {
         carryOut(controller.start(config))

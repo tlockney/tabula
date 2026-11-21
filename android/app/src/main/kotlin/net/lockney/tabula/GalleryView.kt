@@ -35,7 +35,7 @@ import net.lockney.tabula.core.settings.ScreensaverPhotosSource
  *   fill's bar case puts a blurred, darkened enlargement of the photo behind
  *   the whole photo (F-SSV-12).
  * - Transitions: none, crossfade, slide, zoom, and pan-and-zoom, which fades
- *   in and then pans and zooms slowly across the slide's display (ADR 0014).
+ *   in and then pans and zooms slowly across the slide's display (ADR 0016).
  * - The EXIF details overlay (F-SSV-12) sits in a free corner, bottom first;
  *   corner widgets (P3.11) take priority and push it aside (F-WGT-02).
  *
@@ -43,7 +43,7 @@ import net.lockney.tabula.core.settings.ScreensaverPhotosSource
  * step slides (F-SSV-04's exception) and the activity dismisses on any other
  * tap. The replaced slide's bitmap is released once its transition has run
  * out (the engine holds it GALLERY_RELEASE_MARGIN_MS past the animation,
- * ADR 0014, so a recycled bitmap is never drawn).
+ * ADR 0016, so a recycled bitmap is never drawn).
  */
 @SuppressLint("ViewConstructor")
 class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLayout(context) {
@@ -96,7 +96,7 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
      * Show the photos mode with [photos], the current settings; false when the
      * gallery cannot render (an unbuilt source, an empty playlist, a blank
      * URL), in which case the caller shows the clock stand-in (ADR 0013
-     * item 3, ADR 0014).
+     * item 3, ADR 0016).
      */
     fun show(photos: ScreensaverPhotos?): Boolean {
         stopEngine()
@@ -235,7 +235,7 @@ class GalleryView(context: Context, private val scope: CoroutineScope) : FrameLa
             SlideTransition.PAN_ZOOM ->
                 incoming.animate().alpha(1f).setDuration(fade).withEndAction {
                     clearSlide(outgoing)
-                    // slow pan-and-zoom across the rest of the slide's display (F-SSV-12, ADR 0014)
+                    // slow pan-and-zoom across the rest of the slide's display (F-SSV-12, ADR 0016)
                     val ms = (photos?.slideInterval ?: 300) * 1000L - Constants.GALLERY_TRANSITION_MS
                     if (ms > 0) {
                         incoming.animate()

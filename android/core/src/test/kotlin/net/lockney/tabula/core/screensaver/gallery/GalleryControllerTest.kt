@@ -72,7 +72,7 @@ class GalleryControllerTest {
         t += 1
         val requested = controller.onTick()
         assertEquals("p2.jpg", (requested.effects.single() as GalleryController.Effect.Decode).path)
-        // the cadence restarts when the slide shows, not when it was requested (ADR 0014)
+        // the cadence restarts when the slide shows, not when it was requested (ADR 0016)
         decodeIt(controller, requested)
         assertEquals(t + 5_000, controller.nextDueMs)
     }

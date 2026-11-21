@@ -351,7 +351,7 @@ instead.
 ## Hardware check (P3.8, photo slideshow)
 
 Install a P3.8 build, provision and pair, and configure the photos settings
-on the tablet's HA entry (they apply when the screensaver starts, ADR 0014):
+on the tablet's HA entry (they apply when the screensaver starts, ADR 0016):
 
 - screensaver mode `photos`
 - photos source `folder`, folder path
@@ -384,13 +384,13 @@ the slideshow from HA, counts the slides the app logs, checks the edge taps
 step slides without dismissing, checks a centre tap dismisses, and compares
 `dumpsys meminfo` TOTAL PSS before and after the run against a bound
 (`TABULA_MEM_BOUND_MB`, default 48 MB: two screen-sized bitmaps plus the
-blur copies and normal jitter, ADR 0014).
+blur copies and normal jitter, ADR 0016).
 
 **Getting photos onto the device by hand.** Two routes:
 
 - **The folder source**: push any photos into the folder path above with
   `adb push`, or configure any directory the app can read (app-scoped
-  storage; nothing broader is requested, ADR 0014).
+  storage; nothing broader is requested, ADR 0016).
 - **The picker source**: set the source to `picker`, tap the "Pick photos"
   action on Tabula's ongoing notification, and pick photos with the system
   document picker; they are copied into app storage and join the playlist

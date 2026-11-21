@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
  * and join the playlist the next time the screensaver starts (F-SSV-12).
  *
  * Launched from the service's ongoing notification's action: the kiosk has
- * no other device-side UI to hang it on (ADR 0014). Plain framework activity
+ * no other device-side UI to hang it on (ADR 0016). Plain framework activity
  * on purpose (ADR 0013); the classic result API is used because
  * registerForActivityResult needs androidx, which this app does not carry.
  */
