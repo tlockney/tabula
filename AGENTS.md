@@ -4,6 +4,23 @@ Standing instructions for anyone working in this repository: people, agents and 
 
 The repository is the only shared memory. Everything you need is in the repo plus your packet brief. Nothing depends on chat history or tool-specific memory.
 
+## Rules of the road
+
+The short version. Each rule is detailed in the section named, and the reasoning is in the ADR named.
+
+1. **Clean room.** Spec and build sides never mix. The build side works from this repo only and never reads the original product's docs or code. ("Clean-room rules")
+2. **Public framing.** The lineage is stated plainly in a few named files and nowhere else. No comparison wording. `make check` enforces the names. ("Public framing")
+3. **Repo is the memory.** Briefs, decisions and results live in the repo: packets in `docs/packets/`, decisions in `docs/decisions/`. Not in chat, not only in issues.
+4. **Issues are the unit of delegation.** One GitHub issue per packet; the issue tracks who, state and PR. ("Work tracking", ADR 0006)
+5. **Packets are self-contained.** Each one names what to read and how "done" is checked; results are pasted, not paraphrased. ("Work packets")
+6. **One build entry point.** `make setup` and `make check` work the same on a laptop, a cloud VM and CI. ("Build and test", ADR 0004)
+7. **Cloud-VM ready.** Tools come only from package registries and lockfiles, never `curl | sh` or release downloads. Hardware steps are split out for the hardware verifier. (`docs/DEVELOPMENT.md`)
+8. **Worktrees.** All development happens in a git worktree under `.worktrees/`, one per branch. ("Git")
+9. **No signatures.** AI is used openly here, but commits, PRs and issue comments carry no agent attribution or chat links. ("Git", ADR 0006)
+10. **Evidence or it didn't happen.** Nobody reports success they have not observed; a different reviewer signs off. ("Definition of done")
+
+Changing a rule takes a pull request that edits this file, with an ADR when the reasoning isn't obvious.
+
 ## Start here
 
 1. Read this file.
