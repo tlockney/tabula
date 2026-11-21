@@ -472,13 +472,15 @@ live), the **start-path setting** (writing it moves nothing on screen,
 F-DSH-02), the **go-home button** (from the other view it returns to the
 start path), a **cold start** (`force-stop` plus a relaunch lands on the
 start view), an **app restart** (the restart-app button lands there too,
-F-NAV-03), and the **idle return** (a 15 s return delay, the tablet on
-the other view, the screensaver started from HA; after the delay the
+F-NAV-03), and the **idle return** (a 15 s return delay, then a
+**hand-tap move** to the other view — the current-page sensor must pick
+the client-side move up, which is the part a full-load-only report
+would miss — the screensaver started from HA; after the delay the
 current-page sensor shows the start path while the panel stays dark —
 the return happened behind the screensaver, F-DSH-15). Three steps ask
-the verifier to look: the cold-start view, the restarted view, and that
-the panel stayed dark during the covered return. Paste the whole output
-into the packet Result.
+the verifier to act or look: the cold-start view, the hand-tap move
+confirmation, and that the panel stayed dark during the covered
+return. Paste the whole output into the packet Result.
 
 ## Hardware check (P2.2)
 

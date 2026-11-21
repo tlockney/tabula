@@ -146,10 +146,11 @@ wait_for "the restarted app to land on $TABULA_START_PATH" 120 \
     sensor_is "$TABULA_PAGE" "$TABULA_START_PATH"
 echo "-- the app restarted on $TABULA_START_PATH"
 
-step "6. the idle return fires, behind a screensaver included (F-DSH-15)"
+step "6. the idle return fires after a hand-tap move, behind a screensaver included (F-DSH-15)"
 ha_call number set_value "{\"entity_id\": \"$TABULA_NUMBER\", \"value\": 15}"
-ha_call tabula navigate "{\"path\": \"$TABULA_OTHER_PATH\"}"
-wait_for "the tablet to reach $TABULA_OTHER_PATH" 30 sensor_is "$TABULA_PAGE" "$TABULA_OTHER_PATH"
+ask "Tap your way to the $TABULA_OTHER_PATH view on the tablet (client-side move), then confirm"
+wait_for "the tablet to report $TABULA_OTHER_PATH (the client-side move was observed)" 120 \
+    sensor_is "$TABULA_PAGE" "$TABULA_OTHER_PATH"
 ha_call tabula screensaver "{\"active\": true}"
 echo "-- screensaver on; waiting out the 15 s return delay"
 sleep 20

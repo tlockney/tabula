@@ -125,6 +125,28 @@ class StartPageManagerTest {
     }
 
     @Test
+    fun `a client-side move away from the target still returns at the deadline`() {
+        // Launch landed on the target (a full load); the user then routed
+        // inside the frontend - a history change, no full load. The dashboard
+        // reports the new page and a page change fires for it, the way the
+        // WebView's visited-history callback now does (review round 2,
+        // blocker 2): the countdown resets, and the deadline still returns
+        // because the page reported is no longer the target.
+        handle.page = "/lovelace/kitchen"
+        running()
+        scope.advanceTimeBy(30_000)
+        scope.runCurrent()
+        handle.page = "/lovelace/other"
+        manager.onPageChanged()
+        scope.advanceTimeBy(30_000)
+        scope.runCurrent()
+        assertEquals(0, handle.startLoads, "the client-side move reset the countdown")
+        scope.advanceTimeBy(30_001)
+        scope.runCurrent()
+        assertEquals(1, handle.startLoads)
+    }
+
+    @Test
     fun `a settings push restarts a changed countdown and a later push keeps it`() {
         running()
         scope.advanceTimeBy(30_000)
