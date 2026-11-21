@@ -90,6 +90,19 @@ SENSORS = (
         state_keys=frozenset({"app_version"}),
         state_key="app_version",
     ),
+    # The last capture started by the capture button (F-HA-12, P3.13): not a
+    # device state key - it lives on the record, persisted, and only the
+    # capture flow updates it (untouched by ordinary image fetches).
+    TabulaSensorDescription(
+        key="last_capture",
+        translation_key="last_capture",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capabilities=frozenset({"screenshot"}),
+        state_keys=frozenset({"last_capture"}),
+        state_key="last_capture",
+        convert=_timestamp,
+    ),
 )
 
 
@@ -102,9 +115,30 @@ class TabulaSensor(TabulaEntity, SensorEntity):
         return None if value is None else self.entity_description.convert(value)
 
 
+class TabulaCaptureSensor(TabulaEntity, SensorEntity):
+    """The last capture's timestamp, read from the record (not device state)."""
+
+    entity_description: TabulaSensorDescription
+
+    @property
+    def native_value(self) -> datetime | None:
+        record = self.record
+        if record is None or record.last_capture is None:
+            return None
+        return _timestamp(record.last_capture)
+
+
+def _factory(
+    hub: TabulaHub, record: Any, description: TabulaSensorDescription
+) -> TabulaEntity:
+    if description.key == "last_capture":
+        return TabulaCaptureSensor(hub, record, description)
+    return TabulaSensor(hub, record, description)
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     hub = TabulaHub.get(hass)
     assert hub is not None
-    entry.async_on_unload(setup_platform(hass, hub, async_add_entities, SENSORS, TabulaSensor))
+    entry.async_on_unload(setup_platform(hass, hub, async_add_entities, SENSORS, _factory))

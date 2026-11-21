@@ -44,6 +44,7 @@ from .const import (
     SCREENSHOT_TIMEOUT,
     SIGNAL_CAPABILITIES,
     SIGNAL_DEVICE_UPDATE,
+    SIGNAL_SCREENSHOT,
     USER_NAME_PREFIX,
 )
 from .pairing import (
@@ -51,6 +52,7 @@ from .pairing import (
     PendingPairings,
     RateLimiter,
 )
+from .screenshots import ScreenshotStore
 from .settings import SettingsStore
 from .tlp import TLPValidator
 
@@ -60,6 +62,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.IMAGE,
     Platform.LIGHT,
     Platform.MEDIA_PLAYER,
     Platform.NOTIFY,
@@ -132,6 +135,12 @@ class DeviceRecord:
     events: deque = field(default_factory=lambda: deque(maxlen=50))
     logs: deque = field(default_factory=lambda: deque(maxlen=200))
     current: DeviceSession | None = None
+    # P3.13: when the last button-started capture completed (RFC 3339),
+    # persisted so the timestamp sensor survives an HA restart (F-HA-12).
+    last_capture: str | None = None
+    # Runtime marker: an upload arrived for the screenshot command still
+    # pending; async_capture reads it to tell screen-on from screen-off.
+    screenshot_delivered: bool = False
 
     @property
     def connected(self) -> bool:
@@ -160,6 +169,8 @@ class DeviceRecord:
             # Kept so entities exist (unavailable) after an HA restart, before
             # the tablet reconnects; nothing is removed on disconnect.
             "capabilities": list(self.capabilities),
+            # The last capture started by the capture button (F-HA-12).
+            "last_capture": self.last_capture,
         }
 
 
@@ -174,6 +185,8 @@ class TabulaHub:
         self.by_user: dict[str, str] = {}
         # Per-device settings documents and revisions (settings.py, plan 5.6).
         self.settings = SettingsStore(hass)
+        # The latest screenshot per device, in the media dir (P3.13, PROTOCOL 5).
+        self.screenshots = ScreenshotStore(hass)
         # Strong refs, keyed by the connection object; entries are removed when the
         # subscription's cleanup runs (socket close) and when a newer registration
         # replaces an unsubscribed session. ActiveConnection has __slots__ and no
@@ -216,6 +229,7 @@ class TabulaHub:
                 name=info.get("name"),
                 model=info.get("model"),
                 capabilities=list(info.get("capabilities", [])),
+                last_capture=info.get("last_capture"),
             )
             self.devices[record.device_id] = record
             self.by_user[record.user_id] = record.device_id
@@ -588,6 +602,27 @@ class TabulaHub:
             )
         return result.get("data") or {}
 
+    async def async_capture(self, record: DeviceRecord) -> None:
+        """Run one screenshot command and record what it captured (P3.13).
+
+        The capture button calls this (F-HA-12). ``started`` is when the
+        capture began; it becomes the record's ``last_capture`` - persisted,
+        pushed to the timestamp sensor, and untouched by any other path - only
+        when the command succeeds, so a failed capture does not move it. The
+        upload view's marker tells screen-on from screen-off: no upload during
+        the command means the screen was off, the stored image is dropped and
+        the image entity serves the placeholder instead (F-MGT-07, ADR 0014).
+        """
+        record.screenshot_delivered = False
+        started = _utc_now()
+        await self.async_command(record, "screenshot", {})
+        record.last_capture = started
+        self._persist()
+        if not record.screenshot_delivered:
+            await self.screenshots.remove(record.device_id)
+        self.notify_update(record, {"last_capture"})
+        async_dispatcher_send(self.hass, SIGNAL_SCREENSHOT.format(record.device_id))
+
     # --- views and listeners -------------------------------------------------
 
     @callback
@@ -626,17 +661,18 @@ def _command_error(key: str, command: str) -> HomeAssistantError:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the tabula/* WebSocket commands, tabula.* services and pair/claim views once.
+    """Register the tabula/* WebSocket commands, tabula.* services and HTTP views once.
 
     aiohttp freezes the router once HA's HTTP server is running, so views are
     registered here at component setup; they find the live hub per request and
-    survive hub reloads (pairing.register_views).
+    survive hub reloads (pairing.register_views, screenshots.register_views).
     """
-    from . import services, ws_api
+    from . import screenshots, services, ws_api
 
     ws_api.async_register(hass)
     services.async_register(hass)
     pairing.register_views(hass)
+    screenshots.register_views(hass)
     return True
 
 

@@ -114,6 +114,9 @@
       },
       "clear_cache": {
         "name": "Clear cache"
+      },
+      "capture_screenshot": {
+        "name": "Capture screenshot"
       }
     },
     "sensor": {
@@ -136,6 +139,14 @@
       },
       "app_version": {
         "name": "App version"
+      },
+      "last_capture": {
+        "name": "Last capture"
+      }
+    },
+    "image": {
+      "screenshot": {
+        "name": "Screenshot"
       }
     },
     "media_player": {
