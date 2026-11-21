@@ -41,3 +41,31 @@ jobs:
       - run: make check
         env:
           TABULA_REQUIRE_ANDROID: "1"
+
+  # HA-version matrix for the integration (ADR 0001 item 8): `make check`
+  # above proves only the pin; each leg below proves the suite on one
+  # supported HA release. pytest-homeassistant-custom-component pins its
+  # homeassistant release exactly, so the matrix pins the phacc versions
+  # (pairs verified on PyPI): 0.13.201 -> HA 2025.1.0 (the declared floor),
+  # 0.13.316 -> HA 2026.2.3 (the pin), 0.13.375 -> HA 2026.10.4 (the newest
+  # phacc release; it requires Python 3.14). Bump the latest leg when phacc
+  # releases; keep ADR 0001 item 8 in sync.
+  integration-ha-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - phacc: "0.13.201"
+            python: "3.13"
+          - phacc: "0.13.316"
+            python: "3.13"
+          - phacc: "0.13.375"
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: make setup
+      - run: make test-ha-matrix HA_PHACC=${{ matrix.phacc }} HA_PYTHON=${{ matrix.python }}
