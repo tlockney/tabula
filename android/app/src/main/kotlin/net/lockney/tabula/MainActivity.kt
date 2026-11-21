@@ -45,8 +45,14 @@ class MainActivity : Activity() {
             setPadding(dp(32), dp(48), dp(32), dp(48))
         }
         setContentView(root)
+        ScreenWindow.attach(this, scope)
         observe()
         TabulaService.start(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ScreenWindow.onResume(this)
     }
 
     override fun onDestroy() {

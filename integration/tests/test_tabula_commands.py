@@ -316,6 +316,43 @@ async def test_manual_brightness_turns_adaptive_off(hass_setup, tablet):
     assert tablet.device.state["brightness"] == 50
 
 
+async def test_manual_brightness_updates_ha_settings(hass_setup, tablet):
+    """HA's settings copy follows the device (ADR 0011): a later push of an
+    unrelated setting must not turn adaptive back on."""
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    device_id = tablet.paired.device_id
+    adaptive = entity_id(hass_setup, "switch", tablet.paired, "adaptive_brightness")
+    screen = entity_id(hass_setup, "light", tablet.paired, "screen")
+    keep_on = entity_id(hass_setup, "switch", tablet.paired, "keep_screen_on")
+
+    await hass_setup.services.async_call(
+        "switch", "turn_on", {"entity_id": adaptive}, blocking=True
+    )
+    await wait_until(
+        lambda: tablet.device.settings.get("screen", {}).get("adaptive_brightness") is True
+    )
+
+    await hass_setup.services.async_call(
+        "light", "turn_on", {"entity_id": screen, "brightness": 128}, blocking=True
+    )
+    stored = hub_runtime.settings.get(device_id)
+    assert stored is not None
+    assert stored.settings["screen"]["brightness"] == 50
+    assert stored.settings["screen"]["adaptive_brightness"] is False
+
+    # an unrelated setting: the push carries adaptive off, not the stale on
+    await hass_setup.services.async_call(
+        "switch", "turn_off", {"entity_id": keep_on}, blocking=True
+    )
+    await wait_until(
+        lambda: tablet.device.settings.get("screen", {}).get("keep_screen_on") is False
+    )
+    assert tablet.device.settings["screen"]["adaptive_brightness"] is False
+    assert tablet.device.settings["screen"]["brightness"] == 50
+    await wait_until(lambda: hass_setup.states.get(adaptive).state == "off")
+
+
 async def test_settings_entities_write_through_the_store(hass_setup, tablet):
     """Settings entities save a new revision and push it with set_settings (P1.5)."""
     eid = entity_id(hass_setup, "switch", tablet.paired, "adaptive_brightness")
