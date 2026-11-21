@@ -64,6 +64,13 @@ class TabulaScreenLight(TabulaEntity, LightEntity):
         if ATTR_BRIGHTNESS in kwargs:
             args["brightness"] = to_device_brightness(kwargs[ATTR_BRIGHTNESS])
         await self.async_command("screen", args)
+        if "brightness" in args:
+            # The device turned adaptive off and took the level as its base
+            # (ADR 0010 item 5). HA's settings copy follows, so a later push of
+            # an unrelated setting does not turn adaptive back on (ADR 0011).
+            await self.async_set_settings(
+                {"screen_brightness": args["brightness"], "screen_adaptive_brightness": False}
+            )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.async_command("screen", {"on": False})

@@ -85,6 +85,18 @@ These appear as bounds in `schema/tlp-v1.schema.json` and are chosen here:
 | `capabilities` (register) | 64 items, names `[a-z][a-z0-9_]{0,31}` | Room for many future capabilities while bounding the frame. |
 | `credential.refresh_token` | at least 32 chars | HA refresh tokens are far longer; a shorter one is a bug. |
 
+### Screen control (P2.3)
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `BRIGHTNESS_CURVE` | (1 lx, 5 %), (10 lx, 15 %), (100 lx, 40 %), (1000 lx, 75 %), (10000 lx, 100 %) | Five points, one per decade of light, so the logarithmic light axis (F-SCR-06) gets one handle per decade. 1 lx is a dark room at night, where a 5 % panel is visible without lighting the room. 100 lx is ordinary indoor lighting, where 40 % is comfortable. 10000 lx is daylight near a window, which needs a full panel. Readings below the first point or above the last are clamped to the ends. It is a starting shape to be tuned on the Office Kiosk; adaptive brightness defaults to off until then. |
+| `ADAPTIVE_CHANGE_THRESHOLD` | 3 percentage points | The curve's output changes the panel only when it moves by more than this from the level last applied. One or two points are invisible on the HD 10 Plus, so sensor noise and passing shadows cause no visible step (F-SCR-08). Slow drift still accumulates against the last applied level, so it is eventually followed. |
+| `ADAPTIVE_MIN_INTERVAL` | 2 s | The minimum gap between two adaptive changes. Someone walking past the sensor does not make the panel pump, and a light switched on is followed within a couple of seconds (F-SCR-08). |
+| `ADAPTIVE_FADE` | 800 ms | An adaptive change fades over this time instead of jumping (F-SCR-08). It is short enough to finish well inside `ADAPTIVE_MIN_INTERVAL`, so fades never overlap. |
+| `FADE_FRAME` | 50 ms | The gap between two backlight writes during a fade. 20 writes a second look continuous at backlight step sizes, and the settings writes stay cheap. |
+
+Manual brightness from HA (the light entity, the `screen` command) is applied at once, without a fade: the user asked for that level.
+
 ### Phase 1–2 behavior defaults
 
 Defaults for the settings schema (P0.5) and the device's behavior before HA has sent any settings.

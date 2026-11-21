@@ -43,5 +43,15 @@ object TabulaStatus {
     /** The last rejection (code, message) when [Phase.REJECTED]. */
     val rejection = MutableStateFlow<Pair<String, String>?>(null)
 
+    /**
+     * Window brightness override, 0.0-1.0, used when the app cannot write the
+     * system backlight (F-SCR-03 fallback); null leaves the window at the
+     * system level. Written by [ScreenManager], applied by [ScreenWindow].
+     */
+    val windowBrightness = MutableStateFlow<Float?>(null)
+
+    /** Keep the panel awake while the app's window is showing (F-SCR-01). */
+    val keepScreenOn = MutableStateFlow(true)
+
     data class PairingView(val code: String, val deviceIdShort: String)
 }

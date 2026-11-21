@@ -57,4 +57,27 @@ object Constants {
 
     /** BACKOFF_RESET_AFTER: s a connection must stay registered for the attempt counter to reset. */
     const val BACKOFF_RESET_AFTER_S = 60.0
+
+    // --- Screen control (docs/decisions/0002-constants.md, "Screen control") ------
+
+    /** BRIGHTNESS_CURVE: default adaptive curve as (lux, percent) points, one per decade. */
+    val BRIGHTNESS_CURVE: List<Pair<Double, Int>> = listOf(
+        1.0 to 5,
+        10.0 to 15,
+        100.0 to 40,
+        1000.0 to 75,
+        10000.0 to 100,
+    )
+
+    /** ADAPTIVE_CHANGE_THRESHOLD: percentage points the curve must move before the panel follows. */
+    const val ADAPTIVE_CHANGE_THRESHOLD = 3
+
+    /** ADAPTIVE_MIN_INTERVAL: ms between two adaptive brightness changes. */
+    const val ADAPTIVE_MIN_INTERVAL_MS = 2000L
+
+    /** ADAPTIVE_FADE: ms an adaptive change takes to fade to its new level. */
+    const val ADAPTIVE_FADE_MS = 800L
+
+    /** FADE_FRAME: ms between two backlight writes during a fade. */
+    const val FADE_FRAME_MS = 50L
 }

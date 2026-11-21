@@ -144,15 +144,19 @@ class TabulaEntity(Entity):
         tablet is reconciled when it next registers. ``settings_key`` is the
         schema's flat key (settings.SettingsField.key).
         """
-        from .settings import SettingsError, async_set_setting
+        await self.async_set_settings({settings_key: value})
+
+    async def async_set_settings(self, values: dict[str, Any]) -> None:
+        """Change several device settings as one revision (see async_set_setting)."""
+        from .settings import SettingsError, async_set_settings
 
         try:
-            await async_set_setting(self.hub, self.device_id, settings_key, value)
+            await async_set_settings(self.hub, self.device_id, values)
         except SettingsError as e:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="setting_invalid",
-                translation_placeholders={"setting": settings_key, "problem": str(e)[:200]},
+                translation_placeholders={"setting": ", ".join(values), "problem": str(e)[:200]},
             ) from e
 
 

@@ -40,6 +40,9 @@ class TabulaService : Service() {
     private var job: Job? = null
     private lateinit var store: TabulaStore
     private lateinit var wifiLock: WifiManager.WifiLock
+    private lateinit var panel: AndroidPanel
+    private lateinit var lightSensor: LightSensor
+    private lateinit var screen: ScreenManager
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -53,6 +56,27 @@ class TabulaService : Service() {
             } ?: error("no WifiManager")
         createChannel()
         startForeground(NOTIFICATION_ID, notification(phaseText(TabulaStatus.phase.value)))
+        startScreenControl()
+    }
+
+    /**
+     * Screen control (packet P2.3) runs for the service's lifetime, not the
+     * session's, so adaptive brightness keeps working while HA is down
+     * (F-SCR-05). The stored settings are applied at start only once HA has
+     * sent a document: a freshly installed app leaves the system brightness
+     * alone (F-SCR-02, ADR 0011).
+     */
+    private fun startScreenControl() {
+        panel = AndroidPanel(applicationContext) { on -> screen.onPanelPower(on) }
+        screen = ScreenManager(
+            controller = net.lockney.tabula.core.screen.ScreenController(),
+            panel = panel,
+            persist = { screenSettings -> store.settings = store.settings.copy(screen = screenSettings) },
+            scope = scope,
+        )
+        if (store.settingsRevision > 0) screen.applySettings(store.settings)
+        lightSensor = LightSensor(applicationContext) { lux -> screen.onLux(lux) }
+        lightSensor.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -78,6 +102,8 @@ class TabulaService : Service() {
     }
 
     override fun onDestroy() {
+        lightSensor.stop()
+        panel.close()
         job?.cancel()
         scope.cancel()
         runCatching { wifiLock.release() }
@@ -153,7 +179,8 @@ class TabulaService : Service() {
         val refreshToken = store.refreshToken ?: return startPairing()
         job?.cancel()
         job = scope.launch {
-            val state = AndroidStateSource(applicationContext, versionName())
+            val state = AndroidStateSource(applicationContext, versionName(), extra = screen::current)
+            screen.listener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
                 TlpClient.Config(
@@ -163,11 +190,11 @@ class TabulaService : Service() {
                     manufacturer = Build.MANUFACTURER ?: "unknown",
                     model = Build.MODEL ?: "unknown",
                     osVersion = Build.VERSION.RELEASE ?: "unknown",
-                    capabilities = CAPABILITIES,
+                    capabilities = capabilities(),
                     settingsRevision = { store.settingsRevision },
                     refreshToken = { refreshToken },
                     state = state,
-                    commands = TabulaCommands(store, onRestartApp = ::restartApp),
+                    commands = TabulaCommands(store, onRestartApp = ::restartApp, screen = screen),
                 ),
                 TokenRefresher(OkHttpExchange()),
                 OkHttpWsTransportFactory(),
@@ -200,6 +227,7 @@ class TabulaService : Service() {
             try {
                 client.run(events)
             } finally {
+                screen.listener = null
                 state.close()
             }
         }
@@ -218,6 +246,18 @@ class TabulaService : Service() {
             kotlinx.coroutines.delay(net.lockney.tabula.core.Constants.RESTART_EXIT_DELAY_MS)
             android.os.Process.killProcess(android.os.Process.myPid())
         }
+    }
+
+    /**
+     * The capabilities this device declares (PROTOCOL 4.2): battery (P2.1),
+     * screen and brightness (P2.3), and adaptive_brightness only when the
+     * tablet has a light sensor.
+     */
+    private fun capabilities(): List<String> = buildList {
+        add("battery")
+        add("screen")
+        add("brightness")
+        if (lightSensor.available) add("adaptive_brightness")
     }
 
     private fun versionName(): String =
@@ -279,8 +319,6 @@ class TabulaService : Service() {
         private const val CHANNEL_ID = "tabula_connection"
         private const val NOTIFICATION_ID = 1
 
-        /** The capabilities a P2.1 device declares (PROTOCOL 4.2). */
-        private val CAPABILITIES = listOf("battery")
 
         /** Start the service in the connect state (paired) or nothing (unpaired). */
         fun start(context: Context) {

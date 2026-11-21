@@ -77,3 +77,12 @@ One row per user-visible behavior. Source is a `docs/FEATURES.md` item ID or "in
 | A foreground service with an ongoing notification keeps the HA connection alive, holds a Wi-Fi wake lock, and starts on boot after one manual launch | F-KSK-09 | P2.1 |
 | Diagnostic state reported to HA while connected: battery level, charging, network type, Wi-Fi signal strength, app version | F-HA-05, F-HA-09 | P2.1 |
 | A credential revoked in HA returns the tablet to its pairing screen | independent design (ADR 0001 item 2) | P2.1 |
+| The tablet writes the system backlight and switches system auto-brightness to manual; without that permission it dims only its own window | F-SCR-03 | P2.3 |
+| HA's screen light sets the panel level and switches the panel off (device admin lock) and on (wake) | F-SCR-04, F-SCR-14 | P2.3 |
+| Without the device admin, switching the panel off is refused with an error and the panel stays on | F-SCR-14 | P2.3 |
+| The keep-screen-on setting stops the system display timeout while the dashboard window shows | F-SCR-01 | P2.3 |
+| Adaptive brightness follows the tablet's light sensor through a five-point curve on a logarithmic light axis, smooth and monotone, and keeps working while HA is unreachable | F-SCR-05, F-SCR-06; curve points in ADR 0002 | P2.3 |
+| Adaptive changes apply only past a change threshold and a minimum interval, and fade instead of jumping; a held reading is rechecked after the interval | F-SCR-08; constants in ADR 0002 | P2.3 |
+| A fresh install leaves the system brightness alone until HA has sent settings | F-SCR-02 (default chosen in ADR 0011) | P2.3 |
+| A manual level from the screen light is also written to HA's stored settings (brightness and adaptive off), so later settings pushes keep adaptive off | independent design (ADR 0011) | P2.3 |
+| A swipe-only lock screen is cleared when the panel wakes; a secured one stays | F-SCR-13 (unsecured case only) | P2.3 |
