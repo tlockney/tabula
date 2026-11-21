@@ -55,6 +55,37 @@ Pairing exchanges the credential over the LAN (docs/PROTOCOL.md 2). Over
 plain http an on-path attacker can read it; run HA behind HTTPS if you can,
 and if not, treat the LAN as the security boundary (plan 5.2, section 9).
 
+## Provisioning a second Fire HD 10 Plus
+
+A second tablet of the same model needs nothing new: the runbook above is
+written per device. Work through it in this order, with both tablets
+attached at once (each step below is the same one as before; the only
+addition is picking the right tablet).
+
+1. **Prepare the tablet itself** (once, by hand): complete the Fire OS
+   setup on Wi-Fi, then enable Developer Options (Settings → Device
+   Options → tap the serial number seven times) and USB debugging.
+2. **Pick the tablet for every command.** With two attached,
+   `adb devices -l` lists both serials; export
+   `ANDROID_SERIAL=<the new tablet's serial>` so the scripts target it and
+   not the Office Kiosk. The scripts all honor it (`provision.sh`, every
+   `check_p2x.sh`).
+3. **Install and provision**: `make android-apk`, then
+   `ANDROID_SERIAL=<serial> tools/device/provision.sh` — the same grants,
+   the same device admin, printed evidence for each.
+4. **Launch and pair** (the "Finish by hand" steps of provision.sh): launch
+   Tabula once, enter the HA address, confirm the new six-digit code in HA.
+   The new tablet appears as its own device with its own entity set
+   (entity ids carry its device name); nothing about the Office Kiosk
+   changes.
+5. **Verify with the same checks**: run `tools/device/check_p21.sh` (and
+   the P2.2–P2.5 checks if wanted) with the new tablet's entity ids in the
+   `TABULA_*` variables, then `check_p26.sh` below. The entity ids are on
+   the new tablet's device page in HA.
+
+Two tablets on one HA is the normal state (plan 3): each pairs to its own
+non-admin user; deleting one in HA does not affect the other.
+
 ## Hardware check (P2.1)
 
 After pairing, run:
@@ -178,6 +209,72 @@ checks:
 8. HA received at least six `tabula_notification` events (shown, replaced,
    timed out, tapped) and at least one `tabula_media` (`media_finished`)
    event.
+
+## Hardware check (P2.6, offline-first)
+
+Install a P2.6 build (or later; the build contains no P2.6 code changes on
+the device), provision and pair, let the dashboard load, leave Tabula in
+front with the panel on, then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver TABULA_NEXT=sensor.<tablet>_next_screensaver \
+TABULA_LIGHT=light.<tablet>_screen TABULA_CURRENT_PAGE=sensor.<tablet>_current_page \
+TABULA_ADAPTIVE=switch.<tablet>_adaptive_brightness \
+ANDROID_SERIAL=<serial> tools/device/check_p26.sh
+```
+
+The entity ids are on the tablet's device page in HA. `TABULA_ADAPTIVE` is
+optional (it enables the offline curve step); so are
+`TABULA_SAVER_BRIGHTNESS_PCT` and `TABULA_CONNECTIVITY`. Set
+`TABULA_SKIP_REBOOT=1` only when the reboot step is being checked by itself.
+
+**Taking HA down — two options.** The script checks the same offline
+behavior either way; the first is the truer test.
+
+- **Option A (preferred): stop HA itself.** Set
+  `TABULA_HA_STOP_CMD` and `TABULA_HA_START_CMD` to commands the Mac can
+  run, e.g. `TABULA_HA_STOP_CMD='ssh ha@homeassistant "ha core stop"'` and
+  `TABULA_HA_START_CMD='ssh ha@homeassistant "ha core start"'` (adapt to
+  however HA is hosted). The tablet's network stays up, so what fails is
+  exactly HA. HA's own restart also matches the Phase 2 exit ("survives an
+  HA restart").
+- **Option B (default): block the tablet's route to HA.** Without the stop
+  commands the script switches the tablet's Wi-Fi off and on
+  (`svc wifi disable`), the same fallback `check_p21.sh` uses. The device
+  sees the same dead connection, but its whole network is down, and the
+  HA-side "unavailable" evidence is read from the Mac instead.
+
+The script reboots the tablet first (the boot receiver must start the
+service on its own), then checks, with pasted evidence for each step:
+
+1. the service starts on boot and the dashboard loads with the pairing
+   intact;
+2. the online baseline: connected, manual brightness from HA, the idle
+   deadline, the current page;
+3. HA down: the app logs `connection lost` and re-dials with the backoff
+   spacing visible in the timestamps, the process stays up (no crash
+   loop), the crash buffer stays clean, and (option B) HA's entities read
+   unavailable while the registry entry stays;
+4. the screensaver still idles in with HA down, at the screensaver
+   brightness, and the clock shows the current time and date;
+5. the cached dashboard survives the outage: a tap dismisses the
+   screensaver, the same page is back, and no new `dashboard: loaded` line
+   appears (the page was never reloaded);
+6. the brightness curve still follows the light sensor with HA down
+   (cover it, then shine a light);
+7. HA returns: the tablet re-registers by itself, HA's entities refresh
+   from the device's current state (the screensaver switch reads off after
+   the offline dismiss), the current page is unchanged, and the WebView
+   still has not reloaded;
+8. after a stable minute, a Wi-Fi blip re-registers within 30 s — the
+   reconnect backoff reset (BACKOFF_RESET_AFTER, ADR 0002);
+9. the full service and dashboard log for the record.
+
+The exit status is 0 only when every gate passed. Offline
+screensaver start/stop events never reach HA by design (ADR 0013): the
+register frame carries the current state, which is what step 7 checks
+instead.
 
 ## Hardware check (P2.2)
 
