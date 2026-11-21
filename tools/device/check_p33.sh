@@ -105,6 +105,7 @@ fail_count() { # logcat background failure lines so far
     adb logcat -d -s TabulaClock:W 2>/dev/null | grep -c "background: load failed" || true
 }
 loads_above() { (( $(load_count) > $1 )); }
+shown_above() { (( $(shown_count) > $1 )); }
 fails_above() { (( $(fail_count) > $1 )); }
 
 bg_url="http://$host_ip:$port/clock-bg.jpg"
@@ -152,9 +153,10 @@ echo "-- in HA, set the clock face back to 'digital' on the device's Configure p
 ask "Have you saved face = digital in HA?"
 sleep 2
 loads_before="$(load_count)"
+shown_before="$(shown_count)"
 set_background "$bg_url"
 wait_for "the background load to reach the device" 15 loads_above "$loads_before"
-shown_before="$(shown_count)"
+wait_for "the background to show" 15 shown_above "$shown_before"
 sleep 3
 ask "Does the tablet show the digital clock over the photo, darkened (the darkening layer, F-SSV-09)?"
 ask "Is the clock still readable across the room?"
