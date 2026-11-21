@@ -95,4 +95,16 @@ object Constants {
 
     /** MEDIA_MAX_REDIRECTS: redirect hops the media fetch follows before giving up (P2.5). */
     const val MEDIA_MAX_REDIRECTS = 5
+
+    /** MEDIA_READ_TIMEOUT: s a media download may wait on one socket read (P2.5). */
+    const val MEDIA_READ_TIMEOUT_S = 30.0
+
+    /** CHIME_VOLUME: the notification chime generator's own scale, at the top (P2.5). */
+    const val CHIME_VOLUME = 100
+
+    /**
+     * CARD_BACKGROUND: a notification card's near-opaque dark body, ARGB
+     * (P2.5). Not const: the literal needs the Long-to-Int narrowing.
+     */
+    val CARD_BACKGROUND: Int = 0xEE1C1C1C.toInt()
 }

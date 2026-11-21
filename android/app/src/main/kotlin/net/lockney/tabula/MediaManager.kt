@@ -144,7 +144,13 @@ class MediaManager(
         }
     }
 
-    /** Release the player, cancel any load in flight, and drop its file. */
+    /**
+     * Release the player, cancel any load in flight, and drop its file. Takes
+     * the same monitor as [carryOut] and [finishLoad], so a close racing a
+     * load's completion can neither stop a player the manager still uses nor
+     * leave a stopped one in `current`.
+     */
+    @Synchronized
     fun close() {
         generation.incrementAndGet()
         loadJob?.cancel()
