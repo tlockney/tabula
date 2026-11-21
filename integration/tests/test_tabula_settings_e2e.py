@@ -13,7 +13,7 @@ import asyncio
 
 import aiohttp
 from custom_components.tabula import TabulaHub
-from homeassistant.core import Event
+from homeassistant.core import Event, callback
 from homeassistant.helpers import entity_registry as er
 from mockdevice.client import TLPClient
 from mockdevice.device import ALL_CAPABILITIES, MockDevice
@@ -68,8 +68,23 @@ async def _connect(
 
 def _listen(hass, name: str) -> list[Event]:
     seen: list[Event] = []
-    hass.bus.async_listen(name, seen.append)
+
+    # @callback: runs inside async_fire; a plain callable (seen.append) would
+    # run in the executor and race the assertions.
+    @callback
+    def catch(event: Event) -> None:
+        seen.append(event)
+
+    hass.bus.async_listen(name, catch)
     return seen
+
+
+async def _until(predicate, timeout: float = 10.0) -> None:
+    """Wait for a condition another task settles (the device's result frame
+    reaches HA after the device has applied the document)."""
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0.02)
 
 
 async def test_entity_write_goes_through_the_settings_store(
@@ -102,7 +117,7 @@ async def test_entity_write_goes_through_the_settings_store(
         assert stored.revision == 1
         record = runtime.devices[paired.device_id]
         assert record.current is not None
-        assert record.current.reported_settings_revision == 1
+        await _until(lambda: record.current.reported_settings_revision == 1)
     finally:
         client.stop()
         await asyncio.wait_for(task, 10)
@@ -143,12 +158,15 @@ async def test_options_flow_save_reaches_the_device(
         stored = runtime.settings.get(paired.device_id)
         assert stored is not None
         assert stored.revision == 1
-        # HA knows the device applied it: no push is pending, no drift
+        # HA knows the device applied it: no push is pending, no drift. The
+        # ACK reaches HA after the device applied it, so wait for it.
         record = runtime.devices[paired.device_id]
         assert record.current is not None
-        assert record.current.reported_settings_revision == 1
+        await _until(lambda: record.current.reported_settings_revision == 1)
 
-        # the device persisted the document, like the Android app would
+        # the device persisted the document, like the Android app would (it
+        # saves after sending the result)
+        await _until(lambda: DeviceStore.load(tmp_path / "device.json").settings_revision == 1)
         saved = DeviceStore.load(tmp_path / "device.json")
         assert saved.settings["screen"]["brightness"] == 23
         assert saved.settings_revision == 1
@@ -176,7 +194,7 @@ async def test_subscription_reconciles_revision_drift(
         assert device.settings["screen"]["brightness"] == 77
         record = runtime.devices[paired.device_id]
         assert record.current is not None
-        assert record.current.reported_settings_revision == 1
+        await _until(lambda: record.current.reported_settings_revision == 1)
     finally:
         client.stop()
         await asyncio.wait_for(task, 10)
