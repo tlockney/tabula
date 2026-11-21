@@ -12,6 +12,11 @@ from mockdevice.store import DeviceStore
 from mockdevice.testserver import TestServer
 
 
+@pytest.fixture(autouse=True)
+def _real_sockets(socket_enabled):
+    """These suites exercise real sockets; PHACC's plugin disables them otherwise."""
+
+
 @pytest.fixture
 async def server() -> AsyncIterator[TestServer]:
     async with TestServer(poll_interval=1) as srv:
