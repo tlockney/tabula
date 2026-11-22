@@ -366,7 +366,10 @@ echo "-- 'dashboard: loaded' lines so far: $loaded_before"
 
 step "3. HA goes down; the app keeps its head"
 ha_down
-wait_for "HA to be unreachable (from the Mac)" 60 ha_is_down
+# Option B: HA only notices the tablet's half-open socket at its own
+# WebSocket heartbeat (ADR 0001: 55 s), so allow two heartbeats plus margin;
+# measured on the Office Kiosk: unavailable 81 s after the radio dropped.
+wait_for "HA to be unreachable (from the Mac)" 150 ha_is_down
 echo "-- HA unreachable: yes"
 adb shell logcat -c
 wait_for_log "connection lost; reconnecting with backoff" 90

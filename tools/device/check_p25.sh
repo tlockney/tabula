@@ -120,7 +120,7 @@ ask "Did tapping the card remove the card and leave the screensaver up?"
 ha_call tabula screensaver "{\"entity_id\": \"$TABULA_MEDIA\", \"active\": false}"
 
 step "6. TTS speaks through the media player (tts.speak)"
-ha_call tts speak "{\"entity_id\": \"$TABULA_TTS\", \"media_player_entity_id\": \"$TABULA_MEDIA\", \"media\": \"The P2.5 hardware check is speaking\"}"
+ha_call tts speak "{\"entity_id\": \"$TABULA_TTS\", \"media_player_entity_id\": \"$TABULA_MEDIA\", \"message\": \"The P2.5 hardware check is speaking\"}"
 wait_for "the media player to play" 20 ha_state_is "$TABULA_MEDIA" playing
 echo "-- media player: $(ha_state "$TABULA_MEDIA")"
 ask "Did you hear the announcement from the tablet?"

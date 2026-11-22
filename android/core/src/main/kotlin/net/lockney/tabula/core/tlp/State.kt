@@ -28,6 +28,7 @@ data class StateDelta(
     val charging: Boolean? = null,
     val network: NetworkType? = null,
     @SerialName("wifi_rssi") val wifiRssi: Int? = null,
+    val illuminance: Double? = null,
     @SerialName("current_page") val currentPage: String? = null,
     val volume: Int? = null,
     val muted: Boolean? = null,
@@ -40,6 +41,7 @@ data class StateDelta(
         batteryLevel?.let { Wire.requireRange("state.battery_level", it, 0, 100) }
         volume?.let { Wire.requireRange("state.volume", it, 0, 100) }
         wifiRssi?.let { Wire.requireRange("state.wifi_rssi", it, -127, 0) }
+        illuminance?.let { Wire.requireRange("state.illuminance", it, 0.0, 100000.0) }
         nextScreensaver?.takeIf { it != NO_NEXT_SCREENSAVER }?.let { Wire.requireDateTime("state.next_screensaver", it) }
         currentPage?.let {
             Wire.requireLength("state.current_page", it, 1, 2048)
