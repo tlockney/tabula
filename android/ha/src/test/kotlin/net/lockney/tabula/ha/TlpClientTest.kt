@@ -13,7 +13,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.lockney.tabula.core.Constants
-import net.lockney.tabula.core.tlp.Capability
 import net.lockney.tabula.core.tlp.CommandResultFrame
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.EventFrame
@@ -85,7 +84,7 @@ class TlpClientTest {
         val job = launch { client(state, server, tokens(granted("access-1")), commands).run(events) }
         runCurrent()
         assertEquals(1, events.registered.size)
-        assertEquals(listOf(Capability.BATTERY), events.registered.single().capabilities)
+        assertEquals(listOf("battery"), events.registered.single().capabilities)
 
         val register = Tlp.strict.decodeFromString(
             RegisterFrame.serializer(),
@@ -106,6 +105,36 @@ class TlpClientTest {
         assertEquals("auth", auth.str("type"))
         assertEquals("access-1", auth.str("access_token"))
         assertEquals(1, commands.connections)
+        job.cancel()
+    }
+
+    @Test
+    fun `an accepted capability this build does not know still registers`() = runTest {
+        // PROTOCOL 8: the capability set is open on the wire. A server that
+        // accepts a capability newer than this build's vocabulary must not
+        // fail the registration of a device that declared it - the closed
+        // enum decode did, and the session looped "connection lost" forever.
+        val server = ScriptedServer()
+        server.suppress.add("tabula/register")
+        server.onFrame = { frame ->
+            if (frame.str("type") == "tabula/register") {
+                toClient(
+                    """
+                    {"id":${frame.int("id")},"type":"result","success":true,
+                     "result":{"ha_device_id":"hadevice1","protocol_version":1,
+                     "settings_revision":0,"server_time":"2026-11-21T12:00:00+00:00",
+                     "capabilities":["battery","go_home","teleport"]}}
+                    """.trimIndent(),
+                )
+            }
+        }
+        val events = RecordingEvents()
+        val job = launch { client(FakeState(), server, tokens(granted("access-1"))).run(events) }
+        runCurrent()
+        assertEquals(1, events.registered.size, "a newer accepted capability must not drop the session")
+        assertEquals(listOf("battery", "go_home", "teleport"), events.registered.single().capabilities)
+        assertEquals(0, events.disconnected)
+        assertTrue(!server.connections.single().closed)
         job.cancel()
     }
 
