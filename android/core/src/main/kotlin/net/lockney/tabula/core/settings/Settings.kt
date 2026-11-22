@@ -16,6 +16,9 @@ const val SCHEMA_VERSION: Int = 2
 /** Schema pattern for ConnectionHaUrlPattern: ^https?://[^/@\s?#]+(/[^\s?#]*)?$ */
 private val ConnectionHaUrlPattern: Regex = Regex("^https?://[^/@\\s?#]+(/[^\\s?#]*)?\$")
 
+/** Schema pattern for DashboardStartPathPattern: ^(?:$|/(?![/\\])[^\\s\\?]*$) */
+private val DashboardStartPathPattern: Regex = Regex("^(?:\$|/(?![/\\\\])[^\\\\s\\\\?]*\$)")
+
 /** Schema pattern for ScreensaverClockTextColorPattern: ^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$ */
 private val ScreensaverClockTextColorPattern: Regex = Regex("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\$")
 
@@ -193,6 +196,21 @@ data class Screen(
 ) {
     init {
         require(brightness in 0..100) { "screen.brightness must be 0..100" }
+    }
+}
+
+/** The dashboard's start target and return-after-idle rule (FEATURES F-DSH-02, F-DSH-15). Shared keys. */
+@Serializable
+data class Dashboard(
+    /** The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0021). Bounds per ADR 0002. */
+    @SerialName("start_path") val startPath: String = "",
+    /** Seconds without touch before the dashboard returns to its start target; 0 never returns. The timer keeps running behind a screensaver, so a covered panel resets without lighting. Bounds and the never default per ADR 0002. */
+    @SerialName("return_home_after") val returnHomeAfter: Int = 0
+) {
+    init {
+        require(startPath.codePointCount(0, startPath.length) in 0..2048) { "dashboard.start_path must be 0-2048 characters" }
+        require(DashboardStartPathPattern.matches(startPath)) { "dashboard.start_path does not match the schema pattern" }
+        require(returnHomeAfter in 0..86400) { "dashboard.return_home_after must be 0..86400" }
     }
 }
 
@@ -630,6 +648,8 @@ data class Settings(
     val connection: Connection = Connection(),
     /** Panel brightness and power behavior (FEATURES F-SCR). Brightness levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04). */
     val screen: Screen = Screen(),
+    /** The dashboard's start target and return-after-idle rule (FEATURES F-DSH-02, F-DSH-15). Shared keys. */
+    val dashboard: Dashboard = Dashboard(),
     /** Idle screensaver (FEATURES F-SSV): the engine keys and one nested group per mode. */
     val screensaver: Screensaver = Screensaver(),
     /** Defaults for on-screen notification cards (FEATURES F-NTF). Per-card fields override these (F-NTF-01). */

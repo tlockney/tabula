@@ -24,6 +24,14 @@ class DashboardBus {
         /** Load an absolute URL that already passed origin checks. */
         fun load(url: String)
 
+        /**
+         * Load the start target (F-DSH-02, `dashboard.start_path`): the
+         * configured frontend path, validated the way `navigate` validates
+         * its own, or HA's default page when none is set or the value is
+         * invalid or off-origin (the fallback logs a warning).
+         */
+        fun loadStart()
+
         /** The current page's path, without query or fragment (PROTOCOL 4.4). */
         fun currentPage(): String?
 
@@ -60,6 +68,9 @@ class DashboardBus {
 
     /** False when no dashboard is showing; the command then fails (PROTOCOL 6). */
     fun load(url: String): Boolean = act { it.load(url) }
+
+    /** False when no dashboard is showing; the command then fails (PROTOCOL 6). */
+    fun loadStart(): Boolean = act { it.loadStart() }
 
     /** The path to report as current_page; null while no dashboard is up. */
     fun currentPage(): String? = handle?.currentPage()

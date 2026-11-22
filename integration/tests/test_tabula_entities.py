@@ -88,6 +88,9 @@ async def test_entities_created_from_register(hass_setup, server, hub, session, 
     assert nxt.state == "2026-11-21T14:08:12+00:00"
     for key in ("reload", "restart_app", "clear_cache"):
         assert entity_id(hass_setup, "button", paired, key) is not None
+    # the fixture's registration predates the go_home capability (P3.15), so
+    # a device that does not declare it gets no go-to-start-page button (F-HA-02)
+    assert entity_id(hass_setup, "button", paired, "go_home") is None
     assert entity_id(hass_setup, "notify", paired, "notifications") is not None
     await client.close()
 
