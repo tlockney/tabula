@@ -45,6 +45,7 @@ Each value is chosen from first principles: the HA facts in ADR 0001, the Office
 | `APP_PING_INTERVAL` | 30 s | The device's own `ping` command (HA's library pings are invisible to the app). Detects a dead socket within about 40 s, well inside the time someone notices a dashboard is stale, at negligible cost. |
 | `PONG_TIMEOUT` | 10 s | A `pong` takes milliseconds on a LAN; 10 s tolerates a busy HA. |
 | `RESTART_EXIT_DELAY` | 500 ms | After `restart_app` is answered (PROTOCOL 4.5: answered before the restart), the process waits this long before exiting so the result frame reaches HA on a slow uplink. |
+| `RESTART_RELAUNCH_DELAY` | 1 s | `restart_app` hands the relaunch to the system as an alarm, because an activity started from the exiting process dies with it. The alarm fires this long after `RESTART_EXIT_DELAY`, so the old process is gone first; a second is short enough that the restart still feels immediate. |
 
 ### Reconnect
 

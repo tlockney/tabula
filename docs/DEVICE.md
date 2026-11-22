@@ -254,10 +254,14 @@ Text-to-Speech, e.g. the Google Translate one; its entity id is on its
 device page). Then:
 
 ```sh
-TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_AUDIO_OK=1 TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
 TABULA_MEDIA=media_player.<tablet>_speaker TABULA_TTS=tts.google_translate_com \
 ANDROID_SERIAL=<serial> tools/device/check_p25.sh
 ```
+
+This check speaks through the tablet, so it is behind the audio opt-in described
+under the P7.0 check: it exits with status 2 unless `TABULA_AUDIO_OK=1` is set,
+for a session scheduled with the owner.
 
 The entity ids are on the tablet's device page in HA. The script records
 `tabula_notification` and `tabula_media` events in the background, then
@@ -634,6 +638,61 @@ panel's level moves at once; dismissal restores the previous level, and
 the script turns the schedule switch off again (the slots would otherwise
 repeat daily at those times). `ha_events.py` captures the events; paste
 the whole output into the packet Result.
+
+## Hardware check (P7.0, voice spike)
+
+The P7.0 spike answers four device questions the Phase 7 voice work depends
+on: whether the microphone grant survives a reboot and a Wi-Fi cycle, which
+`AudioSource` gives usable 16 kHz mono, whether an echo canceller exists and
+what it removes, and what continuous capture with a wake-word model costs in
+CPU, heat and battery. It ships as its own app.
+
+Audio checks in `tools/device/` are opt-in. `check_p70.sh` and `check_p25.sh`
+exit with status 2 unless `TABULA_AUDIO_OK=1` is set, because a run makes the
+tablet listen and speak in the room it lives in: setting it is a decision to
+schedule that with the owner, not a flag to leave on. Nothing in `make check`,
+CI or the release path sets it, and `tools/tests/test_device_scripts.py` fails
+if an audio check loses the guard.
+
+```sh
+make voice-spike-apk          # debug only, never in a release
+adb -s <serial> install -r android/spike-voice/build/outputs/apk/debug/spike-voice-debug.apk
+adb -s <serial> shell pm grant net.lockney.tabula.spike.voice android.permission.RECORD_AUDIO
+TABULA_AUDIO_OK=1 ANDROID_SERIAL=<serial> make check-p70
+```
+
+The app's applicationId is `net.lockney.tabula.spike.voice`, so installing it
+adds a second app and never replaces, uninstalls, clears or unpairs
+`net.lockney.tabula`. It carries none of the production service, dashboard or
+credentials. Both apps then want the one microphone: while another app holds
+it, this app's capture is not a reliable measurement, so close anything else
+that listens before a run. The check prints each capture's sample count and
+level, which is how a microphone that was taken by someone else shows up.
+
+The check measures what needs no person and reboots the tablet once (the
+persistence question needs it); it also turns Wi-Fi off and on, so run it over
+USB, and expect nothing else on the tablet to work for that minute. It fetches
+the wake-word model into `build/spike/` from a pinned commit and checks its
+sha256 before pushing it to the tablet; the model is not committed and needs
+network access on this machine. `make check-p70` needs `TABULA_COST_S`
+(default 600) for the length of the cost run.
+
+The steps that need a person — wake-word accuracy at 1 m and 3 m, with and
+without the tablet's own playback, and the day-long uptime check — are off
+unless `TABULA_PERSON=1`, and then they prompt, so they need an interactive
+terminal:
+
+```sh
+TABULA_AUDIO_OK=1 ANDROID_SERIAL=<serial> TABULA_PERSON=1 make check-p70
+```
+
+Recording the clips pulls them back to `build/spike/clips/` and scores them
+with the reference frontend (`uv run --with pymicro-features --with
+ai-edge-litert python tools/device/score_wakeword.py`), because the app's own
+frontend is a cost proxy: a microphone that cannot hear the wake word at 3 m
+and a frontend that does not match the model look identical on the tablet. The
+scorer's default cutoff is the device's own (200/255), so its hit count and the
+app's agree. Paste the whole output into the packet Result.
 
 ## Hardware check (P2.2)
 

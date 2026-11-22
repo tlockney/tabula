@@ -1,5 +1,6 @@
 package net.lockney.tabula
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -443,10 +444,23 @@ class TabulaService : Service() {
 
     /** restart_app: answer first (the client does), then relaunch this process. */
     private fun restartApp() {
+        // The activity lives in this process, so starting it here would die
+        // with the process below. The relaunch is handed to the system as an
+        // alarm that fires after the exit (ADR 0002: RESTART_RELAUNCH_DELAY).
         val intent = packageManager.getLaunchIntentForPackage(packageName)
         if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            val relaunch = PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val alarms = getSystemService(AlarmManager::class.java)
+            val at = android.os.SystemClock.elapsedRealtime() +
+                net.lockney.tabula.core.Constants.RESTART_EXIT_DELAY_MS +
+                net.lockney.tabula.core.Constants.RESTART_RELAUNCH_DELAY_MS
+            alarms?.setExact(AlarmManager.ELAPSED_REALTIME, at, relaunch)
         }
         scope.launch {
             // give the result frame time to reach HA before the process dies
