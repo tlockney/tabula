@@ -6,8 +6,9 @@ installed, and how to recover one. Written by P2.1; later packets extend it
 (Shizuku and the recovery page arrive in Phase 4, plan sections 5.9 and 7.4).
 
 Everything here is scripted so a hardware check is one paste of output
-(AGENTS.md, "Work packets"). No step roots, unlocks a bootloader or needs
-anything the tablet's own settings do not allow.
+(AGENTS.md, "Work packets"). No scripted step roots or unlocks a bootloader:
+the one bootloader unlock in the fleet is the owner-performed, by-hand Echo
+Show 8 (2nd gen) flash (ADR 0026), done before Tabula work begins.
 
 ## Prerequisites (the Mac, or any machine with ADB)
 
@@ -235,11 +236,15 @@ checks:
 
 ### Echo Show 8 (2nd gen)
 
-P0.6 gave a provisional no-go (ADR 0007): no settings-only path to ADB is
-known, and every working path is an exploit plus bootloader unlock, which the
-plan rules out. The P2.1 boot-start observation on an Echo Show is therefore
-skipped; if the ADR's device check ever overturns the no-go, P2.7 owns the
-bring-up.
+The owner unlocks the bootloader and flashes the community LineageOS 18.1
+(Android 11) image himself, by hand, from the public community guide, before
+any Tabula work (ADR 0026) — that step is his alone; nothing here or in
+`tools/device/` unlocks, roots or flashes anything. Once the device boots
+LineageOS, Tabula's part begins: the read-only device probe (P2.7 step 1 —
+WebView version, SELinux mode, screen, sensors), then provisioning and
+recovery exactly as above, over ADB. The image ships SELinux permissive, so
+treat the device as less trusted hardware: nothing sensitive beyond the
+paired HA credential lives on it.
 
 ## Hardware check (P2.5, notifications and audio)
 
