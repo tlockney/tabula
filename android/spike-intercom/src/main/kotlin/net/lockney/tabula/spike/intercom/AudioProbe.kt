@@ -40,10 +40,15 @@ object AudioProbe {
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
         )
+        // Voice-communication usage, not media: during a call the device is in
+        // MODE_IN_COMMUNICATION, where the media stream is not what reaches the
+        // speaker (a plain STREAM_MUSIC tone is nearly inaudible there). This is
+        // the stream the call itself plays on, so the tone is as loud as the far
+        // end would be.
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build(),
             )

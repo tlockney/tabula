@@ -90,21 +90,33 @@ done
 echo "-- call connected after ${waited}s"
 
 sample() { # sample <A|B> <elapsed s>
-    local which="$1" elapsed="$2" cpu total pss batt zone
+    local which="$1" elapsed="$2" cpu total hal pss batt snapshot cpu_part mem_part batt_part
     local -a d
     if [[ "$which" == "A" ]]; then d=(dev_a); else d=(dev_b); fi
-    cpu="$("${d[@]}" shell dumpsys cpuinfo | awk -v p="$intercom_spike_pkg" '$0 ~ p { gsub("%", "", $1); print $1; exit }')"
-    total="$("${d[@]}" shell dumpsys cpuinfo | awk '/TOTAL/ { gsub("%", "", $2); print $2; exit }')"
-    pss="$("${d[@]}" shell dumpsys meminfo "$intercom_spike_pkg" | awk '/TOTAL PSS:/ { print $3; exit }')"
-    batt="$("${d[@]}" shell dumpsys battery | awk '/temperature:/ { print $2; exit }')"
-    zone="$("${d[@]}" shell 'cat /sys/class/thermal/thermal_zone*/temp' 2>/dev/null | sort -n | tail -1 || true)"
-    echo "$which,$elapsed,${cpu:-},${total:-},${pss:-},${batt:-},${zone:-}" >> "$csv"
-    printf '  %s t=%4ss cpu=%s%% (device %s%%) pss=%s kB batt=%s zone=%s\n' \
-        "$which" "$elapsed" "${cpu:-?}" "${total:-?}" "${pss:-?}" "${batt:-?}" "${zone:-?}"
+    # One round trip per device per sample: three dumpsys calls over one adb
+    # shell, split apart here. (Six separate calls, each a fresh ssh to the other
+    # host, took longer than the sampling interval.)
+    snapshot="$("${d[@]}" shell "echo ===CPU; dumpsys cpuinfo; echo ===MEM; dumpsys meminfo $intercom_spike_pkg; echo ===BATT; dumpsys battery" | tr -d '\r')"
+    cpu_part="$(printf '%s\n' "$snapshot" | sed -n '/===CPU/,/===MEM/p')"
+    mem_part="$(printf '%s\n' "$snapshot" | sed -n '/===MEM/,/===BATT/p')"
+    batt_part="$(printf '%s\n' "$snapshot" | sed -n '/===BATT/,$p')"
+    # dumpsys cpuinfo reports each process as a share of ONE core, plus a
+    # device-wide TOTAL line. The audio HAL is listed separately and is a large
+    # share of a call's cost, so it gets its own column. Fire OS 7 exposes no
+    # readable thermal zones on this device, so battery temperature stands in.
+    cpu="$(printf '%s\n' "$cpu_part" | awk -v p="$intercom_spike_pkg" '$0 ~ p { v=$1; gsub(/[+%]/, "", v); print v; exit }')"
+    total="$(printf '%s\n' "$cpu_part" | awk '/TOTAL:/ { v=$1; gsub(/[+%]/, "", v); print v; exit }')"
+    hal="$(printf '%s\n' "$cpu_part" | awk '/fireos.hardware.audio/ { v=$1; gsub(/[+%]/, "", v); print v; exit }')"
+    pss="$(printf '%s\n' "$mem_part" | awk '/^ *TOTAL:/ { print $2; exit }')"
+    batt="$(printf '%s\n' "$batt_part" | awk '/temperature:/ { print $2; exit }')"
+    echo "$which,$elapsed,${cpu:-},${total:-},${hal:-},${pss:-},${batt:-}" >> "$csv"
+    printf '  %s t=%4ss app cpu=%s%% of one core, device total=%s%%, audio hal=%s%%, pss=%s kB, battery=%s.%s C\n' \
+        "$which" "$elapsed" "${cpu:-?}" "${total:-?}" "${hal:-?}" "${pss:-?}" \
+        "$(( ${batt:-0} / 10 ))" "$(( ${batt:-0} % 10 ))"
 }
 
 step "sampling for ${seconds}s (Ctrl-C stops; the summary below needs at least one sample)"
-echo "device,elapsed_s,cpu_pct,device_cpu_pct,pss_kb,battery_tenths_c,hottest_zone_milli_c" > "$csv"
+echo "device,elapsed_s,cpu_pct,device_cpu_pct,audio_hal_pct,pss_kb,battery_tenths_c" > "$csv"
 elapsed=0
 while (( elapsed <= seconds )); do
     sample A "$elapsed"
@@ -114,37 +126,38 @@ while (( elapsed <= seconds )); do
 done
 
 step "summary"
+echo "-- cpu percentages are shares of ONE core (dumpsys cpuinfo's unit): 50 % means"
+echo "   half of one core, not half the device. Device total is the TOTAL line."
 python3 - "$csv" <<'PY'
 import csv
 import statistics
 import sys
 
-path = sys.argv[1]
 rows: dict[str, list[dict]] = {}
-with open(path, newline="") as handle:
+with open(sys.argv[1], newline="") as handle:
     for row in csv.DictReader(handle):
         rows.setdefault(row["device"], []).append(row)
 
 
-def stats(rows, key, scale=1.0):
+def stats(data, key, scale=1.0):
     values = []
-    for row in rows:
+    for row in data:
         try:
             values.append(float(row[key]) / scale)
         except (KeyError, TypeError, ValueError):
             pass
     if not values:
         return "n/a"
-    return f"{min(values):.1f} / {statistics.fmean(values):.1f} / {max(values):.1f}"
+    return f"{min(values):.1f}/{statistics.fmean(values):.1f}/{max(values):.1f}"
 
 
-print("device  samples  cpu % (min/mean/max)  device cpu %  pss MB  battery C  hottest zone C")
+print("device  samples  app cpu % of one core (min/mean/max)  device total %  audio hal %  pss MB (mean)  battery C (min/mean/max)")
 for device in sorted(rows):
     data = rows[device]
     print(
-        f"{device:6}  {len(data):7}  {stats(data, 'cpu_pct'):21}"
-        f"  {stats(data, 'device_cpu_pct'):12}  {stats(data, 'pss_kb', 1024):6}"
-        f"  {stats(data, 'battery_tenths_c', 10):9}  {stats(data, 'hottest_zone_milli_c', 1000)}"
+        f"{device:6}  {len(data):7}  {stats(data, 'cpu_pct'):38}"
+        f"  {stats(data, 'device_cpu_pct'):13}  {stats(data, 'audio_hal_pct'):11}"
+        f"  {stats(data, 'pss_kb', 1024):13}  {stats(data, 'battery_tenths_c', 10)}"
     )
 PY
 
