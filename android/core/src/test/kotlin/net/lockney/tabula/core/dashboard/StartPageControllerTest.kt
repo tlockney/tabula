@@ -34,7 +34,7 @@ class StartPageControllerTest {
         val c = controller(startPath = "", returnAfterS = 60)
         assertNull(c.deadlineMs(t0))
         assertFalse(c.onTick(t0 + 60_001, currentPage = "/lovelace/0"), "no target: no return")
-        c.applySettings(Dashboard(startPath = "/", returnAfterS = 60), t0)
+        c.applySettings(Dashboard(startPath = "/", returnHomeAfter = 60), t0)
         assertNull(c.deadlineMs(t0))
         assertFalse(c.onTick(t0 + 60_001, currentPage = "/"), "the dashboard cannot rest on /")
         assertFalse(

@@ -147,7 +147,7 @@ class StartPageManagerTest {
     }
 
     @Test
-    fun `no configured start target: the idle return stays inert`() {
+    fun `no configured start target means the idle return stays inert`() {
         // Delay only, no start path (review round 3): nothing to return to,
         // and the frontend's "/" redirect means a "/" target could never
         // compare equal - so the countdown does not run at all.
