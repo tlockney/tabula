@@ -1,6 +1,6 @@
 # 0007: Echo Show 8 (2nd gen) feasibility
 
-Status: proposed (research done; go/no-go waits on the hardware verifier's device check)
+Status: superseded by [0023](0023-echo-show-8-owner-unlocked-target.md) (owner decision 2026-11-22: the device stays in v1, owner-unlocked and running LineageOS 18.1)
 Date: 2026-11-21
 Packet: P0.6
 

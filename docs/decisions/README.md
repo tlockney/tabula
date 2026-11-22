@@ -12,7 +12,7 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0004](0004-build-and-toolchain.md) | Build entry point and toolchain | accepted |
 | [0005](0005-website.md) | Website | accepted |
 | [0006](0006-work-tracking.md) | Work tracking and attribution | accepted |
-| [0007](0007-echo-show-8-feasibility.md) | Echo Show 8 (2nd gen) feasibility (P0.6); supersedes the Echo Show sentence in ADR 0001 | proposed; provisional no-go, device check pending |
+| [0007](0007-echo-show-8-feasibility.md) | Echo Show 8 (2nd gen) feasibility (P0.6); supersedes the Echo Show sentence in ADR 0001 | superseded by [0023](0023-echo-show-8-owner-unlocked-target.md) |
 | [0008](0008-android-toolchain-and-targetsdk.md) | Android toolchain and targetSdk (P2.0) | accepted |
 | [0009](0009-entity-model-p1.md) | Phase 1 entity model choices (P1.3) | accepted |
 | [0010](0010-commands-and-services-p1.md) | Commands and services (P1.4) | accepted |
@@ -26,3 +26,5 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0019](0019-close-sockets-on-unload.md) | Close device sockets when the config entry unloads (#97) | accepted |
 | [0020](0020-illuminance-entity.md) | Illuminance sensor entity (P3.16) | accepted |
 | [0021](0021-start-page.md) | Start target as a settings path (P3.15) | accepted |
+| [0022](0022-screensaver-engine-polish.md) | Screensaver engine polish (P3.14) | accepted |
+| [0023](0023-echo-show-8-owner-unlocked-target.md) | Echo Show 8 (2nd gen) stays a v1 target as an owner-unlocked LineageOS 18.1 device (P0.6); supersedes ADR 0007's no-go for this device | accepted |

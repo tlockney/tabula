@@ -160,7 +160,7 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
   | Device | Count | Status |
   | --- | --- | --- |
   | Amazon Fire HD 10 Plus (11th gen, Fire OS 7 / Android 9, API 28), 1920×1200 | 2 | First target. "Office Kiosk" is built and accepted first (Phase 2); the second unit is provisioned from DEVICE.md alone |
-  | Amazon Echo Show 8 (2nd gen), 1280×800 expected (to be confirmed by P0.6) | 2 | In v1, gated on the P0.6 feasibility check; boot start checked early in P2.1; brought up in P2.7 after the Fire tablets pass P2.6 |
+  | Amazon Echo Show 8 (2nd gen), 1280×800 expected (to be confirmed on the device by P2.7) | 2 | In v1 as an owner-unlocked device running community LineageOS 18.1 (Android 11, ADR 0023); brought up in P2.7 after the Fire tablets pass P2.6 |
 
   All units are managed over ADB from the Mac.
 - **Later targets:** PF1007L photo frames (low-spec Android). They need a WebView of Chromium 67 or later (ADR 0001); check one before committing to them.
@@ -171,10 +171,11 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
   - Amazon WebView has no WebRTC.
   - Provisioning is done over ADB (`pm grant`, `appops set`, deviceidle whitelist, `dpm set-active-admin`). `DEVICE.md` documents it from Phase 2.
   - Silent APK install needs Shizuku or device owner.
-- **Echo Show 8 constraints (unverified until P0.6):**
-  - Expected: no app store for third-party apps, so Tabula must be sideloaded over ADB. Whether ADB can be enabled without exploits is the open question.
-  - The Alexa home screen owns the device. Whether a sideloaded app stays in the foreground is checked in P0.6; whether it can start on boot is checked in P2.1, the first packet with an app that has a boot receiver.
-  - Exploits, rooting, bootloader unlocking and firmware downgrades are out of bounds. If the device needs any of them, it moves to Deferred.
+- **No-exploit rule:** for every device, agents never use exploits, rooting, bootloader unlocking or firmware downgrades. One explicit, owner-approved exception: the Echo Show 8 (2nd gen) unlock and flash is performed by the owner himself, by hand, from the public community guide (ADR 0023). If any other device needs an exploit, it moves to Deferred.
+- **Echo Show 8 constraints (ADR 0023):**
+  - The device never runs Tabula on stock firmware. The owner unlocks the bootloader and flashes the community LineageOS 18.1 (Android 11) image himself, by hand, from the public community guide, before any Tabula work. Tabula work starts on the flashed device, from provisioning onward, over ADB.
+  - The device is a LineageOS 18.1 (Android 11, API 30) target, not a Fire OS one; the Fire OS constraints above do not apply to it. Its own properties are measured by the P2.7 probe: WebView version (against the Chromium 67 floor), SELinux mode (the community image ships it permissive), available sensors, screen geometry.
+  - Accepted risks (ADR 0023): the unlock is one-way (no documented way back to a locked boot chain), Amazon OTAs stop (updates come only from the community image's release channel), and permissive SELinux makes the device less trusted hardware — nothing sensitive beyond the paired HA credential lives on it.
 - **HA:** one local instance, a handful of devices. The minimum HA version and the supported frontend browser floor are set in the platform spike (P0.3).
 - **Network:** HA may be served over plain http on the LAN. Section 5.2 covers what that means for credentials.
 
@@ -188,7 +189,7 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 | Immich screensaver source | Dropped (possible future plugin) |
 | Device front camera as a presence sensor | Phase 10, gated on the P10.1 spike; processing stays on the device |
 | Camera views, streams, snapshots, camera gestures | Deferred: design hooks only |
-| Echo Show 8 (2nd gen) target | In v1, gated on P0.6 (feasibility) and brought up in P2.7 |
+| Echo Show 8 (2nd gen) target | In v1 as an owner-unlocked LineageOS 18.1 (Android 11) device (ADR 0023); brought up in P2.7 |
 | Other Echo Show models, Portal, Raspberry Pi targets | Dropped for v1 |
 | Bluetooth proxy | Deferred indefinitely (no free path without ESPHome) |
 | Plugin ecosystem | Deferred: keep the `window.tabula` JS bridge + action registry as the seam |
@@ -642,8 +643,8 @@ Device constraints, which P10.1 measures and its ADR settles:
 | Credential sniffed on a plain-http LAN | Documented; HTTPS recommended in DEVICE.md |
 | Pairing/credential design doesn't work as assumed | P0.3 spike before any Phase 1 code; documented fallback (manual non-admin user + LLAT) |
 | Fire OS WebView too old for the HA frontend | Checked in P0.3 before Phase 1; PF1007L frames not committed to until checked |
-| Echo Show 8 cannot run a sideloaded app without exploits | P0.6 decides before any Echo Show code; no exploits allowed; on no-go the Echo Show moves to Deferred and the Fire tablets carry the milestone |
-| Echo Show 8 blocks start on boot | Checked in P2.1 on one Echo Show, before the rest of Phase 2; if blocked, the architect decides in an ADR whether a manual start is acceptable or the Echo Show moves to Deferred |
+| Echo Show 8 cannot run a sideloaded app without exploits | Decided (ADR 0023): the owner unlocks and flashes the device himself; Tabula work runs over ADB on the flashed LineageOS 18.1 device only. Residual risks — one-way unlock, no Amazon OTAs, permissive SELinux — accepted and verified at P2.7's probe |
+| Echo Show 8 blocks start on boot | Checked in P2.1 on one owner-flashed Echo Show, before the rest of Phase 2; if blocked, the architect decides in an ADR whether a manual start is acceptable or the Echo Show moves to Deferred |
 | App and integration versions drift | Version negotiation at registration, N-1 support, repair issue on mismatch |
 | Single WS per device; HA restarts | Jittered re-dial; offline-first behavior is a Phase 2 acceptance test (P2.6) |
 | Frontend internals change (external auth, background disconnect, entity filter) | Use only the documented external-auth interface; measure before shimming; entity filter is conditional |
