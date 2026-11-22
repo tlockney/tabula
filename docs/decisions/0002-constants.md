@@ -105,6 +105,12 @@ Manual brightness from HA (the light entity, the `screen` command) is applied at
 | --- | --- | --- |
 | `SCREENSAVER_EVENT_BUFFER` | 16 events | Screensaver start and stop events wait here for the TLP session; the oldest are dropped past this. A connected session drains it at once, and one that registers drops what came before, so the bound only caps memory while HA is down. |
 
+### Screensaver engine polish (P3.14)
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `SCREENSAVER_FADE_MS` | 800 ms | The screensaver overlay's fade in on start and out on dismissal (F-SSV-23, P3.14). 800 ms is the pace this panel already uses for a gentle change — `ADAPTIVE_FADE` for backlight changes and `GALLERY_TRANSITION_MS` for slide changes — so the fade reads as deliberate, and it is short enough that a dismissed screen never feels sluggish. The amplitude and interval it shares with pixel shift are settings, not constants (the schema-v2 table below). |
+
 ### Notifications and media (P2.5)
 
 | Constant | Value | Reasoning |
@@ -199,7 +205,7 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | brightness_enabled | default true | The switch over the separate screensaver level (F-SSV-17, an HA switch since P3.2). On by default because Phases 1–2 always applied `screensaver.brightness`; a v1 document upgrades without a behavior change. |
 | dim_brightness | 0–100 %, default 10 | Dim mode's own level (F-SSV-07), replacing its borrow of `screensaver.brightness` (ADR 0013 item 4). 10 % keeps a dashboard outline visible in a dim room. |
 | pixel_shift.enabled / interval / amplitude | default false / 10–86400 s, default 300 / 1–64 px, default 4 | Image-retention shift (F-SSV-22). Five minutes moves content often enough to prevent burn-in and rarely enough to be invisible; 4 px is under what an across-the-room viewer resolves. |
-| fade.enabled | default false | In/out fade (F-SSV-23) as an option; its duration is P3.14's to add with its own reasoning if it needs one. |
+| fade.enabled | default false | In/out fade (F-SSV-23) as an option; its duration is `SCREENSAVER_FADE_MS` (the "Screensaver engine polish" table above, added by P3.14). |
 
 **At a Glance (`at_a_glance`, F-AAG-01/F-AAG-02).**
 
