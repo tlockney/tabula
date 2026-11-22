@@ -99,3 +99,18 @@ def test_cli_requires_ha_for_pair():
     from mockdevice.cli import main
 
     assert main(["pair"]) == 2  # --ha is missing; nothing runs
+
+
+async def test_unknown_hook_is_404(server, http):
+    for name in ("nope", "hook", "a.b"):
+        resp = await http.post(f"{server.url}/test/{name}", json={})
+        assert resp.status == 404, name
+
+
+async def test_report_has_no_feature_sections_until_a_feature_writes_one(
+    server, http, store, start
+):
+    await start(store)
+    await server.wait_registered(store.device_id)
+    report = await (await http.get(f"{server.url}/test/report")).json()
+    assert "screenshot" not in report["devices"][store.device_id]

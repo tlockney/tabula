@@ -25,7 +25,8 @@ import net.lockney.tabula.ha.DashboardLinks
  * the service to restart the app process, reload and clear_cache drive the
  * dashboard WebView through the [DashboardBus] (the command fails when no
  * dashboard is showing), navigate loads an HA frontend path the origin
- * check allows, screensaver (P2.4) goes to [screensaver], notify (P2.5) to
+ * check allows, go_home (P3.15) loads the start target through the same
+ * bus, screensaver (P2.4) goes to [screensaver], notify (P2.5) to
  * [notifications], play_media and media_control (P2.5) to [audio], and
  * screenshot (P3.13) to [screenshot], which captures, uploads and only then
  * answers.
@@ -39,6 +40,7 @@ class TabulaCommands(
     private val notifications: NotificationControl? = null,
     private val audio: AudioControl? = null,
     private val screenshot: ScreenshotControl? = null,
+    private val startPage: StartPageControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
@@ -79,6 +81,7 @@ class TabulaCommands(
         Commands.RELOAD -> dashboardAction("reload the dashboard") { dashboard.reload() }
         Commands.CLEAR_CACHE -> dashboardAction("clear the cache") { dashboard.clearCache() }
         Commands.NAVIGATE -> navigate(event.args)
+        Commands.GO_HOME -> dashboardAction("go home") { dashboard.loadStart() }
         else -> undeclared(event.command)
     }
 
@@ -131,6 +134,7 @@ class TabulaCommands(
         screensaver?.applySettings(settings)
         notifications?.applySettings(settings)
         audio?.applySettings(settings)
+        startPage?.applySettings(settings)
         // the activity re-applies the clock settings while a face shows, so
         // every write reloads the background image (F-SSV-09, P3.3)
         TabulaStatus.settingsRevision.value = parsed.revision

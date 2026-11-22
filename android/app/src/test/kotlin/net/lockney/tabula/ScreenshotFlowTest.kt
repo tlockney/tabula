@@ -59,6 +59,8 @@ class ScreenshotFlowTest {
             loaded.add(url)
         }
 
+        override fun loadStart() {}
+
         override fun currentPage(): String? = "/"
 
         override suspend fun capture(quality: Int?): ByteArray? {
