@@ -40,6 +40,29 @@ dev_b() {
         "export PATH=$intercom_b_path:\$PATH; adb -s $intercom_b_serial$quoted"
 }
 
+# start_service <dev_a|dev_b> <am start-foreground-service args...>
+# Retries: Fire OS answers "Error: Not found; no service started." for a few
+# seconds after an install or a reboot while the package manager settles, and a
+# 10-minute measurement must not die on that.
+start_service() {
+    local which="$1" out attempt
+    shift
+    for attempt in 1 2 3 4 5 6; do
+        if [[ "$which" == "dev_a" ]]; then
+            out="$(dev_a shell am start-foreground-service "$@" 2>&1 || true)"
+        else
+            out="$(dev_b shell am start-foreground-service "$@" 2>&1 || true)"
+        fi
+        if [[ "$out" != *"Error"* && "$out" != *"not found"* ]]; then
+            echo "$out" | head -1
+            return 0
+        fi
+        [[ "$attempt" -lt 6 ]] && sleep 3
+    done
+    echo "FAIL: could not start the spike service on $which: $out" >&2
+    return 1
+}
+
 # scp_to_b <local path> <remote path>
 scp_to_b() {
     scp -q "$1" "$intercom_b_host:$2"

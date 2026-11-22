@@ -16,33 +16,44 @@ The spike is its own application, `net.lockney.tabula.spike.intercom`, with its 
 
 ### The artifact
 
-`io.github.webrtc-sdk:android:125.6422.07`, from Maven Central, BSD-3-Clause (its POM declares the 3-Clause BSD license). It resolves through the project's existing repositories with no extra source, its own `minSdkVersion` is 21 (inside our 24), and it runs on API 28 as measured. It ships one `libjingle_peerconnection_so.so` per ABI:
+`io.github.webrtc-sdk:android:125.6422.07`, from Maven Central, BSD-3-Clause (its POM declares the 3-Clause BSD license). It resolves through the project's existing repositories with no extra source, its own `minSdkVersion` is 21 (inside our 24), and it runs on API 28 as measured. Its native library is the bulk of an intercom APK. Measured APK sizes from the final spike build, one ABI per file:
 
-| ABI | Native library | APK for that ABI alone | What it adds |
-| --- | --- | --- | --- |
-| arm64-v8a | 11 377 336 B | 13 064 604 B | the whole spike for the Fire HD 10 Plus |
-| armeabi-v7a | 6 536 680 B | 8 223 950 B | |
-| x86 | 12 145 328 B | 13 832 590 B | |
-| x86_64 | 12 725 808 B | 14 413 073 B | |
-| all four (universal) | — | 44 494 363 B | what not to ship |
+| ABI | APK for that ABI alone | What it adds |
+| --- | --- | --- |
+| arm64-v8a | 13 036 405 B | the whole spike for the Fire HD 10 Plus |
+| armeabi-v7a | 8 195 751 B | |
+| all ABIs (universal) | 44 466 164 B | what not to ship |
 
-So the library costs about 11.4 MB of APK on the v1 device, against a production APK of roughly 1.5 MB today: an intercom build is dominated by WebRTC. One ABI per build (the packet's plan 5.9 note), or an ABI split, keeps that to a single library.
+The build also produces x86 and x86_64 splits; neither is a v1 device. So an intercom build of the spike is 13.0 MB of APK on the v1 device against about 1.5 MB for the production app today, and almost all of that is the library's native code: an intercom build is dominated by WebRTC. One ABI per build (the packet's plan 5.9 note), or an ABI split, keeps that to a single library.
 
 ### Per device type
 
 | Device | Verdict | What was measured |
 | --- | --- | --- |
-| Fire HD 10 Plus (11th gen, Fire OS 7 / API 28) | **Go**, two-way audio, and listen-only as well | Call connected on host candidates, Opus, zero loss, `rtt` 4–5 ms, audio both ways (below). `isBuiltInAcousticEchoCancelerSupported()` and `isBuiltInNoiseSuppressorSupported()` are **false** on both units, so only WebRTC's software echo cancellation, noise suppression and gain are available — they work (below). |
+| Fire HD 10 Plus (11th gen, Fire OS 7 / API 28) | **Go** for two-way audio and listen-only, with the production guards below | Call connected on host candidates, Opus, zero loss, `rtt` 4–5 ms, audio both ways (below). `isBuiltInAcousticEchoCancelerSupported()` and `isBuiltInNoiseSuppressorSupported()` are **false** on both units, so only WebRTC's software echo cancellation, noise suppression and gain are available. The tone test shows the software path removing a device's own speaker from its own capture; a real two-way call in this house still produced sustained feedback, so the go is for the library and the audio path, not for hands-free use without the guards below. |
 | Echo Show 8 (2nd gen) | **Not measured** | The packet says to include it if it is in v1 at the time. It is in v1 (ADR 0026) but no unit has been through P2.7's bring-up, so there is nothing to install on. P2.7 or a follow-up runs `check_p90.sh` against it with the same spike APK; nothing in this ADR's decision depends on Fire OS. |
 
 ### Audio settings
 
 - **Codec:** Opus, the library's default. The selected codec reported by `getStats` is `audio/opus`, clock 48000, inband FEC on (`useinbandfec=1` in the offer). No bitrate cap: two devices on one LAN, and the default adapts to loss.
 - **Capture:** mono, from `VOICE_COMMUNICATION`, through `JavaAudioDeviceModule`.
-- **Echo cancellation, noise suppression, gain:** on, in the software path (hardware is unavailable on the Fire HD 10 Plus). They must stay on for hands-free use; the measurements below show they are effective and show what they cost.
+- **Echo cancellation, noise suppression, gain:** on, in the software path (hardware is unavailable on the Fire HD 10 Plus). They must stay on: the tone test below shows the canceller removing the device's own playback, and with it off the far end hears the speaker directly. That is not sufficient on its own — each end cancels only its own speaker, so software AEC does not prevent feedback between two devices in the same house (see "What a real call in the house changed" below).
 - **Jitter buffer:** the library's default. Measured jitter stayed at 1–6 ms on the LAN, so nothing in the spike tunes it.
 - **No STUN or TURN:** `RTCConfiguration` carries an empty ICE server list. Every candidate was `typ host` on the LAN (192.168.1.129 ↔ 192.168.1.103), and ICE completed in 0.3–0.8 s. This confirms ADR 0025 decision 3.
 - **Audio route during a call matters.** Once the connection is up the device is in `MODE_IN_COMMUNICATION`, and a tone played on the media stream is nearly inaudible there: the tone test only worked after the tone played with `USAGE_VOICE_COMMUNICATION`, when the sender's own capture level rose from about 0.002 to 0.11. Tones, chimes and any sound the intercom itself makes during a call belong on the communication stream.
+
+### What a real call in the house changed
+
+The spike was also used as intended: a two-way call between the two tablets, in the rooms they live in, with software echo cancellation on at both ends. It produced **sustained acoustic feedback that the people in the house heard**. Software AEC alone did not prevent it, and that is the expected result rather than a defect in the library: each device's canceller removes only that device's own speaker from its own microphone, and never the other end's, so two speakers and two microphones in one acoustic space can always close a loop. ADR 0025 already refuses same-area calls for this reason; this run shows the risk is not limited to deliberate "both tablets in one room" testing.
+
+So a production intercom needs all four of these, and they are requirements, not options:
+
+1. **An explicit per-call user action or schedule.** No call starts or answers itself because a device is online, and ADR 0025 decision 1's auto-answer is allowed only where a person set it up for that call or a schedule did — a default-on auto-answer must not ship.
+2. **A hard call time limit.** Every call ends on its own at a fixed maximum (a constant for ADR 0002, added by the Phase 9 packet that builds the engine), whether or not anyone is listening, so feedback cannot run unattended for an hour.
+3. **A way to end every call from HA**, for every call state including one that is feeding back: `tabula.intercom_end` (ADR 0025 decision 5) must reach every device in the call and stop it without a person at the tablet.
+4. **No auto-resume after reboot.** A call that was up when a device restarted does not come back by itself; the caller has to make a new call.
+
+What this ADR does not answer: how loud the feedback was, what the far-end speech sounded like at 1 m and 3 m, and whether a time limit of N minutes is long enough. Those are **not measured, needs an owner-scheduled run** (`tools/device/check_p90_owner.sh`, below), and the time limit's value is chosen by the Phase 9 packet with the owner, not here.
 
 ### What the call must run in
 
@@ -64,10 +75,10 @@ A device that must not open its microphone declares `intercom.listen` only, and 
 Kept, behind debug only, because every later Phase 9 packet re-runs them:
 
 - The app: its own Gradle module, its own `applicationId`, no release variant (`androidComponents.beforeVariants` disables it), built only by `make android-spike-apk`. It shares no code with `:app`.
-- The signaling relay, the log summariser and the three device checks stay in `tools/device/`.
+- The signaling relay, the log summariser and the three device checks stay in `tools/device/`. The three checks make a tablet listen and speak in a room, so each refuses to run (exit 2) unless `TABULA_AUDIO_OK=1` is set, with a message that audio device tests must be scheduled with the owner; that variable is only set for an owner-scheduled run.
 - The spike-only flags, all named here: `role`, `relay`, `room`, `aec`, `listenOnly`, `toneAfter`, `toneLocalAt`, `recordSeconds`, `durationSeconds`. They exist to drive the measurements from ADB and are not a product interface.
 
-Nothing in ADR 0025's decisions changes. The changes this ADR makes to that picture: the Echo Show 8 verdict is still open; broadcast (one sender to two receivers) is still unmeasured; and the production engine carries the audio routes and locks above.
+ADR 0025's direction stands, with two changes to its detail. Decision 1's auto-answer is narrowed: it may only answer a call that a person or a schedule asked for, and the default stays off (the feedback finding above). Decision 5's `tabula.intercom_end` becomes a hard requirement of every call state, not only a convenience. Still open from that picture: the Echo Show 8 verdict (P2.7); broadcast, one sender to two receivers (**not measured, needs an owner-scheduled run**); the hard call time limit's value (the Phase 9 packet that builds the engine, with the owner); and the audio routes and locks below, which the production engine carries.
 
 ## Measurements
 
@@ -75,25 +86,27 @@ Two Fire HD 10 Plus units on one Wi-Fi LAN, `check_p90.sh`'s run on 2026-11-21 (
 
 | Quantity | Caller (Office Kiosk) | Answerer (Desk Kiosk) |
 | --- | --- | --- |
-| Offer to ICE connected | 644 ms | 322 ms |
-| Offer to first audio packet | 1 759 ms | 2 192 ms |
+| Offer to ICE connected | 773 ms | 591 ms |
+| Offer to first audio packet | 2.4 s | 2.4 s |
 | Selected candidate pair | host/udp 192.168.1.129:60043 | host/udp 192.168.1.103:52650 |
 | Round-trip time (median from `getStats`) | 4–5 ms | 4–5 ms |
 | Jitter | 1–5 ms | 1–6 ms |
 | Packets lost | 0 | 0 |
 
-Latency, tone test: a 1 kHz tone played at the caller, heard and recorded at the answerer, **178 ms** from the logged play instant to the detected onset, with a clock-offset spread of ±8 ms (the two devices' clocks anchored to the relay's). The same tone played and recorded on one device, with no call and no network, measured 160 ms, which is the `AudioTrack` start latency and detection granularity — so the transport plus acoustic part is on the order of 20–30 ms, and the 178 ms figure overstates mouth-to-ear by that bias. The person-in-the-room clap judgment is separate and in the packet's owner steps.
+The connect figures varied between runs on the same build (an earlier run gave 644 ms / 322 ms to connected and 1.76 s / 2.19 s to first audio), so read them as 0.3–0.8 s to connected and 1.8–2.4 s to first audio rather than as fixed costs.
 
-Echo cancellation: with AEC on, a tone at amplitude 0.35 played through the device's own speaker did not reach its own capture (source level stayed at about 0.002 and the far end heard nothing). With `googEchoCancellation=false` the same tone raised the sender's capture level to 0.11 and arrived at the far end (rms 904–1003 in the recording), which is the same tone test working. That is direct evidence that the software canceller removes the device's own playback, and it is also why two tablets in one room still risk feedback: each cancels only its own speaker, not the other's. ADR 0025's refusal of same-area calls stands.
+Latency, tone test: a 1 kHz tone played at the caller, heard and recorded at the answerer, **178 ms** from the logged play instant to the detected onset, with a clock-offset spread of ±8 ms (the two devices' clocks anchored to the relay's). The same tone played and recorded on one device, with no call and no network, measured 160 ms, which is the `AudioTrack` start latency and detection granularity — so the transport plus acoustic part is on the order of 20–30 ms, and the 178 ms figure overstates mouth-to-ear by that bias. That is an instrumented figure, not a judgment: **mouth-to-ear latency by the clap test is not measured, needs an owner-scheduled run**, as is hands-free quality at 1 m and 3 m.
 
-Cost, ten minutes of one two-way call (`intercom_cost.sh`, numbers in the packet Result): the app's CPU is a share of **one core**, not of the device; the audio HAL process is a comparable share. Both are material on this SoC, and the production engine's idle-cost target (plan 7.4, under 15 % behind the screensaver) is not at risk from a call that is not happening — a call is a deliberate, temporary cost.
+Echo cancellation: with AEC on, a tone at amplitude 0.35 played through the device's own speaker did not reach its own capture (source level stayed at about 0.002 and the far end heard nothing). With `googEchoCancellation=false` the same tone raised the sender's capture level to 0.11 and arrived at the far end (rms 904–1003 in the recording), which is the same tone test working. That is direct evidence that the software canceller removes the device's own playback — and it is also why it cannot prevent feedback on its own: each end cancels only its own speaker, not the other's. A normal two-way call between the two tablets in this house produced sustained feedback the occupants heard (above). ADR 0025's refusal of same-area calls stands, and the four guards above are what make the feature safe to ship.
+
+Cost: the ten-minute CPU, memory, heat and cost run **is not measured, needs an owner-scheduled run** (`tools/device/intercom_cost.sh`, with `TABULA_AUDIO_OK=1` in a session the owner schedules). What exists is one `dumpsys cpuinfo` sample taken during a call (50 % for the spike process, 21 % device TOTAL), and that source was not credible on this device: it reported 0 % for a process decoding audio on one unit and 46 % on the other in the same call. That is why `intercom_cost.sh` reads the app's CPU from `/proc` instead. No cost figure is claimed here.
 
 ## Consequences
 
-- An intercom build carries ~11.4 MB more APK on arm64, and only one ABI per build.
-- The Fire HD 10 Plus needs no hardware AEC: the software path is good enough that the far end did not hear itself in the automated test. Whether it is good enough at 1 m and 3 m is the owner's judgment, recorded in the packet Result.
-- The production call engine is a foreground service with a partial wake lock and a Wi-Fi lock, plays its own tones on the communication stream, and answers listen-only when the microphone is unavailable.
-- Broadcast remains unmeasured until a third device can run the spike; the Phase 9 broadcast packet must not assume the sender's cost with two receivers is twice the measured one.
+- An intercom build is 13.0 MB of APK on arm64, and only one ABI per build.
+- The Fire HD 10 Plus needs no hardware AEC for a device to cancel its own speaker: the software canceller did that in the automated test. It is not enough for a call between two tablets in the same house, which fed back audibly. Hands-free quality at 1 m and 3 m is **not measured, needs an owner-scheduled run**; the four guards above are not optional until it is.
+- The production call engine is a foreground service with a partial wake lock and a Wi-Fi lock, plays its own tones on the communication stream, and answers listen-only when the microphone is unavailable — and every call needs an explicit start or schedule, a hard time limit, an HA way to end it, and no resume after reboot.
+- Broadcast remains unmeasured until a third device can run the spike; the Phase 9 broadcast packet must not assume the sender's cost with two receivers is twice a measured one, and there is no measured cost at all yet.
 - The Echo Show 8 verdict waits on P2.7.
 - The WebRTC dependency is a Maven Central artifact, so rule 7 holds; it is ~44 MB in the Gradle cache and the first build on a new machine downloads it.
 
@@ -102,6 +115,8 @@ Cost, ten minutes of one two-way call (`intercom_cost.sh`, numbers in the packet
 - **`io.github.webrtc-sdk:android-prefixed`:** the same library with prefixed native symbols, for an app that also links another WebRTC. Tabula has one, so the plain artifact is right.
 - **Per-ABI Maven artifacts:** the group publishes only the combined artifact, so the size per ABI comes from Gradle's ABI splits rather than from separate dependency coordinates.
 - **Relying on hardware echo cancellation alone:** unavailable on the Fire HD 10 Plus (`isBuiltInAcousticEchoCancelerSupported()` false), and the software canceller is what made the tone test behave as it did.
+- **Relying on software AEC alone for hands-free calls:** rejected by the real call, which fed back audibly with AEC on at both ends. Two speakers and two microphones in one acoustic space close a loop regardless of cancellation, so the four guards (explicit start, hard limit, HA hang-up, no resume) carry the safety.
+- **Shipping auto-answer at the device's discretion:** rejected. "Answers because it is online" is how an unattended call feeding back runs for an hour; only a person or a schedule may start or answer one.
 - **A media-stream tone during a call:** inaudible in `MODE_IN_COMMUNICATION`; rejected after the tone test failed twice with it.
 - **Broadcast measured on two devices:** would have measured nothing of the second receiver. Left unanswered deliberately rather than reported approximately.
 - **Keeping the spike out of the repo:** the Phase 9 packets need the same measurements on the Echo Show 8 and after any library upgrade, so the module and checks stay, debug-only and out of release builds.

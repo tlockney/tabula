@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${TABULA_AUDIO_OK:-0}" == 1 ]] || { echo "refusing to run: audio device tests must be scheduled with the owner; set TABULA_AUDIO_OK=1 only for an approved run" >&2; exit 2; }
 # P9.0's person-in-the-room half (packet questions 3 and 7): two kiosks place a
 # normal two-way call with echo cancellation on, and the verifier speaks at
 # 1 m and 3 m, listens at the far end, puts both tablets in one room for the

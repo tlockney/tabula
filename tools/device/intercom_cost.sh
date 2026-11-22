@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${TABULA_AUDIO_OK:-0}" == 1 ]] || { echo "refusing to run: audio device tests must be scheduled with the owner; set TABULA_AUDIO_OK=1 only for an approved run" >&2; exit 2; }
 # P9.0's cost run (packet question 7): CPU, memory and temperature on both
 # kiosks during one call, sampled every interval for ten minutes by default,
 # so the numbers repeat. It places the call itself.
@@ -85,11 +86,11 @@ disown "$b_log_pid" 2>/dev/null || true
 dev_a shell am force-stop "$intercom_spike_pkg" || true
 dev_b shell am force-stop "$intercom_spike_pkg" || true
 sleep 1
-dev_b shell am start-foreground-service -n "$intercom_spike_pkg/.IntercomCallService" \
+start_service dev_b -n "$intercom_spike_pkg/.IntercomCallService" \
     -a "$intercom_spike_pkg.START" --es relay "$relay_url" --es room "$room" --es role answer \
     --es durationSeconds "$((seconds + 60))" > /dev/null
 sleep 1
-dev_a shell am start-foreground-service -n "$intercom_spike_pkg/.IntercomCallService" \
+start_service dev_a -n "$intercom_spike_pkg/.IntercomCallService" \
     -a "$intercom_spike_pkg.START" --es relay "$relay_url" --es room "$room" --es role call \
     --es durationSeconds "$((seconds + 60))" > /dev/null
 

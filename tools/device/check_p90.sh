@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${TABULA_AUDIO_OK:-0}" == 1 ]] || { echo "refusing to run: audio device tests must be scheduled with the owner; set TABULA_AUDIO_OK=1 only for an approved run" >&2; exit 2; }
 # P9.0 hardware check (docs/packets/P9.0-intercom-webrtc-spike.md, ADR 0028):
 # two Fire HD 10 Plus kiosks place an audio-only WebRTC call over the LAN with
 # host candidates and no STUN or TURN, and the run prints the evidence for the
@@ -101,7 +102,7 @@ inbound_packets() { # inbound_packets <log file>
 call_a() { # call_a <role> <extras...>
     local role="$1"
     shift
-    dev_a shell am start-foreground-service -n "$intercom_spike_pkg/.IntercomCallService" \
+    start_service dev_a -n "$intercom_spike_pkg/.IntercomCallService" \
         -a "$intercom_spike_pkg.START" --es relay "$relay_url" --es room "$room" --es role "$role" "$@" \
         > /dev/null
 }
@@ -109,7 +110,7 @@ call_a() { # call_a <role> <extras...>
 call_b() { # call_b <role> <extras...>
     local role="$1"
     shift
-    dev_b shell am start-foreground-service -n "$intercom_spike_pkg/.IntercomCallService" \
+    start_service dev_b -n "$intercom_spike_pkg/.IntercomCallService" \
         -a "$intercom_spike_pkg.START" --es relay "$relay_url" --es room "$room" --es role "$role" "$@" \
         > /dev/null
 }

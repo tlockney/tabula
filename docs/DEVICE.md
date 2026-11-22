@@ -732,17 +732,20 @@ are the fleet's serials; override them when running elsewhere:
 
 The automated run places calls by itself (it starts the spike's foreground
 service over ADB, so no app has to be in front) and prints the evidence for the
-packet's questions 1, 2, 4, 5 and 6 plus the automated half of 3 and 7:
+packet's questions 1, 2, 4, 5 and 6 plus the automated half of 3 and 7. These
+three checks make a tablet listen and speak in the room it lives in, so all of
+them refuse to run (exit 2) unless `TABULA_AUDIO_OK=1` is set; only set it for a
+run the owner has scheduled (ADR 0028).
 
 ```sh
-TABULA_HOST_IP=192.168.1.126 tools/device/check_p90.sh
+TABULA_AUDIO_OK=1 TABULA_HOST_IP=192.168.1.126 tools/device/check_p90.sh
 ```
 
 The 10-minute cost run needs a pty so Ctrl-C reaches it, and places its own
 call:
 
 ```sh
-script -q /dev/null tools/device/intercom_cost.sh
+TABULA_AUDIO_OK=1 script -q /dev/null tools/device/intercom_cost.sh
 ```
 
 `intercom_cost.sh` prints each process's CPU as a share of **one core**
@@ -758,8 +761,10 @@ TABULA_HOST_IP=192.168.1.126 tools/device/check_p90_owner.sh
 ```
 
 It places a 6-minute call and asks; the numbers of record stay the ones
-`check_p90.sh` prints (the tone test's mouth-to-ear figure, jitter, loss).
-Paste the whole output of each run into the packet Result.
+`check_p90.sh` prints (connection times, jitter, loss, the instrumented tone
+latency). Mouth-to-ear latency and hands-free quality are only ever this run's
+judgment, and stay "not measured, needs an owner-scheduled run" until it
+happens. Paste the whole output of each run into the packet Result.
 
 ## Known device behaviors
 
