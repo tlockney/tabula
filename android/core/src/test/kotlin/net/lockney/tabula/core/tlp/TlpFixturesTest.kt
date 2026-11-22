@@ -73,7 +73,7 @@ class TlpFixturesTest {
             "command_media_control" -> typed(command.event.mediaControlArgs(Tlp.strict), MediaControlArgs.serializer())
             "command_screensaver" -> typed(command.event.screensaverArgs(Tlp.strict), ScreensaverArgs.serializer())
             "command_navigate" -> typed(command.event.navigateArgs(Tlp.strict), NavigateArgs.serializer())
-            "command_reload", "command_restart_app", "command_clear_cache" ->
+            "command_go_home", "command_reload", "command_restart_app", "command_clear_cache" ->
                 typed(command.event.emptyArgs(Tlp.strict), EmptyArgs.serializer())
 
             "command_log_subscription" ->

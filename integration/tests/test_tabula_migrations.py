@@ -112,7 +112,7 @@ async def test_v2_document_translates_down_to_strict_v1():
     document = json.loads(V2_FULL_FIXTURE.read_text(encoding="utf-8"))
     out = migrations.translate(document, 1)
     assert not list(v1_validator().iter_errors(out))
-    # the new top-level groups are gone
+    # the new top-level groups are gone (dashboard included, P3.15)
     assert set(out) == {"identity", "connection", "screen", "screensaver", "notifications", "audio"}
     # the keys nested inside existing groups are gone too
     assert set(out["screensaver"]) == {"enabled", "idle_timeout", "mode", "brightness"}

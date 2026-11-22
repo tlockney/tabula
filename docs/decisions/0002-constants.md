@@ -141,6 +141,13 @@ Photo-slideshow constants (F-SSV-12, packet P3.8). Same rules: chosen here only.
 
 Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as above: bounds and defaults live here only. Every value is a round number chosen from the feature's own text (docs/FEATURES.md) and the Office Kiosk's panel (plan 3). All keys are `shared` role. `media_browser` is in the photos source enum from day one so P3.9 adds no schema bump.
 
+**Dashboard start target and idle return (`dashboard`, F-DSH-02/F-DSH-15, P3.15).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| start_path | 0–2048 chars, empty or `^/(?![/\\])[^\s?]*$` (single leading slash, optional fragment, no query), default "" (HA's default page) | The same shape `navigate` already carries (its 2048-char URL bound, ADR 0002), minus the query string: a start target with a query would break the launch load, which appends the external-auth parameter. Empty is the neutral default: existing tablets keep opening HA's default page, and "go home" without a target is still meaningful (back to the default). The fragment stays because F-DSH-02 lands on it (a pop-up a view opens by fragment). |
+| return_home_after | 0–86400 s, default 0 (never) | 0 is "never", not "instantly": F-DSH-15 calls the return optional, and the default must keep existing tablets' behavior unchanged. A day is the longest sensible idle wait (matches `screensaver.idle_timeout`'s ceiling); the tablet that truly never resets sets 0. |
+
 **Clock mode (`screensaver.clock`, F-SSV-08/F-SSV-09).** Nothing is bundled: font family and weight name system fonts only.
 
 | Field | Bound / default | Reasoning |
