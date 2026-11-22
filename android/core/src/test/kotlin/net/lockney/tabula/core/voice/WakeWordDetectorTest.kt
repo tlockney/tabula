@@ -144,7 +144,8 @@ class WakeWordDetectorTest {
         val frontend = FeatureFrontend()
         var rows = 0
         var bins = 0
-        frontend.feed(pcm(100), pcm(100).size) { row ->
+        val pcm = pcm(100)
+        frontend.feed(pcm, pcm.size) { row ->
             rows++
             bins = row.size
         }

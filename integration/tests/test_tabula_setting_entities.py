@@ -256,7 +256,6 @@ async def test_wake_word_switch_is_off_by_default_and_writes_its_leaf(
         dev = paired.device_id
         switch = eid(hass_setup, dev, "switch", "voice_wake_word_enabled")
         await until(lambda: eid(hass_setup, dev, "switch", "voice_wake_word_enabled") is not None)
-        switch = eid(hass_setup, dev, "switch", "voice_wake_word_enabled")
         assert hass_setup.states.get(switch).state == "off"
 
         await hass_setup.services.async_call(
