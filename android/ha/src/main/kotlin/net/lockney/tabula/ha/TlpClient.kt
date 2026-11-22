@@ -134,7 +134,9 @@ class TlpClient(
                 events.onRejected(e.code, e.detail) // final; the caller surfaces it
                 return
             } catch (e: TimeoutCancellationException) {
-                // a handshake or pong timed out; close and back off (PROTOCOL 4.1, 4)
+                // the handshake (auth or register) timed out; close and back
+                // off (PROTOCOL 4.1, 4). A missed pong surfaces as an
+                // IOException from the pong wait, in the catch below.
                 logger("session failed: handshake timed out: ${e.message}")
             } catch (e: CancellationException) {
                 throw e
