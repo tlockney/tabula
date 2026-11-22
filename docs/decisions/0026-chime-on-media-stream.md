@@ -1,4 +1,4 @@
-# 0023: The notification chime plays on the media stream
+# 0026: The notification chime plays on the media stream
 
 Status: accepted
 Date: 2026-11-21

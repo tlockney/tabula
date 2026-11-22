@@ -4,7 +4,7 @@ import android.media.AudioManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The card chime's stream and level (F-NTF-09, ADR 0023, issue #121). */
+/** The card chime's stream and level (F-NTF-09, ADR 0026, issue #121). */
 class NotificationChimeTest {
     private class FakeTone(val stream: Int, val volume: Int) : NotificationChime.Tone {
         var beeps = 0

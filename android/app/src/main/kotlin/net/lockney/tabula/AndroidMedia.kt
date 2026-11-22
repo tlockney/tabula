@@ -71,7 +71,7 @@ object AndroidPlayer : MediaPlayerHandle {
 
 /**
  * The card chime (F-NTF-09): a short synthesized beep on the media stream
- * (ADR 0023), the stream TTS uses, so the tablet's silent mode and
+ * (ADR 0026), the stream TTS uses, so the tablet's silent mode and
  * notification volume do not mute it. Its loudness is `audio.chime_volume`,
  * a share of the media volume ([volume], read at each chime). The generator
  * is kept between chimes and rebuilt only when the level changes; 0 plays
@@ -113,7 +113,7 @@ class NotificationChime(
     }
 
     companion object {
-        /** The media stream (ADR 0023): the ringer mode does not mute it. */
+        /** The media stream (ADR 0026): the ringer mode does not mute it. */
         const val STREAM = AudioManager.STREAM_MUSIC
     }
 }

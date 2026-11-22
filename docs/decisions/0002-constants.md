@@ -268,7 +268,7 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 | Notification level when missing or unknown | `info` | FEATURES F-NTF-02 fallback; the neutral level. |
 | Notifications shown at once | 3 | More would cover the dashboard; older ones collapse. |
 | Media volume | 50 % | Middle of the range; TTS is audible without startling. |
-| Chime volume | 100 % of the media volume | The chime plays on the media stream (ADR 0023), so at 100 it is as loud as TTS and media; a household that wants quieter chimes lowers it. It can only scale the media level down: raising the chime above it would mean moving the stream volume behind the user's back, which the no-hidden-volume-jumps rule (announce volume boost) rules out. Replaces the P2.5 `CHIME_VOLUME` constant. |
+| Chime volume | 100 % of the media volume | The chime plays on the media stream (ADR 0026), so at 100 it is as loud as TTS and media; a household that wants quieter chimes lowers it. It can only scale the media level down: raising the chime above it would mean moving the stream volume behind the user's back, which the no-hidden-volume-jumps rule (announce volume boost) rules out. Replaces the P2.5 `CHIME_VOLUME` constant. |
 | Announce volume boost | none | `announce` plays at the current volume; no hidden volume jumps. |
 
 ### Settings bounds in the settings schema
@@ -279,7 +279,7 @@ These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen he
 | --- | --- | --- |
 | `screensaver.idle_timeout` | 1–86400 s | A non-zero floor: 0 would mean "start instantly", not "never" (a disabled screensaver already expresses never). A day is the longest sensible idle wait; longer than that is "leave it on", and 86400 sits far inside a Kotlin `Int`. |
 | `notifications.max_visible` | 1–10 | A non-zero floor: a cap of 0 would hide every card. Ten full-width cards already cover a phone-height panel, so more would bury the dashboard rather than show anything. |
-| `audio.chime_volume` | 0–100 % | A share of the media volume (ADR 0023): 0 silences chimes without turning off `chime_by_level`, 100 is the media level itself. |
+| `audio.chime_volume` | 0–100 % | A share of the media volume (ADR 0026): 0 silences chimes without turning off `chime_by_level`, 100 is the media level itself. |
 
 ## Consequences
 

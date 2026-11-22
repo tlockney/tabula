@@ -26,4 +26,4 @@ Numbers 0001 and 0002 are reserved by the plan for the HA platform spike (P0.3) 
 | [0019](0019-close-sockets-on-unload.md) | Close device sockets when the config entry unloads (#97) | accepted |
 | [0020](0020-illuminance-entity.md) | Illuminance sensor entity (P3.16) | accepted |
 | [0021](0021-start-page.md) | Start target as a settings path (P3.15) | accepted |
-| [0023](0023-chime-on-media-stream.md) | The notification chime plays on the media stream (#121) | accepted |
+| [0026](0026-chime-on-media-stream.md) | The notification chime plays on the media stream (#121) | accepted |

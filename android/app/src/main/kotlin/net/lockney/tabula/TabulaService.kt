@@ -179,7 +179,7 @@ class TabulaService : Service() {
      * Notifications (packet P2.5) run for the service's lifetime too. Cards
      * arrive only from HA, but the ones already up keep timing out while HA
      * is down, and the chime is a synthesized tone on the media stream at
-     * `audio.chime_volume` (F-NTF-09, ADR 0023). A card's tap travels back through
+     * `audio.chime_volume` (F-NTF-09, ADR 0026). A card's tap travels back through
      * [TabulaStatus.cardDismiss]; it removes only that card (F-NTF-08).
      */
     private fun startNotifications() {

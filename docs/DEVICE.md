@@ -273,7 +273,7 @@ checks:
    timed out, tapped) and at least one `tabula_media` (`media_finished`)
    event.
 
-### Chime in silent mode (#121, ADR 0023)
+### Chime in silent mode (#121, ADR 0026)
 
 The chime plays on the media stream, so the tablet's silent mode must not
 mute it. By ear, with the media volume around half:
