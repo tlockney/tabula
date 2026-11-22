@@ -99,6 +99,11 @@ object Constants {
     /** MEDIA_MAX_BYTES: largest audio file the media player downloads before playing it (P2.5). */
     const val MEDIA_MAX_BYTES = 50L * 1024 * 1024
 
+    /** WAKE_WORD_CHIME_GUARD_MS: ms detection stays closed after a chime sounds
+     * (P7.1, ADR 0002): the beep has no completion callback, so the tone's
+     * length plus a short tail is the window the microphone stays shut. */
+    const val WAKE_WORD_CHIME_GUARD_MS = 500L
+
     /** MEDIA_MAX_REDIRECTS: redirect hops the media fetch follows before giving up (P2.5). */
     const val MEDIA_MAX_REDIRECTS = 5
 
