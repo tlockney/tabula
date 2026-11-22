@@ -30,8 +30,13 @@ dev_a() {
 dev_b() {
     local quoted="" arg
     for arg in "$@"; do quoted+=" $(printf '%q' "$arg")"; done
-    # shellcheck disable=SC2029  # the arguments are quoted above, on purpose
-    ssh -o ConnectTimeout=10 "$intercom_b_host" \
+    # One ssh connection per call is slow enough to matter when a check samples
+    # every 30 s, so the connection is multiplexed (created on first use, kept
+    # for a minute). The arguments are quoted above, on purpose.
+    # shellcheck disable=SC2029
+    ssh -o ConnectTimeout=10 \
+        -o ControlMaster=auto -o ControlPath=/tmp/tabula-intercom-%r@%h:%p -o ControlPersist=60 \
+        "$intercom_b_host" \
         "export PATH=$intercom_b_path:\$PATH; adb -s $intercom_b_serial$quoted"
 }
 

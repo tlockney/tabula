@@ -58,9 +58,7 @@ class Rooms:
     def since(self, room: str, role: str, cursor: int) -> tuple[int, list[tuple[int, str, str]]]:
         with self._lock:
             seq = self._seq.get(room, 0)
-            picked = [
-                m for m in self._rooms.get(room, []) if m[0] > cursor and m[1] != role
-            ]
+            picked = [m for m in self._rooms.get(room, []) if m[0] > cursor and m[1] != role]
             return seq, picked
 
 
@@ -84,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
         role = (q.get("role") or [""])[0]
         return room, role, q
 
-    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's spelling
+    def do_POST(self) -> None:
         if urlparse(self.path).path != "/send":
             self._reply(404, {"error": "no such path"})
             return
@@ -101,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write(f"relay: {room} {role} #{seq} {len(body)}B\n")
         self._reply(200, {"seq": seq})
 
-    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's spelling
+    def do_GET(self) -> None:
         if urlparse(self.path).path != "/poll":
             self._reply(404, {"error": "no such path"})
             return

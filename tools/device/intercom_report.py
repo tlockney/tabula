@@ -159,7 +159,10 @@ def _num(value: str | None) -> float | None:
 
 
 def _candidate(fields: dict[str, str]) -> str:
-    return f"{fields.get('type', '?')}/{fields.get('protocol', '?')} {fields.get('address', '?')}:{fields.get('port', '?')}"
+    kind = fields.get("type", "?")
+    protocol = fields.get("protocol", "?")
+    address = fields.get("address", "?")
+    return f"{kind}/{protocol} {address}:{fields.get('port', '?')}"
 
 
 def _fmt(value: float | None, unit: str = "ms") -> str:
@@ -183,18 +186,23 @@ def latency(sender: DeviceLog, receiver: DeviceLog) -> tuple[float | None, str]:
 def report(sender_path: Path, receiver_path: Path) -> int:
     sender = parse(sender_path)
     receiver = parse(receiver_path)
-    print(f"sender   {sender_path}  role={sender.role} room={sender.room} aec={sender.aec} listenOnly={sender.listen_only}")
-    print(f"receiver {receiver_path}  role={receiver.role} room={receiver.room} aec={receiver.aec} listenOnly={receiver.listen_only}")
+    ends = (("sender  ", sender, sender_path), ("receiver", receiver, receiver_path))
+    for label, log, path in ends:
+        print(
+            f"{label} {path}  role={log.role} room={log.room} aec={log.aec} "
+            f"listenOnly={log.listen_only}"
+        )
     print()
     print("question 2 — connection")
     print(f"  offer to connected, caller:      {_fmt(sender.connected_from_offer_ms)}")
     print(f"  offer to connected, answerer:    {_fmt(receiver.connected_from_offer_ms)}")
     print(f"  offer to first audio, caller in:  {_fmt(receiver.first_audio.get('in'))}")
     print(f"  offer to first audio, answerer in:{_fmt(sender.first_audio.get('in'))}")
-    print(f"  local candidates, caller:        {', '.join(sorted(set(sender.local_candidates))) or 'n/a'}")
-    print(f"  local candidates, answerer:      {', '.join(sorted(set(receiver.local_candidates))) or 'n/a'}")
-    print(f"  remote candidates seen, caller:  {', '.join(sorted(set(sender.remote_candidates))) or 'n/a'}")
-    print(f"  remote candidates seen, answerer:{', '.join(sorted(set(receiver.remote_candidates))) or 'n/a'}")
+    for label, log in (("caller", sender), ("answerer", receiver)):
+        local = ", ".join(sorted(set(log.local_candidates))) or "n/a"
+        remote = ", ".join(sorted(set(log.remote_candidates))) or "n/a"
+        print(f"  local candidates, {label}: {local}")
+        print(f"  remote candidates seen, {label}: {remote}")
     print()
     print("question 3 — media")
     print(f"  codec:                           {sender.codec or 'n/a'}")
@@ -232,9 +240,11 @@ def report(sender_path: Path, receiver_path: Path) -> int:
         print("end of call")
         for label, log in (("caller", sender), ("answerer", receiver)):
             if log.ended:
+                duration = log.ended.get("durationMs", "?")
+                packets_in = log.ended.get("packetsIn", "?")
+                packets_out = log.ended.get("packetsOut", "?")
                 print(
-                    f"  {label}: duration {log.ended.get('durationMs', '?')} ms, "
-                    f"packets in {log.ended.get('packetsIn', '?')}, out {log.ended.get('packetsOut', '?')}"
+                    f"  {label}: duration {duration} ms, packets in {packets_in}, out {packets_out}"
                 )
     return 0 if value is not None else 1
 
