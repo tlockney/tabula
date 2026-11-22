@@ -172,7 +172,7 @@
         },
         "wake_word_active": {
           "type": "boolean",
-          "description": "The microphone is open and the wake-word frontend is computing features right now: the setting is on, the permission is held, the service is running and playback is not suspending detection."
+          "description": "The microphone is open and the wake-word frontend is computing features right now: the setting is on, the permission is held, the service is running and playback is not suspending detection. Always present while the wake_word capability is declared."
         },
         "last_wake_word": {
           "type": "string",
