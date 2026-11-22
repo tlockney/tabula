@@ -718,8 +718,8 @@ per ABI in the same directory):
 make android-spike-apk
 ```
 
-The two checks take the tablets from the environment, since one end is
-attached to this machine and the other to another host over ssh. The defaults
+The checks take the tablets from the environment, since one end is attached to
+this machine and the other to another host over ssh. The defaults
 are the fleet's serials; override them when running elsewhere:
 
 | Variable | Default | Meaning |
@@ -745,10 +745,10 @@ The 10-minute cost run needs a pty so Ctrl-C reaches it, and places its own
 call:
 
 ```sh
-TABULA_AUDIO_OK=1 script -q /dev/null tools/device/intercom_cost.sh
+TABULA_AUDIO_OK=1 script -q /dev/null tools/device/check_p90_cost.sh
 ```
 
-`intercom_cost.sh` prints each process's CPU as a share of **one core**
+`check_p90_cost.sh` prints each process's CPU as a share of **one core**
 (`dumpsys cpuinfo`'s unit) beside the device's `TOTAL` line, the audio HAL's
 share, the app's PSS and the battery temperature. Fire OS 7 exposes no readable
 `thermal_zone*/temp` on this device, so battery temperature is the heat measure.
@@ -757,7 +757,7 @@ The judgments that need a person — speech at 1 m and 3 m, both tablets in one
 room, and the clap — are `check_p90_owner.sh`, run from an interactive shell:
 
 ```sh
-TABULA_HOST_IP=192.168.1.126 tools/device/check_p90_owner.sh
+TABULA_AUDIO_OK=1 TABULA_HOST_IP=192.168.1.126 tools/device/check_p90_owner.sh
 ```
 
 It places a 6-minute call and asks; the numbers of record stay the ones

@@ -7,7 +7,7 @@
 #
 # What needs a person in the room (speaking at 1 m and 3 m, the clap test) is
 # tools/device/check_p90_owner.sh. The 10-minute cost run is
-# tools/device/intercom_cost.sh; set TABULA_INTERCOM_COST=1 to run it here.
+# tools/device/check_p90_cost.sh; set TABULA_INTERCOM_COST=1 to run it here.
 #
 # The spike app is a separate application (net.lockney.tabula.spike.intercom),
 # so installing it never replaces, uninstalls or unpairs net.lockney.tabula.
@@ -20,7 +20,7 @@
 #   TABULA_HOST_IP           the address the tablets reach this machine on
 #                            (default: ipconfig getifaddr en0)
 #   TABULA_INTERCOM_PORT     the throwaway relay's port (default 8099)
-#   TABULA_INTERCOM_COST     1 also runs intercom_cost.sh (10 minutes)
+#   TABULA_INTERCOM_COST     1 also runs check_p90_cost.sh (10 minutes)
 #   TABULA_INTERCOM_SECONDS  the cost run's length (default 600)
 #   and the device variables in tools/device/intercom_devices.sh
 #
@@ -307,11 +307,11 @@ echo "receiver is above. The packet Result records this as unanswered."
 
 if [[ "${TABULA_INTERCOM_COST:-0}" == "1" ]]; then
     step "8. question 7: the 10-minute cost run"
-    TABULA_INTERCOM_SECONDS="${TABULA_INTERCOM_SECONDS:-600}" "$here/intercom_cost.sh"
+    TABULA_INTERCOM_SECONDS="${TABULA_INTERCOM_SECONDS:-600}" "$here/check_p90_cost.sh"
 else
     step "8. question 7: the 10-minute cost run"
     echo "Run it separately (it takes 10 minutes and needs a pty):"
-    echo "  script -q /dev/null tools/device/intercom_cost.sh"
+    echo "  TABULA_AUDIO_OK=1 script -q /dev/null tools/device/check_p90_cost.sh"
 fi
 
 step "done"

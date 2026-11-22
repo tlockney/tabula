@@ -5,7 +5,7 @@
 # so the numbers repeat. It places the call itself.
 #
 # Run it under a pty so Ctrl-C reaches the script:
-#   script -q /dev/null tools/device/intercom_cost.sh
+#   TABULA_AUDIO_OK=1 script -q /dev/null tools/device/check_p90_cost.sh
 #
 # Environment:
 #   TABULA_INTERCOM_SECONDS   call length (default 600)

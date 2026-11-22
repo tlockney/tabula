@@ -196,8 +196,8 @@ def report(sender_path: Path, receiver_path: Path) -> int:
     print("question 2 — connection")
     print(f"  offer to connected, caller:      {_fmt(sender.connected_from_offer_ms)}")
     print(f"  offer to connected, answerer:    {_fmt(receiver.connected_from_offer_ms)}")
-    print(f"  offer to first audio, caller in:  {_fmt(receiver.first_audio.get('in'))}")
-    print(f"  offer to first audio, answerer in:{_fmt(sender.first_audio.get('in'))}")
+    print(f"  offer to first audio, caller in:  {_fmt(sender.first_audio.get('in'))}")
+    print(f"  offer to first audio, answerer in: {_fmt(receiver.first_audio.get('in'))}")
     for label, log in (("caller", sender), ("answerer", receiver)):
         local = ", ".join(sorted(set(log.local_candidates))) or "n/a"
         remote = ", ".join(sorted(set(log.remote_candidates))) or "n/a"

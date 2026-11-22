@@ -125,6 +125,31 @@ def test_report_prints_the_measurements(
     assert "tone play to tone heard:         178 ms" in out
     assert "codec:                           audio/opus" in out
     assert "packets in 1900" in out
+    # Each end's own log answers for itself: the fixture's receiver logged
+    # first-audio at 2000 ms and the sender logged none, so a swapped pair of
+    # lines would put 2000 under the caller.
+    assert "offer to first audio, caller in:  n/a" in out
+    assert "offer to first audio, answerer in: 2000 ms" in out
+
+
+def test_each_end_reports_its_own_first_audio(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The two ends' figures differ here, so the lines cannot pass for each other.
+    sender = tmp_path / "sender.log"
+    receiver = tmp_path / "receiver.log"
+    sender.write_text(
+        SENDER.replace(
+            "spike: call connected fromOfferMs=500",
+            "spike: call connected fromOfferMs=500\n"
+            "11-21 19:00:01.000 I/TabulaIntercomSpike(1): spike: call first-audio side=in fromOfferMs=1234",
+        )
+    )
+    receiver.write_text(RECEIVER)
+    assert report.report(sender, receiver) == 0
+    out = capsys.readouterr().out
+    assert "offer to first audio, caller in:  1234 ms" in out
+    assert "offer to first audio, answerer in: 2000 ms" in out
 
 
 def test_missing_sender_tone_is_reported(logs: tuple[Path, Path]) -> None:
