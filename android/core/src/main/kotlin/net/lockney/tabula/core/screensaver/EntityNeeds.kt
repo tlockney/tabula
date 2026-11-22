@@ -1,5 +1,6 @@
 package net.lockney.tabula.core.screensaver
 
+import net.lockney.tabula.core.settings.ScheduleSlots
 import net.lockney.tabula.core.settings.Settings
 import net.lockney.tabula.core.tlp.ScreensaverMode
 
@@ -16,8 +17,12 @@ import net.lockney.tabula.core.tlp.ScreensaverMode
  *   `sun.sun` for time of day, and the scene reads the daily forecast for its
  *   high/low line; the forecast widget (F-WGT-05) reads the daily forecast.
  *
- * Not modelled yet: the black mode's hide-everything option (F-SSV-06) has no
- * settings key, and per-slot overlay overrides are the schedule's (P3.12).
+ * The schedule's slot overrides (F-SSV-18, P3.12) can only turn off overlays
+ * that are configured globally, never invent them: a slot with widgets or
+ * At a Glance off drops those subscriptions; on (or null, inherit) keeps the
+ * global configuration. Not modelled yet: the black mode's hide-everything
+ * option (F-SSV-06) has no settings key, and the now-playing view's slot
+ * override has none either.
  */
 data class EntityNeeds(
     val entityIds: List<String> = emptyList(),
@@ -33,11 +38,12 @@ data class EntityNeeds(
         const val SUN = "sun.sun"
 
         /** What [mode] needs under [settings]; [mode] null (not showing) needs nothing. */
-        fun of(settings: Settings, mode: ScreensaverMode?): EntityNeeds {
+        fun of(settings: Settings, mode: ScreensaverMode?, slot: ScheduleSlots? = null): EntityNeeds {
             if (mode == null || mode == ScreensaverMode.CALENDAR) return EntityNeeds()
             val ids = LinkedHashSet<String>()
             val forecasts = LinkedHashSet<Forecast>()
-            ids += settings.atAGlance.entities
+            // the slot can only turn At a Glance off, never invent it (F-SSV-18)
+            if (slot?.atAGlance != false) ids += settings.atAGlance.entities
             if (mode == ScreensaverMode.WEATHER) {
                 val weather = settings.screensaver.weather.entityId
                 if (weather.isNotEmpty()) {
@@ -46,8 +52,9 @@ data class EntityNeeds(
                     forecasts += Forecast(weather)
                 }
             }
+            // the slot can only turn the widgets off, never invent them (F-SSV-18)
             val widgets = settings.widgets
-            if (widgets.shown) {
+            if (widgets.shown && slot?.widgets != false) {
                 if (widgets.weather.enabled && widgets.weather.entityId.isNotEmpty()) {
                     ids += widgets.weather.entityId
                     ids += SUN

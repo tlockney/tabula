@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import net.lockney.tabula.core.screensaver.EntityNeeds.Forecast
 import net.lockney.tabula.core.settings.AtAGlance
+import net.lockney.tabula.core.settings.ScheduleSlots
 import net.lockney.tabula.core.settings.Screensaver
 import net.lockney.tabula.core.settings.ScreensaverWeather
 import net.lockney.tabula.core.settings.Settings
@@ -67,5 +68,35 @@ class EntityNeedsTest {
         assertTrue(EntityNeeds.of(settings, ScreensaverMode.PHOTOS).isEmpty)
         // with no entity chosen the scene shows its prompt and needs nothing
         assertTrue(EntityNeeds.of(Settings(), ScreensaverMode.WEATHER).isEmpty)
+    }
+
+    @Test
+    fun `a slot can turn At a Glance and the widgets off, and does`() {
+        val offBoth = ScheduleSlots(start = "00:00", atAGlance = false, widgets = false)
+        assertTrue(EntityNeeds.of(full, ScreensaverMode.CLOCK, offBoth).isEmpty, "the slot's turn-offs drop the subscriptions")
+        val offGlance = EntityNeeds.of(full, ScreensaverMode.CLOCK, ScheduleSlots(start = "00:00", atAGlance = false))
+        assertEquals(listOf("weather.home", "sun.sun", "sensor.outside"), offGlance.entityIds)
+        val offWidgets = EntityNeeds.of(full, ScreensaverMode.CLOCK, ScheduleSlots(start = "00:00", widgets = false))
+        assertEquals(listOf("lock.front", "binary_sensor.garage"), offWidgets.entityIds)
+        assertTrue(offWidgets.forecasts.isEmpty())
+    }
+
+    @Test
+    fun `a slot cannot invent overlays the global configuration does not have`() {
+        val hidden = full.copy(widgets = widgets.copy(shown = false))
+        val slotOn = ScheduleSlots(start = "00:00", widgets = true, atAGlance = true)
+        assertEquals(glance.entities, EntityNeeds.of(hidden, ScreensaverMode.CLOCK, slotOn).entityIds)
+        assertTrue(EntityNeeds.of(hidden, ScreensaverMode.CLOCK, slotOn).forecasts.isEmpty(), "widgets stay off globally")
+        val noGlance = Settings(widgets = widgets)
+        assertEquals(
+            listOf("weather.home", "sun.sun", "sensor.outside"),
+            EntityNeeds.of(noGlance, ScreensaverMode.CLOCK, slotOn).entityIds,
+            "At a Glance stays empty globally",
+        )
+        // null inherits: the global configuration applies as it is
+        assertEquals(
+            EntityNeeds.of(full, ScreensaverMode.CLOCK).entityIds,
+            EntityNeeds.of(full, ScreensaverMode.CLOCK, ScheduleSlots(start = "00:00")).entityIds,
+        )
     }
 }
