@@ -37,6 +37,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
+# `python tools/desk/wake_word.py` puts tools/desk on the path, not the root,
+# and the harness reuses the quantiser in tools/device rather than copying it.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
 #: The pinned model, the same one the build fetches into the APK's assets
 #: (ADR 0030 item 8). The harness uses the built copy when there is one, then
 #: a copy here, and only downloads when neither exists - always checking the
