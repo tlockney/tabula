@@ -29,6 +29,8 @@ data class StateDelta(
     val network: NetworkType? = null,
     @SerialName("wifi_rssi") val wifiRssi: Int? = null,
     val illuminance: Double? = null,
+    @SerialName("wake_word_active") val wakeWordActive: Boolean? = null,
+    @SerialName("last_wake_word") val lastWakeWord: String? = null,
     @SerialName("current_page") val currentPage: String? = null,
     val volume: Int? = null,
     val muted: Boolean? = null,
@@ -43,6 +45,7 @@ data class StateDelta(
         wifiRssi?.let { Wire.requireRange("state.wifi_rssi", it, -127, 0) }
         illuminance?.let { Wire.requireRange("state.illuminance", it, 0.0, 100000.0) }
         nextScreensaver?.takeIf { it != NO_NEXT_SCREENSAVER }?.let { Wire.requireDateTime("state.next_screensaver", it) }
+        lastWakeWord?.let { Wire.requireDateTime("state.last_wake_word", it) }
         currentPage?.let {
             Wire.requireLength("state.current_page", it, 1, 2048)
             Wire.requirePattern("state.current_page", it, Wire.pagePath)

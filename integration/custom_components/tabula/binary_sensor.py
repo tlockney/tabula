@@ -1,4 +1,5 @@
-"""Binary sensors (plan 5.5): charging, and the tablet's link to HA (FEATURES F-HA-09)."""
+"""Binary sensors (plan 5.5): charging, the tablet's link to HA (FEATURES F-HA-09),
+and whether the wake word is listening (P7.1)."""
 
 from __future__ import annotations
 
@@ -27,6 +28,20 @@ CONNECTED = TabulaEntityDescription(
     entity_category=EntityCategory.DIAGNOSTIC,
 )
 
+# On while the microphone is open and the frontend is computing features: the
+# setting is on, RECORD_AUDIO is held, the service is running and playback is
+# not suspending detection (PROTOCOL 4.4, ADR 0030). Diagnostic because it
+# describes the integration's capture rather than the room, and because it is
+# the honest answer to "is it listening?" when Fire OS has taken the permission
+# away (F-KSK-21, ADR 0029 item 7).
+WAKE_WORD_ACTIVE = TabulaEntityDescription(
+    key="wake_word_active",
+    device_class=BinarySensorDeviceClass.RUNNING,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    capabilities=frozenset({"wake_word"}),
+    state_keys=frozenset({"wake_word_active"}),
+)
+
 
 class TabulaConnected(TabulaEntity, BinarySensorEntity):
     """On while the tablet holds a registered connection.
@@ -51,6 +66,13 @@ class TabulaCharging(TabulaEntity, BinarySensorEntity):
         return None if value is None else bool(value)
 
 
+class TabulaWakeWordActive(TabulaEntity, BinarySensorEntity):
+    @property
+    def is_on(self) -> bool | None:
+        value = self.device_state.get("wake_word_active")
+        return None if value is None else bool(value)
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -58,9 +80,16 @@ async def async_setup_entry(
     assert hub is not None
 
     def factory(hub: TabulaHub, record: DeviceRecord, description: Any) -> TabulaEntity:
-        cls = TabulaConnected if description is CONNECTED else TabulaCharging
+        if description is CONNECTED:
+            cls = TabulaConnected
+        elif description is WAKE_WORD_ACTIVE:
+            cls = TabulaWakeWordActive
+        else:
+            cls = TabulaCharging
         return cls(hub, record, description)
 
     entry.async_on_unload(
-        setup_platform(hass, hub, async_add_entities, [CHARGING, CONNECTED], factory)
+        setup_platform(
+            hass, hub, async_add_entities, [CHARGING, CONNECTED, WAKE_WORD_ACTIVE], factory
+        )
     )

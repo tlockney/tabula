@@ -32,17 +32,31 @@ import sys
 import wave
 from pathlib import Path
 
-# The model's input quantisation: int8, scale 0.10196078, zero point -128, and
-# the frontend's raw values are 16-bit log-mel features that the pipeline
-# divides by 25.6 before quantising (so a full-scale feature lands at 1.0).
+# The model's input quantisation: int8, scale 0.10196078, zero point -128.
+# pymicro_features already returns the frontend's 0-26 log-mel values - the
+# range the model was quantised over (255 x 0.10196 is about 26.0) - so the
+# quantiser applies the scale once. P7.0 divided by 25.6 as well and scored
+# every clip as silence; P7.1 corrected it and added the test beside this.
 FEATURE_SCALE = 0.10196078
 FEATURE_ZERO_POINT = -128
-FEATURE_DIVISOR = 25.6
+
+FEATURE_BINS = 40
 
 # The spike counts a detection at DETECTION_CUTOFF = 200 in SpikeService.kt, in
 # the model's own 0-255 scale. Scoring at any other level would call a clip a
 # hit on the host that the device ignored, so this is the default here too.
 DETECTION_CUTOFF = 200
+
+
+def quantise(features: list[float]) -> "np.ndarray":
+    """Maps frontend features (0-26) to the model's int8 input, one window."""
+    import numpy as np
+
+    return np.clip(
+        np.round(np.asarray(features, dtype=np.float64) / FEATURE_SCALE) + FEATURE_ZERO_POINT,
+        -128,
+        127,
+    ).astype(np.int8)
 
 
 def read_clip(path: Path) -> bytes:
@@ -115,18 +129,7 @@ def main() -> int:
                 pending.append(feature)
                 if len(pending) < rows_per_inference * 40:
                     continue
-                quantised = (
-                    np.clip(
-                        np.round(
-                            (np.array(pending, dtype=np.float64) / FEATURE_DIVISOR) / FEATURE_SCALE
-                        )
-                        + FEATURE_ZERO_POINT,
-                        -128,
-                        127,
-                    )
-                    .astype(np.int8)
-                    .reshape(1, rows_per_inference, 40)
-                )
+                quantised = quantise(pending).reshape(1, rows_per_inference, FEATURE_BINS)
                 interpreter.set_tensor(interpreter.get_input_details()[0]["index"], quantised)
                 interpreter.invoke()
                 probability = int(
@@ -136,6 +139,10 @@ def main() -> int:
                 highest = max(highest, probability)
                 if probability >= cutoff:
                     crossings += 1
+                # consume the window: one inference per three rows (30 ms of
+                # audio), which is microWakeWord's own default stride and the
+                # only one this model fires on (verified by the desk harness:
+                # overlapping windows never crossed the cutoff)
                 pending = []
         seconds = len(pcm) / 2 / 16000
         verdict = "hit" if crossings else "miss"

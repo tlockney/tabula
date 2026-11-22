@@ -49,6 +49,9 @@ dependencies {
     implementation(project(":ha"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+    // the wake-word interpreter (P7.1, ADR 0030): the model runs in the app's
+    // foreground service, so the runtime is a production dependency now
+    implementation(libs.tensorflow.lite)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)

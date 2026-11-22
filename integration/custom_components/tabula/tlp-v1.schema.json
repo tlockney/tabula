@@ -62,7 +62,8 @@
         "go_home",
         "logs",
         "screenshot",
-        "illuminance"
+        "illuminance",
+        "wake_word"
       ]
     },
     "error_code": {
@@ -168,6 +169,15 @@
           "minimum": 0,
           "maximum": 100000,
           "description": "Ambient light, lux. Omitted until the sensor has reported; never null."
+        },
+        "wake_word_active": {
+          "type": "boolean",
+          "description": "The microphone is open and the wake-word frontend is computing features right now: the setting is on, the permission is held, the service is running and playback is not suspending detection."
+        },
+        "last_wake_word": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Device clock at the last accepted wake-word detection. Omitted until the first detection; never null."
         },
         "current_page": {
           "type": [
@@ -412,7 +422,8 @@
             "screensaver_started",
             "screensaver_stopped",
             "media_finished",
-            "page_changed"
+            "page_changed",
+            "wake_word_detected"
           ]
         },
         "data": {
@@ -649,6 +660,38 @@
                 },
                 "required": [
                   "path"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "wake_word_detected"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "phrase": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_]{1,32}$"
+                  },
+                  "probability": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  }
+                },
+                "required": [
+                  "phrase",
+                  "probability"
                 ],
                 "additionalProperties": false
               }

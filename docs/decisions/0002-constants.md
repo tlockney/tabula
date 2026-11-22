@@ -258,6 +258,12 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 
 **NightState (pre-committed interface).** The night-mode flag is a plain-JVM interface in `android/core`, `net.lockney.tabula.core.screensaver.NightState` with two members — `isNight: Boolean` and `addListener`, a listener registration that returns a removal function — plus a never-night default (`NightState.NEVER`, false, whose listeners never fire). P3.4 implements it from the light sensor against `screensaver.night_mode`'s threshold and hysteresis, firing listeners on each transition; P3.6 (At a Glance) and P3.11 (widgets) consume it for the night color. Landing the interface in P3.1 — before the hardware-dependent P3.4 — lets those packets compile against the contract; the never-night default is the honest pre-P3.4 behavior: night mode never engages, so consumers render their day colors. The interface is observable, not polled: consumers register a listener and re-render on each transition instead of re-reading the flag every frame. The observation seam is a plain listener rather than a coroutine flow because `android/core` carries no coroutine dependency; P3.4 owns the threading guarantees.
 
+**Voice (`voice`, P7.1).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| `wake_word_enabled` | default false | Off unless a household asks for it: with the setting on the microphone runs whenever the service is up and nothing is playing, which is a decision for the people living with the device, not a default to discover. On is what ADR 0024's device-side wake word needs; off leaves the tablet a kiosk with no microphone use at all. |
+
 ### Ambient light sensor reporting (P3.16)
 
 F-HA-06's rate limit for the illuminance state key. Same rules: chosen here only. The filter that applies them is plain JVM code in `android/core` (packet P3.16), and `STATE_MIN_INTERVAL` still coalesces bursts on top of both values.
@@ -266,6 +272,23 @@ F-HA-06's rate limit for the illuminance state key. Same rules: chosen here only
 | --- | --- | --- |
 | `ILLUMINANCE_CHANGE_THRESHOLD` | 20 % of the last value sent | A real change in room light — a lamp switched on, a curtain opened, dusk crossing a threshold — moves the lux reading by several tens of percent, while sensor quantization and noise around a steady level is a few percent (the same reasoning as `ADAPTIVE_CHANGE_THRESHOLD`). 20 % separates the two: a step beyond it goes out at once (F-HA-06 "a real change goes out at once"), oscillation below it does not. From total dark (last value 0 lx) any positive reading is a step, since 20 % of zero is zero. |
 | `ILLUMINANCE_MIN_INTERVAL` | 30 s | The most generous rate at which sub-threshold drift reaches HA (F-HA-06: one update per interval so HA's recorder is not flooded): at most 120 updates per hour while the light drifts, and none at all in a steady room, where identical readings produce nothing. Slow daylight drift crosses the 20 % threshold in a couple of minutes anyway; covering and uncovering the sensor moves in seconds. Because Android light sensors report on change, a sub-threshold change reaches HA only when the next reading arrives past the interval: a room that drifts and then holds steady keeps HA's older value, an error bounded by the 20 % threshold (review, PR #108) - acceptable, not a bug. |
+
+### Wake-word detection (P7.1)
+
+The detector's constants. ADR 0029 already fixed the model, its cutoff and the audio path; these are the values the production code adds, and ADR 0030 says where each is used.
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `WAKE_WORD_PHRASE` | `okay_nabu` | The phrase the pinned model is trained for. It rides on the event so HA can tell phrases apart if a later packet ships a second model; the string is the model's file name, lowercase, with no spaces. |
+| `DETECTION_CUTOFF` | 200 (of 255) | ADR 0029 item 5, unchanged: the scorer and the device call a hit at the same level, so a desk table and a device count mean the same thing. Lowering it to make a clip pass would hide a frontend problem. |
+| `WAKE_WORD_COOLDOWN` | 4 s | One utterance is about a second and the model's score stays high for several hundred milliseconds after it, so without a cooldown a single phrase fires a burst of events. Four seconds is longer than that tail and shorter than the pause before someone says it again. |
+| `WAKE_WORD_CHUNK_FRAMES` | 10 (100 ms of audio, 1600 samples) | The capture read size: 100 ms keeps the capture loop at ten wake-ups a second (the rate the spike's cost figure was measured at) while staying far inside the `AudioRecord` buffer. |
+| `WAKE_WORD_FRAME_SAMPLES` | 480 (30 ms), hop 160 (10 ms) | The model family's window and stride: 40 bins per hop, three hops per inference for the v2 model's 3-row input. |
+| `WAKE_WORD_FFT_SIZE` / `WAKE_WORD_BINS` | 512 / 40 | A 512-point FFT at 16 kHz gives 31.25 Hz resolution, enough for 40 mel bins between 125 Hz and 7500 Hz. |
+| `WAKE_WORD_LOW_HZ` / `WAKE_WORD_HIGH_HZ` | 125 / 7500 | The model's mel range; speech below 125 Hz is rumble and the 16 kHz band ends at 8 kHz. |
+| `WAKE_WORD_DYNAMIC_RANGE_DB` | 20 dB | The frontend's per-frame normalisation: the loudest bin at the top of the model's input range and 20 dB below it at the bottom, which is the span of the reference features in the model's own training data. |
+| `WAKE_WORD_FEATURE_TOP` | 26.0 | Top of the input tensor's real range: 255 steps of the 0.10196 scale from the -128 zero point. A frontend emitting 0–1 would use ten of the 256 levels. |
+| `AUDIO_SOURCE` order | `MIC`, then `VOICE_RECOGNITION` | ADR 0029 item 2: the raw path first, the OS's speech path when another app holds `MIC`. |
 
 ### Phase 1–2 behavior defaults
 

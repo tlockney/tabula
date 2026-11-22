@@ -250,6 +250,7 @@ class MockDevice:
             raise CommandError("stale_revision", f"revision {applied} applied on this connection")
         old_delay = self._return_after()
         self.settings = args["settings"]
+        self._apply_voice_settings()
         # A changed return delay restarts the countdown (ADR 0021 item 5);
         # a changed start path never moves the page (F-DSH-02).
         if self._return_after() != old_delay:
@@ -257,6 +258,35 @@ class MockDevice:
         self.settings_revision = args["revision"]
         self._connection_revision = args["revision"]
         return {"revision": self.settings_revision}
+
+    # --- wake word (P7.1, ADR 0030) ---------------------------------------
+
+    def _apply_voice_settings(self) -> None:
+        """Follow voice.wake_word_enabled the way the app does at startup.
+
+        The mock declares ``wake_word`` only while the setting is on and marks
+        itself listening, so a test can tell "off" from "on but deaf". The
+        capability list travels in register, so a change shows up when the
+        client reconnects, exactly as the app re-registers on settings apply.
+        """
+        enabled = bool(self.settings.get("voice", {}).get("wake_word_enabled"))
+        has = "wake_word" in self.capabilities
+        if enabled and not has:
+            self.capabilities.append("wake_word")
+        elif not enabled and has:
+            self.capabilities.remove("wake_word")
+        self.update(wake_word_active=enabled)
+
+    def detect_wake_word(self, phrase: str = "okay_nabu", probability: int = 231) -> None:
+        """Simulate one accepted detection: the event, then the new timestamp.
+
+        Raises CommandError when the wake word is off, which is what the real
+        detector cannot do - it is not listening.
+        """
+        if "wake_word" not in self.capabilities:
+            raise CommandError("unsupported_command", "wake word is off")
+        self.on_event("wake_word_detected", {"phrase": phrase, "probability": probability})
+        self.update(last_wake_word=now_iso())
 
     def _cmd_screen(self, args: dict[str, Any]) -> None:
         changes: dict[str, Any] = {}

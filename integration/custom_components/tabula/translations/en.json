@@ -177,6 +177,9 @@
       },
       "widgets_shown": {
         "name": "Screensaver widgets"
+      },
+      "voice_wake_word_enabled": {
+        "name": "Wake word"
       }
     },
     "number": {
@@ -251,11 +254,24 @@
       },
       "last_capture": {
         "name": "Last capture"
+      },
+      "last_wake_word": {
+        "name": "Last wake word"
       }
     },
     "image": {
       "screenshot": {
         "name": "Screenshot"
+      }
+    },
+    "binary_sensor": {
+      "wake_word_active": {
+        "name": "Wake word listening"
+      }
+    },
+    "event": {
+      "wake_word": {
+        "name": "Wake word"
       }
     },
     "media_player": {

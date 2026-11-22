@@ -37,6 +37,12 @@ object TabulaStatus {
     /** Set by the service when it starts; UNPAIRED until then. */
     val phase = MutableStateFlow(Phase.UNPAIRED)
 
+    /**
+     * Set by the activity when RECORD_AUDIO is granted, so the service starts
+     * listening without waiting for the next settings push (P7.1, ADR 0030).
+     */
+    val wakeWordPermission = MutableStateFlow(false)
+
     /** The pairing code shown on screen, with the device id beside it. */
     val pairing = MutableStateFlow<PairingView?>(null)
 

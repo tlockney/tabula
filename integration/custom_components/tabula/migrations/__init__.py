@@ -9,18 +9,16 @@ one"). A device on a NEWER schema version applies the document and keeps its
 own defaults for keys HA does not send (PROTOCOL.md 4.5) - no translation up
 exists or is needed.
 
-Every schema bump that removes or reshapes keys adds one entry to DOWNS: the
-function that translates a document AT version N into one at N-1. Additive
-changes (new keys with defaults) need no entry: the receiving side already
-fills defaults for absent keys.
+Every step translates a document AT version N into one at N-1 by pruning it
+against the frozen schema of N-1: keys that schema does not know are dropped,
+whole groups included. Every bump needs its step, additive or not, because the
+device's strict codec rejects unknown keys (plan 5.4): a new key inside an
+existing group is still a key an older device would reject.
 
-SCHEMA_VERSION 2 (P3.1) is additive, but the device's strict codec rejects
-unknown keys (plan 5.4), so the v2 -> v1 step is required, not optional: it
-prunes every key the v1 schema does not know, including the new keys nested
-inside existing groups (``screensaver.clock`` and friends), against the frozen
-v1 schema kept next to the current one (settings.schema.v1.json). The frozen
-copy is byte-identical to the repo's schema/settings.schema.v1.json, which is
-what the tests validate the translated document against.
+The frozen copies (settings.schema.v1.json, settings.schema.v2.json) are
+byte-identical to the repo's schema/settings.schema.v1.json and
+schema/settings.schema.v2.json, which is what the tests validate every
+translated document against.
 """
 
 from __future__ import annotations
@@ -34,33 +32,41 @@ from typing import Any
 
 from ..const import SCHEMA_VERSION
 
-_BUNDLED_V1_SCHEMA = Path(__file__).parent.parent / "settings.schema.v1.json"
+_BUNDLED = Path(__file__).parent.parent
+_FROZEN_FILES = {
+    1: _BUNDLED / "settings.schema.v1.json",
+    2: _BUNDLED / "settings.schema.v2.json",
+}
 
 
-@lru_cache(maxsize=1)
-def _v1_schema() -> dict[str, Any]:
-    return json.loads(_BUNDLED_V1_SCHEMA.read_text(encoding="utf-8"))
-
-
+@lru_cache(maxsize=None)
 def frozen_schema(version: int) -> dict[str, Any]:
-    """The frozen schema document of an older settings version (only 1 so far)."""
-    if version != 1:
-        raise ValueError(f"no frozen settings schema for version {version}")
-    return _v1_schema()
+    """The frozen schema document of an older settings version (1 or 2)."""
+    try:
+        path = _FROZEN_FILES[version]
+    except KeyError:
+        raise ValueError(f"no frozen settings schema for version {version}") from None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _prune_to_v1(document: dict[str, Any]) -> dict[str, Any]:
-    """Translate a settings document at version 2 down to version 1.
+def frozen_schema_versions() -> tuple[int, ...]:
+    """The versions that have a frozen copy, oldest first."""
+    return tuple(sorted(_FROZEN_FILES))
 
-    Keeps only the keys the v1 schema knows, recursing into the object groups
-    v1 itself defines (so nested v2-only keys inside ``screensaver`` and the
-    like are pruned too); everything else - including whole v2-only groups -
-    is dropped. Non-object values (``screen.brightness``, arrays, nulls) pass
-    through unchanged when their property exists in v1.
+
+def _prune_to(version: int) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """A translator that drops every key the frozen schema at ``version`` lacks.
+
+    Recurses into the object groups that schema itself defines (so a key nested
+    inside a group that survives is pruned too) and drops whole groups the
+    schema does not know. Non-object values (``screen.brightness``, arrays,
+    nulls) pass through unchanged when their property exists in the frozen
+    schema.
     """
+    schema = frozen_schema(version)
 
-    def prune(node: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
-        properties = schema.get("properties", {})
+    def prune(node: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
+        properties = target.get("properties", {})
         pruned: dict[str, Any] = {}
         for key, value in node.items():
             prop = properties.get(key)
@@ -72,11 +78,17 @@ def _prune_to_v1(document: dict[str, Any]) -> dict[str, Any]:
                 pruned[key] = value
         return pruned
 
-    return prune(document, _v1_schema())
+    def translate(document: dict[str, Any]) -> dict[str, Any]:
+        return prune(document, schema)
+
+    return translate
 
 
 # version N -> function translating a document at version N down to N-1.
-DOWNS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {2: _prune_to_v1}
+DOWNS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    2: _prune_to(1),
+    3: _prune_to(2),
+}
 
 
 def translate(settings: dict[str, Any], target_version: int) -> dict[str, Any]:

@@ -41,6 +41,11 @@ import kotlin.math.roundToInt
  * stays with plain views too (ADR 0013).
  */
 class MainActivity : Activity() {
+    private companion object {
+        /** The RECORD_AUDIO prompt the wake word asks for once (ADR 0030). */
+        const val REQUEST_RECORD_AUDIO = 2
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var store: TabulaStore
     private lateinit var root: FrameLayout
@@ -58,6 +63,14 @@ class MainActivity : Activity() {
         store = (application as TabulaApp).store
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+        // the microphone is asked for only when the wake word is switched on:
+        // a tablet that never enables it never sees the prompt (ADR 0030)
+        if (store.settings.voice.wakeWordEnabled &&
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
         }
         root = FrameLayout(this)
         native = LinearLayout(this).apply {
@@ -146,6 +159,20 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         ScreenWindow.onResume(this)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            // the service collects this: granted starts listening, refused
+            // leaves the capability undeclared and the setting in place
+            TabulaStatus.wakeWordPermission.value =
+                grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
     }
 
     override fun onDestroy() {

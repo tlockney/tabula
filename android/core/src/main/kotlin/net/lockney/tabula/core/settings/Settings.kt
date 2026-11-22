@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  * Same value as the schema's x-tabula-schema-version; the integration and
  * the device compare it via register and set_settings (PROTOCOL 4.2, 4.5).
  */
-const val SCHEMA_VERSION: Int = 2
+const val SCHEMA_VERSION: Int = 3
 
 /** Schema pattern for ConnectionHaUrlPattern: ^https?://[^/@\s?#]+(/[^\s?#]*)?$ */
 private val ConnectionHaUrlPattern: Regex = Regex("^https?://[^/@\\s?#]+(/[^\\s?#]*)?\$")
@@ -453,6 +453,13 @@ data class Audio(
     }
 }
 
+/** Microphone behavior (ADR 0030). Off by default: a kiosk whose microphone is always open is a different product from one that is not, so a household opts in per device. */
+@Serializable
+data class Voice(
+    /** Run on-device wake-word detection while the foreground service is up and RECORD_AUDIO is granted. Detection is suspended while the device plays (ADR 0029 item 3). Default per ADR 0002. */
+    @SerialName("wake_word_enabled") val wakeWordEnabled: Boolean = false
+)
+
 /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
 @Serializable
 data class AtAGlance(
@@ -659,6 +666,8 @@ data class Settings(
     val notifications: Notifications = Notifications(),
     /** Volume levels (FEATURES F-TTS). Volume levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04). */
     val audio: Audio = Audio(),
+    /** Microphone behavior (ADR 0030). Off by default: a kiosk whose microphone is always open is a different product from one that is not, so a household opts in per device. */
+    val voice: Voice = Voice(),
     /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
     @SerialName("at_a_glance") val atAGlance: AtAGlance = AtAGlance(),
     /** Corner widgets (F-WGT-01): overlays anchored to the four screen corners, at most one per corner, each individually disabled without losing its corner. */

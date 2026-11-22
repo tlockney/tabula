@@ -81,7 +81,7 @@ The device waits up to `REGISTER_TIMEOUT` for each reply; on timeout it closes t
 
 ### 4.2 `register` → `register_result`
 
-Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and its current `state`: every state key it supports, so HA starts from a complete picture. (The schema checks only that `state` is non-empty, since the same object type carries deltas.) A supported state key whose value the device does not have yet — the `illuminance` key before the light sensor's first reading — is omitted from `register` and sent in the first delta that has one; the schema requires a value, so there is no null placeholder.
+Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and its current `state`: every state key it supports, so HA starts from a complete picture. (The schema checks only that `state` is non-empty, since the same object type carries deltas.) A supported state key whose value the device does not have yet — the `illuminance` key before the light sensor's first reading, `last_wake_word` before the first detection — is omitted from `register` and sent in the first delta that has one; the schema requires a value, so there is no null placeholder.
 
 Integration:
 
@@ -113,6 +113,8 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `network` | `wifi` \| `ethernet` \| `none` | |
 | `wifi_rssi` | dBm \| null | |
 | `illuminance` | 0–100000 | Ambient light, lux (P3.16); covered by the `illuminance` capability |
+| `wake_word_active` | bool | The microphone is open and the wake-word frontend is computing features now (setting on, permission held, nothing playing); covered by the `wake_word` capability (P7.1) |
+| `last_wake_word` | date-time | Device clock at the last accepted detection; omitted until there is one (P7.1) |
 | `current_page` | string \| null | Frontend path shown in the WebView, without query string or fragment |
 | `volume` | 0–100 | Media stream volume |
 | `muted` | bool | |
@@ -162,6 +164,7 @@ The integration never sends a command whose capability the device did not declar
 | `screensaver_stopped` | `mode`, `trigger`: `touch`, `command`, `schedule` | `tabula_screensaver` |
 | `media_finished` | `reason`: `ended`, `stopped`, `error` | `tabula_media` |
 | `page_changed` | `path` (no query string or fragment) | `tabula_page` |
+| `wake_word_detected` | `phrase` (`[a-z0-9_]{1,32}`), `probability` (0–255, the model's own scale) | `tabula_wake_word` |
 
 ### 4.8 `log`
 

@@ -16,7 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import net.lockney.tabula.core.voice.WakeWordDetector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import net.lockney.tabula.ha.CredentialRevoked
@@ -77,6 +78,14 @@ class TabulaService : Service() {
     private lateinit var audio: MediaManager
     private lateinit var startPage: StartPageManager
     private lateinit var deviceEvents: EventFanIn
+    // Wake word (P7.1, ADR 0030): null until startVoice, off until the setting
+    // says otherwise. The channel is the monitor's event source in the fan-in.
+    private var voice: WakeWordMonitor? = null
+    private val voiceEvents = Channel<(Int) -> net.lockney.tabula.core.tlp.EventFrame>(2)
+    @Volatile private var wakeWordListening = false
+    @Volatile private var lastWakeWord: String? = null
+    /** Set while a TLP session exists, so a detection reaches HA at once. */
+    @Volatile private var publishState: ((net.lockney.tabula.core.tlp.StateDelta) -> Unit)? = null
     private var stopPageListener: (() -> Unit)? = null
     private val mediaFetcher = net.lockney.tabula.ha.MediaFetcher()
 
@@ -97,6 +106,7 @@ class TabulaService : Service() {
         startStartPage()
         startNotifications()
         startAudio()
+        startVoice()
     }
 
     /**
@@ -214,8 +224,75 @@ class TabulaService : Service() {
             scope = scope,
         )
         audio.applySettings(store.settings)
-        // one event stream for the TLP session from every source (P2.4, P2.5)
-        deviceEvents = EventFanIn(scope, listOf(screensaver.events, notifications.events, audio.events))
+        // one event stream for the TLP session from every source (P2.4, P2.5, P7.1)
+        deviceEvents = EventFanIn(
+            scope,
+            listOf(screensaver.events, notifications.events, audio.events, voiceEvents),
+        )
+    }
+
+    /**
+     * The wake-word monitor (packet P7.1, ADR 0030). Constructed always and
+     * started only when the setting asks for it, so turning the setting off and
+     * on does not recreate the service. The microphone is opened lazily by
+     * [WakeWordMonitor.start], so a device that never enables the feature never
+     * holds it.
+     */
+    private fun startVoice() {
+        val monitor = WakeWordMonitor(
+            context = applicationContext,
+            scope = scope,
+            onDetection = ::onWakeWord,
+            onListening = { listening ->
+                val changed = wakeWordListening != listening
+                wakeWordListening = listening
+                if (changed) {
+                    publishState?.invoke(
+                        net.lockney.tabula.core.tlp.StateDelta(wakeWordActive = listening),
+                    )
+                }
+            },
+            log = { Log.i(TAG, it) },
+        )
+        voice = monitor
+        if (store.settings.voice.wakeWordEnabled) monitor.start()
+        // a grant arrives after the settings push that asked for it, so the
+        // monitor starts from the activity's answer rather than the next push
+        scope.launch {
+            TabulaStatus.wakeWordPermission.collect { granted ->
+                if (granted && store.settings.voice.wakeWordEnabled) monitor.start()
+            }
+        }
+    }
+
+    /** The settings push's voice part: enable starts, disable stops (ADR 0030). */
+    private fun applyVoiceSettings(settings: net.lockney.tabula.core.settings.Settings) {
+        val monitor = voice ?: return
+        if (settings.voice.wakeWordEnabled) monitor.start() else monitor.stop()
+    }
+
+    /**
+     * One detection: timestamp the state key before the event goes out, so a
+     * subscriber that sees the event can read the sensor's new value, and queue
+     * the TLP event behind any earlier ones (bounded at two, ADR 0002).
+     */
+    private fun onWakeWord(detection: WakeWordDetector.Detection) {
+        val at = wakeWordTimestamp()
+        lastWakeWord = at
+        Log.i(TAG, "wake word: ${detection.phrase} at ${detection.probability}/255")
+        publishState?.invoke(
+            net.lockney.tabula.core.tlp.StateDelta(
+                wakeWordActive = wakeWordListening,
+                lastWakeWord = at,
+            ),
+        )
+        voiceEvents.trySend { id ->
+            net.lockney.tabula.core.tlp.EventFrame.wakeWordDetected(
+                id,
+                detection.phrase,
+                detection.probability,
+            )
+        }
     }
 
     /**
@@ -359,6 +436,7 @@ class TabulaService : Service() {
                 (application as TabulaApp).dashboard,
                 extra = ::extraState,
             )
+            publishState = state::publish
             screen.listener = state::publish
             screensaver.listener = state::publish
             audio.listener = state::publish
@@ -395,6 +473,7 @@ class TabulaService : Service() {
                             screenOn = { screen.current().screenOn ?: true },
                         ),
                         startPage = startPage,
+                        voice = ::applyVoiceSettings,
                     ),
                     events = deviceEvents.events,
                 ),
@@ -483,6 +562,12 @@ class TabulaService : Service() {
             illuminance = illuminance.value,
         )
         return net.lockney.tabula.ha.mergeState(screenAndSaver, audio.current())
+            .copy(
+                // both keys exist only while the detector is part of the app:
+                // the setting on and the permission granted (ADR 0030 item 5)
+                wakeWordActive = if (voice != null) wakeWordListening else null,
+                lastWakeWord = lastWakeWord,
+            )
     }
 
     /**
@@ -508,6 +593,10 @@ class TabulaService : Service() {
         add("notifications")
         add("audio")
         add("screenshot")
+        // declared only while listening: the setting is on and RECORD_AUDIO is
+        // held, so HA shows the wake-word entities for a tablet that has them
+        // and no switch on the ones that do not (ADR 0030 item 2)
+        if (voice?.running == true) add("wake_word")
     }
 
     private fun versionName(): String =
