@@ -544,6 +544,40 @@ holds `dim_brightness` (a different system level from the clock's, nothing
 drawn over the dashboard, no fade flash) and every dismissal returns the
 previous level. Paste the whole output into the packet Result.
 
+## Hardware check (P3.12, screensaver schedule)
+
+Install a P3.12 build (or later), provision and pair, and leave the tablet
+in front with the panel on and untouched for the whole run (a touch
+dismisses the screensaver). The script sets the schedule itself — two slots
+a few minutes ahead on the tablet's own clock, a black one then a clock
+one — through HA's options-flow API, so `TABULA_HA_TOKEN` must belong to an
+admin user (the options flow needs config-entry edit rights). No settings
+need configuring beforehand; the clock slot carries its own fixed brightness
+so the live edit is visible on the panel.
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<admin token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver TABULA_DEVICE=<device id> \
+ANDROID_SERIAL=<serial> tools/device/check_p312.sh
+```
+
+`TABULA_DEVICE` is the tablet's HA device id (the id in the URL of its
+Settings > Devices page); the slot offsets are `TABULA_BLACK_AHEAD`
+(default 2 minutes) and `TABULA_CLOCK_AHEAD` (default 5). The script
+starts the screensaver in clock mode from HA, then checks: the first
+crossing **restarts it into black** — the captured `tabula_screensaver`
+events show `stopped clock` + `started black`, both with trigger
+`schedule`, the switch stays on, the panel holds the lowest backlight and
+the verifier sees black; the second crossing **restarts the clock** the
+same way, with exactly the four schedule-triggered events in order
+(clock → black → clock) and the clock slot's fixed brightness on the
+panel; then it **edits the running slot's brightness** through the options
+flow — the run keeps going (no new events, the switch stays on) and the
+panel's level moves at once; dismissal restores the previous level, and
+the script turns the schedule switch off again (the slots would otherwise
+repeat daily at those times). `ha_events.py` captures the events; paste
+the whole output into the packet Result.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:
