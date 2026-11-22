@@ -48,6 +48,7 @@ class TlpClientTest {
         tokens: TokenRefresher,
         commands: CommandHandler = FakeCommands(),
         deviceEvents: kotlinx.coroutines.channels.ReceiveChannel<(Int) -> EventFrame>? = null,
+        logger: (String) -> Unit = {},
     ) = TlpClient(
         TlpClient.Config(
             haUrl = "http://ha:8123",
@@ -66,6 +67,7 @@ class TlpClientTest {
         tokens,
         server,
         Backoff(Random(3)),
+        logger = logger,
     )
 
     @Test
@@ -208,9 +210,10 @@ class TlpClientTest {
         val server = ScriptedServer()
         server.suppress.add("ping") // never answer pings
         val events = RecordingEvents()
+        val logged = mutableListOf<String>()
         // same seed as the client's backoff, so it predicts the reconnect delay
         val oracle = Backoff(Random(3))
-        val job = launch { client(FakeState(), server, tokens(granted("access-1"))).run(events) }
+        val job = launch { client(FakeState(), server, tokens(granted("access-1")), logger = { logged.add(it) }).run(events) }
         runCurrent()
         assertEquals(1, server.connections.size)
         // APP_PING_INTERVAL + PONG_TIMEOUT of silence ends the connection (PROTOCOL 4)
@@ -218,6 +221,8 @@ class TlpClientTest {
         runCurrent()
         assertTrue(server.connections.first().closed)
         assertEquals(1, events.disconnected)
+        // the failure carries a reason, not a bare "connection lost" (issue #128)
+        assertTrue("session failed: IOException: no pong within PONG_TIMEOUT" in logged, logged.toString())
         // the client reconnects after the attempt-0 backoff delay
         advanceTimeBy(oracle.nextDelayMs() + 1)
         runCurrent()
