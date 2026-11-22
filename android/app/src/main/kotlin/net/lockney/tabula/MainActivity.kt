@@ -18,6 +18,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import net.lockney.tabula.core.screensaver.FadeRule
+import net.lockney.tabula.core.screensaver.PixelShift
+import net.lockney.tabula.core.tlp.ScreensaverMode
 import kotlin.math.roundToInt
 
 /**
@@ -67,18 +70,31 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         setContentView(root)
-        // the screensaver overlay sits above everything else in the window (P2.4)
-        screensaver = ScreensaverView(this, scope)
+        // the screensaver overlay sits above everything else in the window
+        // (P2.4); the engine polish reads its settings when the screensaver
+        // starts (P3.14)
+        screensaver = ScreensaverView(
+            this,
+            scope,
+            pixelShift = { PixelShift(store.settings.screensaver.pixelShift) },
+            fade = { FadeRule(store.settings.screensaver.fade.enabled) },
+        )
         addContentView(screensaver, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
         ))
         // the photo slideshow sits above the clock overlay and below the
         // notification cards (P3.8; cards draw over every mode, F-SSV-21)
-        gallery = GalleryView(this, scope) {
-            // a playlist with nothing decodable: the clock stand-in
-            // (ADR 0013 item 3, ADR 0016), with the clock settings applied
-            screensaver.show(net.lockney.tabula.core.tlp.ScreensaverMode.CLOCK, store.settings.screensaver.clock)
-        }
+        gallery = GalleryView(
+            this,
+            scope,
+            clockStandIn = {
+                // a playlist with nothing decodable: the clock stand-in
+                // (ADR 0013 item 3, ADR 0016), with the clock settings applied
+                screensaver.show(net.lockney.tabula.core.tlp.ScreensaverMode.CLOCK, store.settings.screensaver.clock)
+            },
+            pixelShift = { PixelShift(store.settings.screensaver.pixelShift) },
+            fade = { FadeRule(store.settings.screensaver.fade.enabled) },
+        )
         addContentView(gallery, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
         ))

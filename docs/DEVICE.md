@@ -549,6 +549,38 @@ in HA's history must stay within ADR 0002's `ILLUMINANCE_MIN_INTERVAL`
 bound of one per 30 s plus two for the window's edges), and a logcat tail
 for the record. Two steps pause to ask the verifier to cover and uncover the
 sensor. Paste the whole output into the packet Result.
+
+## Hardware check (P3.14, screensaver engine polish)
+
+Install a P3.14 build (or later), provision and pair, and configure the
+polish settings on the tablet's HA entry (the options flow; they apply when
+the screensaver starts, ADR 0022):
+
+- pixel shift on, interval 10 s, amplitude 8 px (visible from a couch; the
+  schema bounds are 10–86400 s and 1–64 px)
+- fade on
+- `screensaver.brightness` 20 (default) and `dim_brightness` 5, so dim's
+  level is distinct from the clock's
+
+Leave Tabula in front with the panel on and run:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver \
+ANDROID_SERIAL=<serial> tools/device/check_p314.sh
+```
+
+The script starts each mode from HA (`tabula.screensaver` with a per-start
+`mode`, which never changes the configured setting, ADR 0013 item 3) and
+checks: the clock **fades in** on start and **out** on the dismissing touch
+(verifier answers), its content **steps by a small offset** at the interval
+(two logcat `pixel shift: dx=… dy=…` lines over two intervals, plus the
+verifier's eye) at the screensaver brightness; **black never shifts**
+(zero shift lines over an interval) and holds the lowest backlight; **dim**
+holds `dim_brightness` (a different system level from the clock's, nothing
+drawn over the dashboard, no fade flash) and every dismissal returns the
+previous level. Paste the whole output into the packet Result.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:

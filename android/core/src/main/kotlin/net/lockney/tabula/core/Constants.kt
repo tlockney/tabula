@@ -84,6 +84,9 @@ object Constants {
     /** SCREENSAVER_EVENT_BUFFER: screensaver events kept while they wait for the session (P2.4). */
     const val SCREENSAVER_EVENT_BUFFER = 16
 
+    /** SCREENSAVER_FADE_MS: ms the screensaver overlay fades in or out over (P3.14, F-SSV-23). */
+    const val SCREENSAVER_FADE_MS = 800L
+
     /** NOTIFICATION_EVENT_BUFFER: notification events kept while they wait for the session (P2.5). */
     const val NOTIFICATION_EVENT_BUFFER = 16
 

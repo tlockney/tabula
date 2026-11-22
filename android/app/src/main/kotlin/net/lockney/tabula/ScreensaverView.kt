@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -21,6 +22,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lockney.tabula.core.Constants
+import net.lockney.tabula.core.screensaver.FadeRule
+import net.lockney.tabula.core.screensaver.PixelShift
 import net.lockney.tabula.core.screensaver.clock.AnalogHands
 import net.lockney.tabula.core.screensaver.clock.analogHands
 import net.lockney.tabula.core.screensaver.clock.analogTexts
@@ -41,7 +44,7 @@ import net.lockney.tabula.ha.MediaFetcher
  *   weight, size and color - or the analog face with hands, the date line
  *   and AM/PM under the dial (ADR 0018). The clock follows the settings
  *   schema's hour_24; the date line uses the app language with the system
- *   language as fallback (F-SSV-08).
+ *   language as fallback.
  * - Background image (F-SSV-09): a local file or a URL, decoded at panel
  *   resolution behind the face, with a darkening layer of the configured
  *   strength. A settings write always reloads it (the activity re-applies
@@ -51,6 +54,14 @@ import net.lockney.tabula.ha.MediaFetcher
  * - Dim (F-SSV-07): nothing is drawn, so the dashboard stays visible under
  *   the dimmed backlight.
  *
+ * Engine polish (packet P3.14, ADR 0022): the overlay fades in on start and
+ * out on dismissal when the fade is on ([fade], F-SSV-23), and the face
+ * steps by small offsets on the [pixelShift] schedule (F-SSV-22), never in
+ * black mode. Both are read once when a run starts, so an edit lands at the
+ * next start and a running screensaver keeps its current shift and fade
+ * (ADR 0022) - a settings write through [applyClock] re-renders the face
+ * and reloads the background without touching the run's shift or fade.
+ *
  * Any mode takes the touch that dismisses it, so that touch does not also
  * press something on the dashboard underneath. The dismissal itself comes
  * from the activity's user-interaction hook through the service.
@@ -59,6 +70,8 @@ import net.lockney.tabula.ha.MediaFetcher
 class ScreensaverView(
     context: Context,
     private val scope: CoroutineScope,
+    private val pixelShift: () -> PixelShift = { PixelShift() },
+    private val fade: () -> FadeRule = { FadeRule() },
 ) : FrameLayout(context) {
     /** The background image (F-SSV-09), cropped to cover the panel. */
     private val background = ImageView(context).apply {
@@ -88,6 +101,20 @@ class ScreensaverView(
     private var dateLanguage: Locale = Locale.getDefault()
 
     private val tick = Runnable { updateClock() }
+    private val shiftTick = Runnable { stepShift() }
+
+    /** The mode this overlay is showing, for the dismissal fade (F-SSV-23). */
+    private var shownMode: ScreensaverMode? = null
+
+    /**
+     * This run's shift and fade, read once when the run started: an edit to
+     * the settings lands at the next start, and a running screensaver keeps
+     * its current shift and fade (ADR 0022's Consequences). The dismissal
+     * fade uses the rule the run started with.
+     */
+    private var shift = PixelShift()
+    private var fadeRule = FadeRule()
+    private var shiftStep = 0
 
     private val backgroundEngine = ClockBackgroundEngine(
         controller = net.lockney.tabula.core.screensaver.clock.ClockBackgroundController(System::currentTimeMillis),
@@ -116,20 +143,47 @@ class ScreensaverView(
 
     override fun onDetachedFromWindow() {
         removeCallbacks(tick)
+        removeCallbacks(shiftTick)
         backgroundEngine.stop()
         super.onDetachedFromWindow()
     }
 
     /** Show [mode] (the clock, also the stand-in for modes not built yet, ADR 0013) with [clock] settings, or hide the overlay with null. */
     fun show(mode: ScreensaverMode?, clock: ScreensaverClock? = null) {
+        animate().cancel()
         removeCallbacks(tick)
+        removeCallbacks(shiftTick)
         backgroundEngine.stop()
         showingFace = false
         if (mode == null) {
-            visibility = View.GONE
+            // the dismissal fade is the started run's own (ADR 0022's cadence)
+            val fadingOut = shownMode?.let(fadeRule::onDismiss) == true
+            shownMode = null
+            if (fadingOut) {
+                Log.i(TAG, "fade out")
+                animate()
+                    .alpha(0f)
+                    .setDuration(Constants.SCREENSAVER_FADE_MS)
+                    .withEndAction {
+                        visibility = View.GONE
+                        alpha = 1f
+                        // the content keeps its last offset for the fade; back at rest once it ends
+                        resetShift()
+                    }
+            } else {
+                visibility = View.GONE
+                alpha = 1f
+                resetShift()
+            }
             return
         }
+        // a start: this run's shift and fade, read once (ADR 0022's cadence)
+        shift = pixelShift()
+        fadeRule = fade()
+        val fadingIn = fadeRule.onShow(mode)
+        shownMode = mode
         visibility = View.VISIBLE
+        alpha = if (fadingIn) 0f else 1f
         when (mode) {
             ScreensaverMode.DIM -> {
                 setBackgroundColor(Color.TRANSPARENT)
@@ -141,15 +195,22 @@ class ScreensaverView(
                 face.visibility = View.GONE
             }
 
+            // the clock, also the stand-in for modes not built yet (ADR 0013)
             else -> showFace(clock ?: ScreensaverClock(), freshStart = true)
         }
+        if (fadingIn) {
+            Log.i(TAG, "fade in")
+            animate().alpha(1f).setDuration(Constants.SCREENSAVER_FADE_MS)
+        }
+        startShift(mode)
     }
 
     /**
      * A settings write arrived while a face shows (F-SSV-09: every write
      * reloads the background, identical source or not; the revision change
      * is the signal). Re-renders the face and orders the fresh load; the
-     * showing image stays until the fresh one loads.
+     * showing image stays until the fresh one loads. The run's shift and
+     * fade are kept (ADR 0022: they change at the next start).
      */
     fun applyClock(clock: ScreensaverClock) {
         if (!showingFace) return
@@ -316,6 +377,35 @@ class ScreensaverView(
         postDelayed(tick, period - at % period)
     }
 
+    /**
+     * Schedule the first shift from this run's snapshot. Dim draws nothing,
+     * so nothing can move; black never shifts (F-SSV-22). The shift moves
+     * the face - the background image is cropped to cover the panel, so
+     * moving the face alone keeps the clock legible over a steady image.
+     */
+    private fun startShift(mode: ScreensaverMode) {
+        resetShift()
+        if (mode == ScreensaverMode.DIM || !shift.appliesTo(mode)) return
+        postDelayed(shiftTick, shift.intervalMs)
+    }
+
+    private fun resetShift() {
+        shiftStep = 0
+        face.translationX = 0f
+        face.translationY = 0f
+    }
+
+    private fun stepShift() {
+        val mode = shownMode ?: return
+        if (face.visibility != View.VISIBLE || !shift.appliesTo(mode)) return
+        val offset = shift.offset(shiftStep)
+        shiftStep += 1
+        face.translationX = offset.x.toFloat()
+        face.translationY = offset.y.toFloat()
+        Log.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
+        postDelayed(shiftTick, shift.intervalMs)
+    }
+
     /** Show the loaded background image with its darkening layer, or clear to the configured background color (F-SSV-09). */
     private fun showBackground(handle: Any?) {
         val bitmap = handle as? Bitmap
@@ -326,7 +416,7 @@ class ScreensaverView(
             return
         }
         // the hardware check counts these lines as background evidence (check_p33.sh)
-        android.util.Log.i(TAG, "background: shown")
+        android.util.Log.i(CLOCK_TAG, "background: shown")
         background.setImageBitmap(bitmap)
         background.visibility = View.VISIBLE
         darken.visibility = View.VISIBLE
@@ -409,7 +499,11 @@ class ScreensaverView(
     }
 
     private companion object {
-        const val TAG = "TabulaClock"
+        /** The engine-polish logs (fade, pixel shift, P3.14). */
+        const val TAG = "TabulaScreensaver"
+
+        /** The clock-background evidence the P3.3 hardware check greps (check_p33.sh, DEVICE.md). */
+        const val CLOCK_TAG = "TabulaClock"
         const val SECOND_MS = 1_000L
         const val MINUTE_MS = 60_000L
     }
