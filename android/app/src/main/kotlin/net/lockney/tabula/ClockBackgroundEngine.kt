@@ -61,7 +61,15 @@ class ClockBackgroundEngine(
                     wake.receive()
                     continue
                 }
-                val due = controller.nextDueMs ?: return@launch
+                val due = controller.nextDueMs
+                if (due == null) {
+                    // no interval right now: park for a settings write that
+                    // adds one instead of exiting - the write re-schedules
+                    // the timer, and stop() is what ends the loop (P3.3
+                    // review: an interval added by a write must fire)
+                    wake.receive()
+                    continue
+                }
                 val wait = due - now()
                 if (wait > 0 && withTimeoutOrNull(wait) { wake.receive() } != null) continue
                 carryOut(controller.onTick(now()), width, height)

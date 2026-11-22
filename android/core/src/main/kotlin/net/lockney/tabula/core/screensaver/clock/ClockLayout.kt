@@ -43,6 +43,8 @@ data class DigitalFace(
     val timeSizeSp: Float,
     /** Date text size in sp at the configured size percent. */
     val dateSizeSp: Float,
+    /** AM/PM marker text size in sp at the configured size percent - half the date line's, layout math kept here (ADR 0018 item 8). */
+    val amPmSizeSp: Float,
     /** Text color, `#RRGGBB` or `#AARRGGBB` (F-SSV-08). */
     val textColor: String,
 )
@@ -53,6 +55,8 @@ data class AnalogTexts(
     val date: String?,
     /** The AM/PM marker (a dial is always 12-hour), or null while hidden. */
     val amPm: String?,
+    /** AM/PM marker text size in sp at the configured size percent - half the date line's, layout math kept here (ADR 0018 item 8). */
+    val amPmSizeSp: Float,
 )
 
 /** The analog hands' angles, in degrees clockwise from 12 o'clock (F-SSV-08). */
@@ -104,20 +108,35 @@ fun digitalFace(
         fontWeight = settings.fontWeight,
         timeSizeSp = Constants.CLOCK_TIME_BASE_SP * settings.size / 100f,
         dateSizeSp = Constants.CLOCK_DATE_BASE_SP * settings.size / 100f,
+        amPmSizeSp = amPmSizeSp(settings.size),
         textColor = settings.textColor,
     )
 }
 
-/** The analog face's texts for one moment (F-SSV-08). */
-fun analogTexts(now: LocalDateTime, settings: ScreensaverClock, dateLanguage: Locale): AnalogTexts =
+/** The AM/PM marker's text size at the configured size percent: half the date line's (ADR 0018 item 8). */
+internal fun amPmSizeSp(sizePercent: Int): Float =
+    Constants.CLOCK_DATE_BASE_SP * sizePercent / 200f
+
+/**
+ * The analog face's texts for one moment (F-SSV-08): what draws under the
+ * dial. [timeLanguage] formats the AM/PM marker (the same locale the digital
+ * face's time uses).
+ */
+fun analogTexts(
+    now: LocalDateTime,
+    settings: ScreensaverClock,
+    dateLanguage: Locale,
+    timeLanguage: Locale,
+): AnalogTexts =
     AnalogTexts(
         date = if (settings.showDate) dateLine(now, dateLanguage) else null,
         amPm = if (settings.showAmPm) {
             val stamp = Date.from(now.atZone(java.time.ZoneId.systemDefault()).toInstant())
-            SimpleDateFormat("a", Locale.getDefault()).format(stamp)
+            SimpleDateFormat("a", timeLanguage).format(stamp)
         } else {
             null
         },
+        amPmSizeSp = amPmSizeSp(settings.size),
     )
 
 /**

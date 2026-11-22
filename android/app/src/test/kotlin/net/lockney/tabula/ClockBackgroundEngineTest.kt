@@ -184,4 +184,76 @@ class ClockBackgroundEngineTest {
         scope.runCurrent()
         assertEquals(2, shown.size)
     }
+
+    @Test
+    fun `an interval added by a settings write re-fetches`() {
+        loads[url] = bitmap()
+        engine.start(url, 0, 1920, 1200)
+        scope.runCurrent()
+        assertEquals(1, shown.size)
+
+        // the write adds the interval and still reloads (F-SSV-09)
+        loads[url] = bitmap()
+        engine.applySettings(url, 60_000, 1920, 1200)
+        scope.runCurrent()
+        assertEquals(2, shown.size)
+
+        // the timer the write scheduled fires (the review's probe)
+        loads[url] = bitmap()
+        scope.advanceTimeBy(60_000)
+        scope.runCurrent()
+        assertEquals(3, shown.size, "the interval added by the write must re-fetch")
+    }
+
+    @Test
+    fun `an interval removed by a settings write stops re-fetching`() {
+        loads[url] = bitmap()
+        engine.start(url, 60_000, 1920, 1200)
+        scope.runCurrent()
+        assertEquals(1, shown.size)
+
+        // the write removes the interval and still reloads (F-SSV-09)
+        loads[url] = bitmap()
+        engine.applySettings(url, 0, 1920, 1200)
+        scope.runCurrent()
+        assertEquals(2, shown.size)
+
+        // no re-fetch past what would have been the old interval
+        loads[url] = bitmap()
+        scope.advanceTimeBy(120_000)
+        scope.runCurrent()
+        assertEquals(2, shown.size, "no re-fetch after the write removed the interval")
+
+        // a later write still reloads, and can bring the interval back
+        loads[url] = bitmap()
+        engine.applySettings(url, 30_000, 1920, 1200)
+        scope.runCurrent()
+        assertEquals(3, shown.size)
+        loads[url] = bitmap()
+        scope.advanceTimeBy(30_000)
+        scope.runCurrent()
+        assertEquals(4, shown.size, "the interval restored by a write re-fetches")
+    }
+
+    @Test
+    fun `an interval changed by a settings write retimes the re-fetch`() {
+        loads[url] = bitmap()
+        engine.start(url, 60_000, 1920, 1200)
+        scope.runCurrent()
+        assertEquals(1, shown.size)
+
+        // the write shortens the interval and reloads; the next re-fetch
+        // follows the new interval, not the old one
+        loads[url] = bitmap()
+        engine.applySettings(url, 30_000, 1920, 1200)
+        scope.runCurrent()
+        assertEquals(2, shown.size)
+        loads[url] = bitmap()
+        scope.advanceTimeBy(29_999)
+        scope.runCurrent()
+        assertEquals(2, shown.size, "no re-fetch before the new interval")
+        scope.advanceTimeBy(1)
+        scope.runCurrent()
+        assertEquals(3, shown.size, "the re-fetch follows the interval the write set")
+    }
 }

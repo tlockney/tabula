@@ -83,6 +83,7 @@ class ClockLayoutTest {
         val face = digitalFace(afternoon(), clock(size = 200), Locale.US, Locale.US)
         assertEquals(Constants.CLOCK_TIME_BASE_SP * 2, face.timeSizeSp)
         assertEquals(Constants.CLOCK_DATE_BASE_SP * 2, face.dateSizeSp)
+        assertEquals(Constants.CLOCK_DATE_BASE_SP, face.amPmSizeSp, "the marker stays at half the date line's size")
     }
 
     @Test
@@ -109,10 +110,11 @@ class ClockLayoutTest {
 
     @Test
     fun `analog texts mirror the marker and date options`() {
-        val texts = analogTexts(afternoon(), clock(), Locale.US)
+        val texts = analogTexts(afternoon(), clock(), Locale.US, Locale.US)
         assertEquals("PM", texts.amPm)
         assertEquals("Saturday 21 November", texts.date)
-        val hidden = analogTexts(afternoon(), clock(showAmPm = false, showDate = false), Locale.US)
+        assertEquals(Constants.CLOCK_DATE_BASE_SP / 2, texts.amPmSizeSp)
+        val hidden = analogTexts(afternoon(), clock(showAmPm = false, showDate = false), Locale.US, Locale.US)
         assertNull(hidden.amPm)
         assertNull(hidden.date)
     }

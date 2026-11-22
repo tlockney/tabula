@@ -263,8 +263,6 @@ class ScreensaverView(
             setTextColor(Color.parseColor(clock.textColor))
             typeface = typeface(clock)
             gravity = Gravity.CENTER
-            // the marker sits under the time at a fraction of the date line's size
-            textSize = Constants.CLOCK_DATE_BASE_SP * clock.size / 200f
         }
     }
 
@@ -288,6 +286,7 @@ class ScreensaverView(
                 timeText?.textSize = layout.timeSizeSp
                 amPmText?.let {
                     it.text = layout.amPm
+                    it.textSize = layout.amPmSizeSp
                     it.visibility = if (layout.amPm == null) View.GONE else View.VISIBLE
                 }
                 dateText?.let {
@@ -299,9 +298,10 @@ class ScreensaverView(
             ScreensaverClockFace.Analog -> {
                 dial?.hands = analogHands(now.toLocalTime(), clock.showSeconds)
                 dial?.invalidate()
-                val texts = analogTexts(now, clock, dateLanguage)
+                val texts = analogTexts(now, clock, dateLanguage, Locale.getDefault())
                 amPmText?.let {
                     it.text = texts.amPm
+                    it.textSize = texts.amPmSizeSp
                     it.visibility = if (texts.amPm == null) View.GONE else View.VISIBLE
                 }
                 dateText?.let {
