@@ -31,6 +31,8 @@ pkg=net.lockney.tabula
 
 step() { echo; echo "== $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 
 ha_call() { # ha_call <domain> <service> <json body>
     curl -fsS -X POST \
@@ -65,11 +67,17 @@ ha_available() { [[ "$(ha_state "$1" | cut -d' ' -f1)" != unavailable ]]; }
 network() { # network <down|up>
     if [[ "$1" == down ]]; then
         radio_off=1
-        adb shell cmd connectivity airplane-mode enable 2>/dev/null \
-            && echo "-- airplane mode on" || { adb shell svc wifi disable; echo "-- wifi disabled"; }
+        if adb shell cmd connectivity airplane-mode enable 2>/dev/null; then
+            echo "-- airplane mode on"
+        else
+            adb shell svc wifi disable; echo "-- wifi disabled"
+        fi
     else
-        adb shell cmd connectivity airplane-mode disable 2>/dev/null \
-            && echo "-- airplane mode off" || { adb shell svc wifi enable; echo "-- wifi enabled"; }
+        if adb shell cmd connectivity airplane-mode disable 2>/dev/null; then
+            echo "-- airplane mode off"
+        else
+            adb shell svc wifi enable; echo "-- wifi enabled"
+        fi
         radio_off=0
     fi
 }
@@ -122,11 +130,11 @@ sleep 3
 echo "-- adaptive switch in HA: $(ha_state "$TABULA_ADAPTIVE")"
 network down
 sleep 5
-read -r -p "Cover the tablet's light sensor with a finger, then press Enter " _
+pause "Cover the tablet's light sensor with a finger"
 sleep 5
 dark="$(system_level)"
 echo "-- covered: system brightness $dark"
-read -r -p "Uncover it and shine a light (a phone torch) at it, then press Enter " _
+pause "Uncover it and shine a light (a phone torch) at it"
 sleep 5
 bright="$(system_level)"
 echo "-- lit: system brightness $bright"

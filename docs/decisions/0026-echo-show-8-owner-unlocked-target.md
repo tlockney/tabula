@@ -1,4 +1,4 @@
-# 0023: Echo Show 8 (2nd gen) stays a v1 target as an owner-unlocked LineageOS 18.1 device
+# 0026: Echo Show 8 (2nd gen) stays a v1 target as an owner-unlocked LineageOS 18.1 device
 
 Status: accepted
 Date: 2026-11-22

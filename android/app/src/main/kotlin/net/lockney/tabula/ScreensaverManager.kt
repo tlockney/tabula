@@ -76,12 +76,14 @@ class ScreensaverManager(
     fun start() {
         timer = scope.launch {
             while (true) {
-                val deadline = controller.deadlineMs(now())
-                if (deadline == null) {
+                // the next idle start or the next slot's start, whichever comes
+                // first: the slot's mode governs the next start (F-SSV-18)
+                val next = controller.nextEventMs(now())
+                if (next == null) {
                     wake.receive()
                     continue
                 }
-                val wait = deadline - now()
+                val wait = next - now()
                 if (wait > 0 && withTimeoutOrNull(wait) { wake.receive() } != null) continue
                 carryOut { controller.onTick(now()) }
             }
@@ -94,7 +96,7 @@ class ScreensaverManager(
 
     override fun applySettings(settings: Settings) = carryOut {
         this.settings = settings
-        controller.applySettings(settings.screensaver, now())
+        controller.applySettings(settings.screensaver, now(), settings.schedule)
     }
 
     override fun command(active: Boolean, mode: ScreensaverMode?): CommandHandler.Reply {
@@ -139,8 +141,9 @@ class ScreensaverManager(
         outcome.state?.takeIf { it.isNotEmpty }?.let { delta -> listener?.invoke(delta) }
         // the HA entity subscription follows what shows (F-AAG-04): opened
         // with the screensaver, re-targeted by a settings change, closed on
-        // dismissal; an unchanged need is a no-op downstream
-        entityData(EntityNeeds.of(settings, controller.shownMode))
+        // dismissal; an unchanged need is a no-op downstream. The active
+        // slot's turn-offs apply (F-SSV-18)
+        entityData(EntityNeeds.of(settings, controller.shownMode, controller.activeSlot))
         wake.trySend(Unit)
     }
 }

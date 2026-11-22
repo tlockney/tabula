@@ -8,7 +8,7 @@ installed, and how to recover one. Written by P2.1; later packets extend it
 Everything here is scripted so a hardware check is one paste of output
 (AGENTS.md, "Work packets"). No scripted step roots or unlocks a bootloader:
 the one bootloader unlock in the fleet is the owner-performed, by-hand Echo
-Show 8 (2nd gen) flash (ADR 0023), done before Tabula work begins.
+Show 8 (2nd gen) flash (ADR 0026), done before Tabula work begins.
 
 ## Prerequisites (the Mac, or any machine with ADB)
 
@@ -238,7 +238,7 @@ checks:
 
 The owner unlocks the bootloader and flashes the community LineageOS 18.1
 (Android 11) image himself, by hand, from the public community guide, before
-any Tabula work (ADR 0023) — that step is his alone; nothing here or in
+any Tabula work (ADR 0026) — that step is his alone; nothing here or in
 `tools/device/` unlocks, roots or flashes anything. Once the device boots
 LineageOS, Tabula's part begins: the read-only device probe (P2.7 step 1 —
 WebView version, SELinux mode, screen, sensors), then provisioning and
@@ -548,6 +548,40 @@ verifier's eye) at the screensaver brightness; **black never shifts**
 holds `dim_brightness` (a different system level from the clock's, nothing
 drawn over the dashboard, no fade flash) and every dismissal returns the
 previous level. Paste the whole output into the packet Result.
+
+## Hardware check (P3.12, screensaver schedule)
+
+Install a P3.12 build (or later), provision and pair, and leave the tablet
+in front with the panel on and untouched for the whole run (a touch
+dismisses the screensaver). The script sets the schedule itself — two slots
+a few minutes ahead on the tablet's own clock, a black one then a clock
+one — through HA's options-flow API, so `TABULA_HA_TOKEN` must belong to an
+admin user (the options flow needs config-entry edit rights). No settings
+need configuring beforehand; the clock slot carries its own fixed brightness
+so the live edit is visible on the panel.
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<admin token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver TABULA_DEVICE=<device id> \
+ANDROID_SERIAL=<serial> tools/device/check_p312.sh
+```
+
+`TABULA_DEVICE` is the tablet's HA device id (the id in the URL of its
+Settings > Devices page); the slot offsets are `TABULA_BLACK_AHEAD`
+(default 2 minutes) and `TABULA_CLOCK_AHEAD` (default 5). The script
+starts the screensaver in clock mode from HA, then checks: the first
+crossing **restarts it into black** — the captured `tabula_screensaver`
+events show `stopped clock` + `started black`, both with trigger
+`schedule`, the switch stays on, the panel holds the lowest backlight and
+the verifier sees black; the second crossing **restarts the clock** the
+same way, with exactly the four schedule-triggered events in order
+(clock → black → clock) and the clock slot's fixed brightness on the
+panel; then it **edits the running slot's brightness** through the options
+flow — the run keeps going (no new events, the switch stays on) and the
+panel's level moves at once; dismissal restores the previous level, and
+the script turns the schedule switch off again (the slots would otherwise
+repeat daily at those times). `ha_events.py` captures the events; paste
+the whole output into the packet Result.
 
 ## Hardware check (P2.2)
 
