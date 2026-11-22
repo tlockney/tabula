@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# make android-apk: build the debug APK for provisioning (docs/DEVICE.md).
+# make android-apk / make android-spike-apk: build a debug APK.
+#
+# Argument: the Gradle module, default `app` (docs/DEVICE.md). P9.0's intercom
+# spike builds its own module, which has a different applicationId so installing
+# it never touches the production app.
 #
 # Skips with a clear message when the toolchain is missing, like
 # tools/android_test.sh. CI never needs the APK, so TABULA_REQUIRE_ANDROID is
 # not consulted here.
 
 set -euo pipefail
+
+module="${1:-app}"
 
 here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=android_common.sh
@@ -29,6 +35,10 @@ fi
 cd "$here/../android"
 export JAVA_HOME="$jdk"
 export ANDROID_HOME="$sdk"
-./gradlew --no-daemon :app:assembleDebug --console=plain
+./gradlew --no-daemon ":$module:assembleDebug" --console=plain
 echo
-echo "APK: android/app/build/outputs/apk/debug/app-debug.apk"
+if [[ "$module" == "app" ]]; then
+    echo "APK: android/app/build/outputs/apk/debug/app-debug.apk"
+else
+    echo "APKs: android/$module/build/outputs/apk/debug/ ($module-*-debug.apk, one per ABI)"
+fi

@@ -29,3 +29,5 @@ rootProject.name = "tabula"
 include(":app")
 include(":core")
 include(":ha")
+// P9.0's debug-only intercom spike (its own applicationId; ADR 0028).
+include(":spike-intercom")
