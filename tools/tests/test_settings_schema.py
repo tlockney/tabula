@@ -53,6 +53,8 @@ LEAF_SPEC: dict[tuple[str, ...], tuple[str, Any]] = {
     ("screen", "brightness"): ("shared", 60),
     ("screen", "adaptive_brightness"): ("shared", False),
     ("screen", "keep_screen_on"): ("shared", True),
+    ("dashboard", "start_path"): ("shared", ""),
+    ("dashboard", "return_home_after"): ("shared", 0),
     ("screensaver", "enabled"): ("shared", True),
     ("screensaver", "idle_timeout"): ("shared", 300),
     ("screensaver", "mode"): ("shared", "clock"),

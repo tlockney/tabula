@@ -82,6 +82,37 @@ class DashboardLinksTest {
         assertNull(DashboardLinks.resolveNavigatePath("", ha))
     }
 
+    // --- start target (P3.15, F-DSH-02) -------------------------------------
+
+    @Test
+    fun `a start path with a fragment resolves with the fragment kept`() {
+        assertEquals(
+            "http://homeassistant.local:8123/lovelace/0#popup",
+            DashboardLinks.resolveNavigatePath("/lovelace/0#popup", ha),
+        )
+        // the start path carries no query string (schema pattern); a fragment
+        // is all F-DSH-02's landing needs
+        assertNull(DashboardLinks.resolveNavigatePath("//example.com/x#f", ha))
+    }
+
+    @Test
+    fun `withParam appends before the fragment, joining an existing query`() {
+        assertEquals(
+            "http://homeassistant.local:8123/lovelace/0?external_auth=1#popup",
+            DashboardLinks.withParam("http://homeassistant.local:8123/lovelace/0#popup", "external_auth=1"),
+        )
+        assertEquals(
+            "http://homeassistant.local:8123/?external_auth=1",
+            DashboardLinks.withParam("http://homeassistant.local:8123/", "external_auth=1"),
+        )
+        assertEquals(
+            "http://homeassistant.local:8123/lovelace/0?a=1&external_auth=1",
+            DashboardLinks.withParam("http://homeassistant.local:8123/lovelace/0?a=1", "external_auth=1"),
+        )
+        // a URL that does not parse is returned unchanged
+        assertEquals("not a url", DashboardLinks.withParam("not a url", "external_auth=1"))
+    }
+
     @Test
     fun `current page carries the path without query or fragment`() {
         assertEquals("/", DashboardLinks.pagePath("http://homeassistant.local:8123/?external_auth=1"))

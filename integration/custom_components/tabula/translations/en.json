@@ -37,6 +37,8 @@
           "screen_brightness": "Screen brightness (%)",
           "screen_adaptive_brightness": "Adaptive brightness",
           "screen_keep_screen_on": "Keep screen on",
+          "dashboard_start_path": "Start page path",
+          "dashboard_return_home_after": "Return to start page after (s)",
           "screensaver_enabled": "Enable screensaver",
           "screensaver_idle_timeout": "Screensaver idle timeout (s)",
           "screensaver_mode": "Screensaver mode",
@@ -184,6 +186,9 @@
       "screensaver_idle_timeout": {
         "name": "Screensaver idle timeout"
       },
+      "return_home_after": {
+        "name": "Return to start page after"
+      },
       "chime_volume": {
         "name": "Chime volume"
       }
@@ -215,6 +220,9 @@
       },
       "capture_screenshot": {
         "name": "Capture screenshot"
+      },
+      "go_home": {
+        "name": "Go to start page"
       }
     },
     "sensor": {
@@ -263,6 +271,9 @@
     "text": {
       "clock_background": {
         "name": "Clock background image"
+      },
+      "start_path": {
+        "name": "Start page path"
       }
     }
   },

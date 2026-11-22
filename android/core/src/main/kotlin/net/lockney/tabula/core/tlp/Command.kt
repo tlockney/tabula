@@ -27,6 +27,7 @@ object Commands {
     const val MEDIA_CONTROL = "media_control"
     const val SCREENSAVER = "screensaver"
     const val NAVIGATE = "navigate"
+    const val GO_HOME = "go_home"
     const val RELOAD = "reload"
     const val RESTART_APP = "restart_app"
     const val CLEAR_CACHE = "clear_cache"
@@ -35,7 +36,7 @@ object Commands {
 
     val all: Set<String> = setOf(
         SET_SETTINGS, SCREEN, NOTIFY, PLAY_MEDIA, MEDIA_CONTROL, SCREENSAVER,
-        NAVIGATE, RELOAD, RESTART_APP, CLEAR_CACHE, LOG_SUBSCRIPTION, SCREENSHOT,
+        NAVIGATE, GO_HOME, RELOAD, RESTART_APP, CLEAR_CACHE, LOG_SUBSCRIPTION, SCREENSHOT,
     )
 }
 
