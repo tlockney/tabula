@@ -36,6 +36,7 @@ check: lint frames test android site ## Everything CI checks
 
 .PHONY: lint
 lint: ## Lint, format check and repo policy checks
+	git ls-files -z '*.sh' | xargs -0 $(UV) run shellcheck -x --source-path=SCRIPTDIR
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
 	$(UV) run python tools/check_repo.py
