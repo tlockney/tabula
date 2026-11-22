@@ -85,6 +85,21 @@ class TabulaService : Service() {
     private val voiceEvents = Channel<(Int) -> net.lockney.tabula.core.tlp.EventFrame>(2)
     @Volatile private var wakeWordListening = false
     @Volatile private var lastWakeWord: String? = null
+
+    /**
+     * Half-duplex (ADR 0029 item 3, ADR 0030 item 7): the gate closes the
+     * microphone while the tablet plays and reopens it - detector reset - when
+     * the sound stops.
+     */
+    private var voiceGate: net.lockney.tabula.core.voice.WakeWordGate? = null
+
+    /** The media channel's own state, from its deltas. */
+    @Volatile private var mediaPlaying = false
+
+    /** Until when a chime is still sounding, in [System.currentTimeMillis] terms. */
+    @Volatile private var chimeUntil = 0L
+    private var chimeJob: kotlinx.coroutines.Job? = null
+
     /** Set while a TLP session exists, so a detection reaches HA at once. */
     @Volatile private var publishState: ((net.lockney.tabula.core.tlp.StateDelta) -> Unit)? = null
     private var stopPageListener: (() -> Unit)? = null
@@ -199,7 +214,7 @@ class TabulaService : Service() {
         notifications = NotificationsManager(
             controller = net.lockney.tabula.core.notifications.NotificationCards(),
             show = { cards -> TabulaStatus.notifications.value = cards },
-            chime = chime::play,
+            chime = ::playChime,
             scope = scope,
         )
         notifications.applySettings(store.settings)
@@ -256,20 +271,65 @@ class TabulaService : Service() {
             log = { Log.i(TAG, it) },
         )
         voice = monitor
-        if (store.settings.voice.wakeWordEnabled) monitor.start()
+        val gate = net.lockney.tabula.core.voice.WakeWordGate(
+            object : net.lockney.tabula.core.voice.WakeWordGate.Listener {
+                override fun startListening(): Boolean = monitor.start()
+
+                override fun stopListening() {
+                    monitor.pause()
+                }
+            },
+        )
+        voiceGate = gate
+        gate.update(
+            enabled = store.settings.voice.wakeWordEnabled,
+            permitted = monitor.permitted(),
+            playing = playingNow(),
+        )
         // a grant arrives after the settings push that asked for it, so the
-        // monitor starts from the activity's answer rather than the next push
+        // gate hears the activity's answer rather than waiting for the next push
         scope.launch {
-            TabulaStatus.wakeWordPermission.collect { granted ->
-                if (granted && store.settings.voice.wakeWordEnabled) monitor.start()
-            }
+            TabulaStatus.wakeWordPermission.collect { granted -> gate.onPermission(granted) }
         }
     }
 
-    /** The settings push's voice part: enable starts, disable stops (ADR 0030). */
+    /**
+     * The settings push's voice part: the gate applies the setting, and re-reads
+     * the grant because Fire OS can withdraw it at boot (F-KSK-21).
+     */
     private fun applyVoiceSettings(settings: net.lockney.tabula.core.settings.Settings) {
-        val monitor = voice ?: return
-        if (settings.voice.wakeWordEnabled) monitor.start() else monitor.stop()
+        val gate = voiceGate ?: return
+        voice?.let { gate.onPermission(it.permitted()) }
+        gate.onSetting(settings.voice.wakeWordEnabled)
+    }
+
+    /** True while the tablet is making a sound its own microphone would hear. */
+    private fun playingNow(): Boolean =
+        mediaPlaying || System.currentTimeMillis() < chimeUntil
+
+    /** Re-applies the playback input after the media state or a chime moved. */
+    private fun updatePlaying() {
+        voiceGate?.onPlaying(playingNow())
+    }
+
+    /**
+     * The notification chime: plays the beep and keeps detection closed for
+     * [net.lockney.tabula.core.Constants.WAKE_WORD_CHIME_GUARD_MS]. The tone has
+     * no completion callback, and half-duplex needs to know when the speaker
+     * stops (ADR 0029 item 3).
+     */
+    private fun playChime() {
+        chime.play()
+        chimeUntil = System.currentTimeMillis() +
+            net.lockney.tabula.core.Constants.WAKE_WORD_CHIME_GUARD_MS
+        updatePlaying()
+        chimeJob?.cancel()
+        chimeJob = scope.launch {
+            kotlinx.coroutines.delay(
+                net.lockney.tabula.core.Constants.WAKE_WORD_CHIME_GUARD_MS,
+            )
+            updatePlaying()
+        }
     }
 
     /**
@@ -440,7 +500,17 @@ class TabulaService : Service() {
             publishState = state::publish
             screen.listener = state::publish
             screensaver.listener = state::publish
-            audio.listener = state::publish
+            // the media state is also the half-duplex input (ADR 0030 item 7)
+            audio.listener = { delta ->
+                delta.mediaState?.let { media ->
+                    mediaPlaying = media == net.lockney.tabula.core.tlp.MediaState.PLAYING
+                    updatePlaying()
+                }
+                state.publish(delta)
+            }
+            mediaPlaying =
+                audio.current().mediaState == net.lockney.tabula.core.tlp.MediaState.PLAYING
+            updatePlaying()
             illuminanceListener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
@@ -564,9 +634,12 @@ class TabulaService : Service() {
         )
         return net.lockney.tabula.ha.mergeState(screenAndSaver, audio.current())
             .copy(
-                // both keys exist only while the detector is part of the app:
-                // the setting on and the permission granted (ADR 0030 item 5)
-                wakeWordActive = if (voice != null) wakeWordListening else null,
+                // The APK always ships the detector, so this key always exists:
+                // `wakeWordActive` carries the truth (microphone open and
+                // features being computed), and null never goes on the wire
+                // while the capability that covers it is declared (ADR 0030
+                // items 3 and 7, PROTOCOL 4.4)
+                wakeWordActive = wakeWordListening,
                 lastWakeWord = lastWakeWord,
             )
     }
@@ -594,10 +667,14 @@ class TabulaService : Service() {
         add("notifications")
         add("audio")
         add("screenshot")
-        // declared only while listening: the setting is on and RECORD_AUDIO is
-        // held, so HA shows the wake-word entities for a tablet that has them
-        // and no switch on the ones that do not (ADR 0030 item 2)
-        if (voice?.running == true) add("wake_word")
+        // Declared unconditionally: every build ships the detector, and the
+        // capability list is read once per session, so a value that tracked the
+        // switch would only reach HA on the next register - and turning the
+        // switch off would make the integration delete the entities rather than
+        // leave them unavailable. `wake_word_active` says whether the
+        // microphone is actually open, which also covers a withdrawn grant
+        // (ADR 0030 items 3 and 5, F-KSK-21)
+        add("wake_word")
     }
 
     private fun versionName(): String =
