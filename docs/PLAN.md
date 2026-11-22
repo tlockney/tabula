@@ -160,7 +160,7 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
   | Device | Count | Status |
   | --- | --- | --- |
   | Amazon Fire HD 10 Plus (11th gen, Fire OS 7 / Android 9, API 28), 1920×1200 | 2 | First target. "Office Kiosk" is built and accepted first (Phase 2); the second unit is provisioned from DEVICE.md alone |
-  | Amazon Echo Show 8 (2nd gen), 1280×800 expected (to be confirmed by P0.6) | 2 | In v1, gated on the P0.6 feasibility check; boot start checked early in P2.1; brought up in P2.7 after the Fire tablets pass P2.6 |
+  | Amazon Echo Show 8 (2nd gen), 1280×800 expected (to be confirmed on the device by P2.7) | 2 | In v1 as an owner-unlocked device running community LineageOS 18.1 (Android 11, ADR 0026); brought up in P2.7 after the Fire tablets pass P2.6 |
 
   All units are managed over ADB from the Mac.
 - **Later targets:** PF1007L photo frames (low-spec Android). They need a WebView of Chromium 67 or later (ADR 0001); check one before committing to them.
@@ -171,10 +171,11 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
   - Amazon WebView has no WebRTC.
   - Provisioning is done over ADB (`pm grant`, `appops set`, deviceidle whitelist, `dpm set-active-admin`). `DEVICE.md` documents it from Phase 2.
   - Silent APK install needs Shizuku or device owner.
-- **Echo Show 8 constraints (unverified until P0.6):**
-  - Expected: no app store for third-party apps, so Tabula must be sideloaded over ADB. Whether ADB can be enabled without exploits is the open question.
-  - The Alexa home screen owns the device. Whether a sideloaded app stays in the foreground is checked in P0.6; whether it can start on boot is checked in P2.1, the first packet with an app that has a boot receiver.
-  - Exploits, rooting, bootloader unlocking and firmware downgrades are out of bounds. If the device needs any of them, it moves to Deferred.
+- **No-exploit rule:** for every device, agents never use exploits, rooting, bootloader unlocking or firmware downgrades. One explicit, owner-approved exception: the Echo Show 8 (2nd gen) unlock and flash is performed by the owner himself, by hand, from the public community guide (ADR 0026). If any other device needs an exploit, it moves to Deferred.
+- **Echo Show 8 constraints (ADR 0026):**
+  - The device never runs Tabula on stock firmware. The owner unlocks the bootloader and flashes the community LineageOS 18.1 (Android 11) image himself, by hand, from the public community guide, before any Tabula work. Tabula work starts on the flashed device, from provisioning onward, over ADB.
+  - The device is a LineageOS 18.1 (Android 11, API 30) target, not a Fire OS one; the Fire OS constraints above do not apply to it. Its own properties are measured by the P2.7 probe: WebView version (against the Chromium 67 floor), SELinux mode (the community image ships it permissive), available sensors, screen geometry.
+  - Accepted risks (ADR 0026): the unlock is one-way (no documented way back to a locked boot chain), Amazon OTAs stop (updates come only from the community image's release channel), and permissive SELinux makes the device less trusted hardware — nothing sensitive beyond the paired HA credential lives on it.
 - **HA:** one local instance, a handful of devices. The minimum HA version and the supported frontend browser floor are set in the platform spike (P0.3).
 - **Network:** HA may be served over plain http on the LAN. Section 5.2 covers what that means for credentials.
 
@@ -188,12 +189,12 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 | Immich screensaver source | Dropped (possible future plugin) |
 | Device front camera as a presence sensor | Phase 10, gated on the P10.1 spike; processing stays on the device |
 | Camera views, streams, snapshots, camera gestures | Deferred: design hooks only |
-| Echo Show 8 (2nd gen) target | In v1, gated on P0.6 (feasibility) and brought up in P2.7 |
+| Echo Show 8 (2nd gen) target | In v1 as an owner-unlocked LineageOS 18.1 (Android 11) device (ADR 0026); brought up in P2.7 |
 | Other Echo Show models, Portal, Raspberry Pi targets | Dropped for v1 |
 | Bluetooth proxy | Deferred indefinitely (no free path without ESPHome) |
 | Plugin ecosystem | Deferred: keep the `window.tabula` JS bridge + action registry as the seam |
-| Voice satellite | Parked until Phase 6 lands; then gated on a Fire OS mic spike |
-| Intercom | Kept as future (Phase 9), designed but not scheduled |
+| Voice satellite | Phase 7: native `assist_satellite` entity (ADR 0024), gated per device type on the P7.0 spike |
+| Intercom | First-priority feature (Phase 9, with the voice work it needs, scheduled ahead of Phase 6): two-way calls with per-device auto-answer and live broadcast over native WebRTC (ADR 0025), gated per device on the P9.0 spike |
 
 In scope across phases:
 
@@ -567,9 +568,9 @@ Each phase gets a packet breakdown by the architect (`docs/packets/P{n}-*.md`) b
   - Alarms via AlarmManager (they work with HA down), with ringing UI, snooze, sunrise ramp and events.
   - Timers in v1 mirror HA timer entities onto the device. Assist voice timers come with Phase 7 through `assist_satellite`.
   - Read-only calendar views and a calendar screensaver.
-- **Phase 7 — Voice (gated).** P7.0 is a mic-persistence spike on each Fire OS device type in use (the Fire tablet, and the Echo Show if it is in v1 and runs Fire OS). For each device type that passes, implement an `assist_satellite` entity in the integration and stream audio through the Assist pipeline API (per the ADR-0001 notes): wake word on device, overlay, chimes, cross-device arbitration of our own design. Device types that fail get no voice; voice may then target other hardware only.
+- **Phase 7 — Voice (gated).** Approach in ADR 0024: an `assist_satellite` entity in the `tabula` integration, PCM as HA binary frames on the device's existing connection, wake word on the device (server-side detection as a per-device fallback), replies through the existing media path. P7.0 (`docs/packets/P7.0-voice-device-spike.md`) measures mic persistence, background capture, echo cancellation and wake-word cost on every v1 device type, and does not wait for Phase 6. For each device type that passes, the architect writes packets for: the protocol and mock-device voice capability, the satellite entity and pipeline forwarding, the Android capture and wake-word service, the voice overlay and chimes, announce (and start-conversation where HA has it), voice timers (depends on Phase 6 timers) and cross-device arbitration of our own design. Device types that fail get no voice.
 - **Phase 8 — Media (gated).** Following other HA media players, a DLNA renderer, a now-playing overlay, Music Assistant. EQ, echo cancellation and AirPlay only if voice lands.
-- **Phase 9 — Intercom (future).** HA as the directory. Direct device-to-device PCM audio with our own framing. Signaling over TLP.
+- **Phase 9 — Intercom (first priority).** Approach in ADR 0025: two-way calls with per-device auto-answer (off by default, limited to chosen callers), one-way live broadcast with reply, audio directly between devices over a native WebRTC library, HA as directory and signaling path over TLP. Started from HA (`tabula.intercom_call` with a device or area target, for dashboard and Zigbee buttons through automations) or from the device's intercom screen; events for answered and missed calls. Devices without a working mic are listen-only. Numbered 9 but scheduled ahead of Phase 6: P9.0 (`docs/packets/P9.0-intercom-webrtc-spike.md`) runs alongside P7.0 once the Phase 2 milestone is met, and its packets (protocol and mock-device capability, signaling relay and services, Android call engine, intercom screen and ringing UI, auto-answer settings) follow it. Voice-started calls ("call the kitchen", "call Thomas") are part of the first release: an intercom intent packet on top of the Phase 7 satellite entity, audio transport and on-device wake word, which move up with Phase 9.
 - **Phase 10 — Presence.** A presence rule fed by several sources: an HA occupancy/motion entity (F-SSV-24) and the tablet's front camera. Numbered last but not sequenced after Phase 9: it depends only on Phase 3 work (P3.5, night power-off from P3.4) and runs in parallel with Phases 4 onward. Packets and constraints in 7.6.
 
 Hooks to preserve, not build:
@@ -642,14 +643,15 @@ Device constraints, which P10.1 measures and its ADR settles:
 | Credential sniffed on a plain-http LAN | Documented; HTTPS recommended in DEVICE.md |
 | Pairing/credential design doesn't work as assumed | P0.3 spike before any Phase 1 code; documented fallback (manual non-admin user + LLAT) |
 | Fire OS WebView too old for the HA frontend | Checked in P0.3 before Phase 1; PF1007L frames not committed to until checked |
-| Echo Show 8 cannot run a sideloaded app without exploits | P0.6 decides before any Echo Show code; no exploits allowed; on no-go the Echo Show moves to Deferred and the Fire tablets carry the milestone |
-| Echo Show 8 blocks start on boot | Checked in P2.1 on one Echo Show, before the rest of Phase 2; if blocked, the architect decides in an ADR whether a manual start is acceptable or the Echo Show moves to Deferred |
+| Echo Show 8 cannot run a sideloaded app without exploits | Decided (ADR 0026): the owner unlocks and flashes the device himself; Tabula work runs over ADB on the flashed LineageOS 18.1 device only. Residual risks — one-way unlock, no Amazon OTAs, permissive SELinux — accepted and verified at P2.7's probe |
+| Echo Show 8 blocks start on boot | Checked in P2.1 on one owner-flashed Echo Show, before the rest of Phase 2; if blocked, the architect decides in an ADR whether a manual start is acceptable or the Echo Show moves to Deferred |
 | App and integration versions drift | Version negotiation at registration, N-1 support, repair issue on mismatch |
 | Single WS per device; HA restarts | Jittered re-dial; offline-first behavior is a Phase 2 acceptance test (P2.6) |
 | Frontend internals change (external auth, background disconnect, entity filter) | Use only the documented external-auth interface; measure before shimming; entity filter is conditional |
 | Recovery page used to re-point a tablet | Off by default, no default PIN, auto-off timeout, lockout; Phase 4 |
-| Voice on Fire OS (mic revocation) | Gated spike; voice may be non-Fire only |
+| Voice on Fire OS (mic revocation) | P7.0 spike per device type; voice may be non-Fire only (ADR 0024) |
 | Silent updates on Fire OS | Shizuku in Phase 4; otherwise a manual tap |
+| Intercom feedback or echo on tablet speakers | Native WebRTC echo cancellation; P9.0 measures it per device type, including two devices in one room |
 | Weather animation on API 28 | Canvas path first; AGSL optional |
 | Front camera unusable or too costly on Fire OS | P10.1 spike measures access, CPU, battery and heat before any presence code; on no-go only the HA presence source ships |
 | Camera presence read as surveillance | Off by default; frames never leave memory; HA shows when the camera runs; enabling needs a person at the device or ADB |

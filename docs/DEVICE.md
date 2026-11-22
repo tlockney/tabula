@@ -6,8 +6,9 @@ installed, and how to recover one. Written by P2.1; later packets extend it
 (Shizuku and the recovery page arrive in Phase 4, plan sections 5.9 and 7.4).
 
 Everything here is scripted so a hardware check is one paste of output
-(AGENTS.md, "Work packets"). No step roots, unlocks a bootloader or needs
-anything the tablet's own settings do not allow.
+(AGENTS.md, "Work packets"). No scripted step roots or unlocks a bootloader:
+the one bootloader unlock in the fleet is the owner-performed, by-hand Echo
+Show 8 (2nd gen) flash (ADR 0026), done before Tabula work begins.
 
 ## Prerequisites (the Mac, or any machine with ADB)
 
@@ -235,11 +236,15 @@ checks:
 
 ### Echo Show 8 (2nd gen)
 
-P0.6 gave a provisional no-go (ADR 0007): no settings-only path to ADB is
-known, and every working path is an exploit plus bootloader unlock, which the
-plan rules out. The P2.1 boot-start observation on an Echo Show is therefore
-skipped; if the ADR's device check ever overturns the no-go, P2.7 owns the
-bring-up.
+The owner unlocks the bootloader and flashes the community LineageOS 18.1
+(Android 11) image himself, by hand, from the public community guide, before
+any Tabula work (ADR 0026) — that step is his alone; nothing here or in
+`tools/device/` unlocks, roots or flashes anything. Once the device boots
+LineageOS, Tabula's part begins: the read-only device probe (P2.7 step 1 —
+WebView version, SELinux mode, screen, sensors), then provisioning and
+recovery exactly as above, over ADB. The image ships SELinux permissive, so
+treat the device as less trusted hardware: nothing sensitive beyond the
+paired HA credential lives on it.
 
 ## Hardware check (P2.5, notifications and audio)
 
@@ -407,6 +412,43 @@ blur copies and normal jitter, ADR 0016).
 The URL source needs no photos: point `screensaver.photos.image_url` at any
 image URL and the slideshow fetches it fresh for every slide.
 
+## Hardware check (P3.3, clock faces and background)
+
+Install a P3.3 build, provision and pair, and configure the clock settings
+on the tablet's HA entry (they apply while the clock shows, F-SSV-09):
+
+- screensaver mode `clock`
+- clock face `digital`, font family `serif`, font weight `700`
+- seconds on, date line on
+- background source empty, darkening at the default 40 %
+
+Generate the test photos as for P3.8 (the check serves two of them as the
+background over plain HTTP), then leave Tabula in front with the panel on
+and run:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver \
+TABULA_BACKGROUND=text.<tablet>_clock_background \
+ANDROID_SERIAL=<serial> tools/device/check_p33.sh
+```
+
+The script serves the background from this machine (set `TABULA_HOST_IP`
+when the tablet reaches the Mac on another interface than en0), starts the
+clock from HA, and walks the faces and the background rules: the digital
+face with the changed font, seconds and date line; the analog face (the
+verifier switches it in HA — the save is the settings write, and the face
+changes while the screensaver stays up); the digital face over a URL
+background with the darkening layer visible; a broken URL keeping the
+previous image; and the same URL written again reloading it with new bytes
+behind the same address (F-SSV-09: the revision change is the signal). The
+app's `TabulaClock` logcat lines are the load, show and failure evidence.
+The centre-tap dismissal closes the check.
+
+The background's other source is a local file path: push any image the app
+can read (its own storage, ADR 0016) and set it as the background source to
+check that route by hand.
+
 ## Hardware check (P3.13, screenshots)
 
 Install a P3.13 build (or later), provision and pair, leave Tabula in
@@ -543,6 +585,40 @@ verifier's eye) at the screensaver brightness; **black never shifts**
 holds `dim_brightness` (a different system level from the clock's, nothing
 drawn over the dashboard, no fade flash) and every dismissal returns the
 previous level. Paste the whole output into the packet Result.
+
+## Hardware check (P3.12, screensaver schedule)
+
+Install a P3.12 build (or later), provision and pair, and leave the tablet
+in front with the panel on and untouched for the whole run (a touch
+dismisses the screensaver). The script sets the schedule itself — two slots
+a few minutes ahead on the tablet's own clock, a black one then a clock
+one — through HA's options-flow API, so `TABULA_HA_TOKEN` must belong to an
+admin user (the options flow needs config-entry edit rights). No settings
+need configuring beforehand; the clock slot carries its own fixed brightness
+so the live edit is visible on the panel.
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<admin token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver TABULA_DEVICE=<device id> \
+ANDROID_SERIAL=<serial> tools/device/check_p312.sh
+```
+
+`TABULA_DEVICE` is the tablet's HA device id (the id in the URL of its
+Settings > Devices page); the slot offsets are `TABULA_BLACK_AHEAD`
+(default 2 minutes) and `TABULA_CLOCK_AHEAD` (default 5). The script
+starts the screensaver in clock mode from HA, then checks: the first
+crossing **restarts it into black** — the captured `tabula_screensaver`
+events show `stopped clock` + `started black`, both with trigger
+`schedule`, the switch stays on, the panel holds the lowest backlight and
+the verifier sees black; the second crossing **restarts the clock** the
+same way, with exactly the four schedule-triggered events in order
+(clock → black → clock) and the clock slot's fixed brightness on the
+panel; then it **edits the running slot's brightness** through the options
+flow — the run keeps going (no new events, the switch stays on) and the
+panel's level moves at once; dismissal restores the previous level, and
+the script turns the schedule switch off again (the slots would otherwise
+repeat daily at those times). `ha_events.py` captures the events; paste
+the whole output into the packet Result.
 
 ## Hardware check (P2.2)
 

@@ -70,12 +70,8 @@ wait_for() { # wait_for <description> <timeout s> <command...>
     done
     echo "-- $what after ${waited}s"
 }
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 device_id() {
     adb shell run-as "$pkg" cat shared_prefs/tabula_device.xml 2>/dev/null \
         | sed -n 's/.*name="device_id">\([0-9a-f-]\{36\}\)<.*/\1/p' | head -1
@@ -121,10 +117,10 @@ ha_stopped() { ! ha_answers; }
 # wait_for re-runs its command each second, but command substitution in its
 # arguments would expand once at call time; these re-read the state per call
 sensor_is() { # sensor_is <entity> <expected>
-    [[ "x$(ha_state "$1")" == "x$2" ]]
+    [[ "$(ha_state "$1")" == "$2" ]]
 }
 sensor_moved_past() { # sensor_moved_past <entity> <old value>
-    [[ "x$(ha_state "$1")" != "x$2" ]]
+    [[ "$(ha_state "$1")" != "$2" ]]
 }
 
 step "1. baseline: the tablet is paired and the entities are live"
