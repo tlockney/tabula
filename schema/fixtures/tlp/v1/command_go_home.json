@@ -1,0 +1,9 @@
+{
+  "id": 2,
+  "type": "event",
+  "event": {
+    "command_id": "c-0012-home",
+    "command": "go_home",
+    "args": {}
+  }
+}

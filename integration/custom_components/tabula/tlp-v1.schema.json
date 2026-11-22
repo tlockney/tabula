@@ -23,6 +23,7 @@
     "command_media_control",
     "command_screensaver",
     "command_navigate",
+    "command_go_home",
     "command_reload",
     "command_restart_app",
     "command_clear_cache",
@@ -58,6 +59,7 @@
         "audio",
         "battery",
         "navigation",
+        "go_home",
         "logs",
         "screenshot",
         "illuminance"
@@ -1315,6 +1317,48 @@
       ],
       "additionalProperties": false,
       "description": "Load an HA frontend path in the dashboard WebView."
+    },
+    "command_go_home": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "#/$defs/command_id"
+            },
+            "command": {
+              "const": "go_home"
+            },
+            "args": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "command_id",
+            "command",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "Load the start target (dashboard.start_path; HA's default page when none is set)."
     },
     "command_reload": {
       "type": "object",

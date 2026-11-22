@@ -43,6 +43,7 @@ COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
     "media_control": frozenset({"audio"}),
     "screensaver": frozenset({"screensaver"}),
     "navigate": frozenset({"navigation"}),
+    "go_home": frozenset({"go_home"}),
     "reload": frozenset(),
     "restart_app": frozenset(),
     "clear_cache": frozenset(),

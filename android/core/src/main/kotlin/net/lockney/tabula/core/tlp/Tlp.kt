@@ -23,7 +23,8 @@ object Tlp {
         "register", "subscribe", "state_delta", "command_result", "event", "log", "ping", "pong",
         "register_result", "ack", "error_result",
         "command_set_settings", "command_screen", "command_notify", "command_play_media",
-        "command_media_control", "command_screensaver", "command_navigate", "command_reload",
+        "command_media_control", "command_screensaver", "command_navigate", "command_go_home",
+        "command_reload",
         "command_restart_app", "command_clear_cache", "command_log_subscription", "command_screenshot",
         "http_pair_request", "http_pair_response", "http_claim_request", "http_claim_pending",
         "http_claim_response", "http_error", "http_screenshot_response",
@@ -49,6 +50,7 @@ object Tlp {
         "command_media_control" -> commandFrame(text, Commands.MEDIA_CONTROL) { it.mediaControlArgs(strict) }
         "command_screensaver" -> commandFrame(text, Commands.SCREENSAVER) { it.screensaverArgs(strict) }
         "command_navigate" -> commandFrame(text, Commands.NAVIGATE) { it.navigateArgs(strict) }
+        "command_go_home" -> commandFrame(text, Commands.GO_HOME) { it.emptyArgs(strict) }
         "command_reload" -> commandFrame(text, Commands.RELOAD) { it.emptyArgs(strict) }
         "command_restart_app" -> commandFrame(text, Commands.RESTART_APP) { it.emptyArgs(strict) }
         "command_clear_cache" -> commandFrame(text, Commands.CLEAR_CACHE) { it.emptyArgs(strict) }

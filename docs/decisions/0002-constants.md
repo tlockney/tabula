@@ -105,6 +105,12 @@ Manual brightness from HA (the light entity, the `screen` command) is applied at
 | --- | --- | --- |
 | `SCREENSAVER_EVENT_BUFFER` | 16 events | Screensaver start and stop events wait here for the TLP session; the oldest are dropped past this. A connected session drains it at once, and one that registers drops what came before, so the bound only caps memory while HA is down. |
 
+### Screensaver engine polish (P3.14)
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `SCREENSAVER_FADE_MS` | 800 ms | The screensaver overlay's fade in on start and out on dismissal (F-SSV-23, P3.14). 800 ms is the pace this panel already uses for a gentle change — `ADAPTIVE_FADE` for backlight changes and `GALLERY_TRANSITION_MS` for slide changes — so the fade reads as deliberate, and it is short enough that a dismissed screen never feels sluggish. The amplitude and interval it shares with pixel shift are settings, not constants (the schema-v2 table below). |
+
 ### Notifications and media (P2.5)
 
 | Constant | Value | Reasoning |
@@ -134,6 +140,13 @@ Photo-slideshow constants (F-SSV-12, packet P3.8). Same rules: chosen here only.
 ### Settings schema v2 (P3.1)
 
 Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as above: bounds and defaults live here only. Every value is a round number chosen from the feature's own text (docs/FEATURES.md) and the Office Kiosk's panel (plan 3). All keys are `shared` role. `media_browser` is in the photos source enum from day one so P3.9 adds no schema bump.
+
+**Dashboard start target and idle return (`dashboard`, F-DSH-02/F-DSH-15, P3.15).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| start_path | 0–2048 chars, empty or `^/(?![/\\])[^\s?]*$` (single leading slash, optional fragment, no query), default "" (HA's default page) | The same shape `navigate` already carries (its 2048-char URL bound, ADR 0002), minus the query string: a start target with a query would break the launch load, which appends the external-auth parameter. Empty is the neutral default: existing tablets keep opening HA's default page, and "go home" without a target is still meaningful (back to the default). The fragment stays because F-DSH-02 lands on it (a pop-up a view opens by fragment). |
+| return_home_after | 0–86400 s, default 0 (never) | 0 is "never", not "instantly": F-DSH-15 calls the return optional, and the default must keep existing tablets' behavior unchanged. A day is the longest sensible idle wait (matches `screensaver.idle_timeout`'s ceiling); the tablet that truly never resets sets 0. |
 
 **Clock mode (`screensaver.clock`, F-SSV-08/F-SSV-09).** Nothing is bundled: font family and weight name system fonts only.
 
@@ -193,7 +206,7 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | brightness_enabled | default true | The switch over the separate screensaver level (F-SSV-17, an HA switch since P3.2). On by default because Phases 1–2 always applied `screensaver.brightness`; a v1 document upgrades without a behavior change. |
 | dim_brightness | 0–100 %, default 10 | Dim mode's own level (F-SSV-07), replacing its borrow of `screensaver.brightness` (ADR 0013 item 4). 10 % keeps a dashboard outline visible in a dim room. |
 | pixel_shift.enabled / interval / amplitude | default false / 10–86400 s, default 300 / 1–64 px, default 4 | Image-retention shift (F-SSV-22). Five minutes moves content often enough to prevent burn-in and rarely enough to be invisible; 4 px is under what an across-the-room viewer resolves. |
-| fade.enabled | default false | In/out fade (F-SSV-23) as an option; its duration is P3.14's to add with its own reasoning if it needs one. |
+| fade.enabled | default false | In/out fade (F-SSV-23) as an option; its duration is `SCREENSAVER_FADE_MS` (the "Screensaver engine polish" table above, added by P3.14). |
 
 **At a Glance (`at_a_glance`, F-AAG-01/F-AAG-02).**
 
