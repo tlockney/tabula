@@ -335,7 +335,13 @@ async def test_check_p21_dry_run(ha, stub_adb):
 # Audio checks make the tablet listen and speak in the room it lives in, so they
 # run only in a session the owner scheduled. The guard is the first executable
 # line of the script and needs no device to fire.
-AUDIO_SCRIPTS = [DEVICE / "check_p70.sh", DEVICE / "check_p25.sh"]
+AUDIO_SCRIPTS = [
+    DEVICE / "check_p70.sh",
+    DEVICE / "check_p25.sh",
+    DEVICE / "check_p90.sh",
+    DEVICE / "check_p90_owner.sh",
+    DEVICE / "check_p90_cost.sh",
+]
 
 
 @pytest.mark.parametrize("script", AUDIO_SCRIPTS, ids=lambda p: p.name)

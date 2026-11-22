@@ -288,6 +288,15 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 | Chime volume | 100 % of the media volume | The chime plays on the media stream (ADR 0027), so at 100 it is as loud as TTS and media; a household that wants quieter chimes lowers it. It can only scale the media level down: raising the chime above it would mean moving the stream volume behind the user's back, which the no-hidden-volume-jumps rule (announce volume boost) rules out. Replaces the P2.5 `CHIME_VOLUME` constant. |
 | Announce volume boost | none | `announce` plays at the current volume; no hidden volume jumps. |
 
+### Intercom (P9.0)
+
+Chosen in ADR 0028 from the measurements in that ADR and the packet's Result.
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `INTERCOM_RING_LIMIT_S` | 45 s | Long enough to cross a house and answer hands-free, which is why intercom exists; short enough that a call into an empty room ends within a minute. A phone rings about 30 s; 45 s adds one walk-over. |
+| `INTERCOM_CONNECT_TIMEOUT_S` | 10 s | ICE on the LAN took 0.3–0.6 s in the spike, so 10 s is an order of magnitude of margin. Past it a caller is told the call could not connect instead of waiting on one that never starts. Same value as `COMMAND_TIMEOUT`, because both mean "the device did not answer". |
+
 ### Settings bounds in the settings schema
 
 These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen here, so P2.0's generated Kotlin can use `Int` everywhere:

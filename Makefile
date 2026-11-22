@@ -91,6 +91,10 @@ android-test: ## Android unit tests via the Gradle wrapper (skipped without a JD
 android-apk: ## Build the debug APK for device provisioning (skipped without a JDK)
 	@tools/android_build.sh
 
+.PHONY: android-spike-apk
+android-spike-apk: ## Build P9.0's debug-only intercom spike APK (its own applicationId)
+	@tools/android_build.sh spike-intercom
+
 .PHONY: voice-spike-apk
 voice-spike-apk: ## Build the P7.0 voice spike debug APK (separate applicationId, debug only)
 	@tools/android_build.sh spike-voice

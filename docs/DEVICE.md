@@ -762,6 +762,69 @@ removed, so leftovers only appear if the hub entry was deleted with the
 integration files also removed. Reinstall the integration and its entry to
 run the sweep, or remove the users with HA's `auth` tooling on the host.
 
+## Hardware check (P9.0, intercom spike)
+
+P9.0's spike is a **second application**, `net.lockney.tabula.spike.intercom`,
+with its own applicationId and no release variant (ADR 0028). Installing it
+never replaces, uninstalls or unpairs `net.lockney.tabula`, and nothing in these
+checks clears or uninstalls the production app. It needs two tablets, because a
+call needs two ends.
+
+Build the spike APK (arm64-v8a is the Fire HD 10 Plus's ABI; ABI splits put one
+per ABI in the same directory):
+
+```sh
+make android-spike-apk
+```
+
+The checks take the tablets from the environment, since one end is attached to
+this machine and the other to another host over ssh. The defaults
+are the fleet's serials; override them when running elsewhere:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `TABULA_INTERCOM_A_SERIAL` | `G001NW0623720AWP` | the Office Kiosk, on local adb |
+| `TABULA_INTERCOM_B_SERIAL` | `G001NW0631460BXX` | the Desk Kiosk, reached over ssh |
+| `TABULA_INTERCOM_B_HOST` | `m4mini` | the host that tablet is attached to |
+| `TABULA_HOST_IP` | `ipconfig getifaddr en0` | the Mac address the tablets reach |
+| `TABULA_INTERCOM_PORT` | `8099` | the throwaway signaling relay's port |
+
+The automated run places calls by itself (it starts the spike's foreground
+service over ADB, so no app has to be in front) and prints the evidence for the
+packet's questions 1, 2, 4, 5 and 6 plus the automated half of 3 and 7. These
+three checks make a tablet listen and speak in the room it lives in, so all of
+them refuse to run (exit 2) unless `TABULA_AUDIO_OK=1` is set; only set it for a
+run the owner has scheduled (ADR 0028).
+
+```sh
+TABULA_AUDIO_OK=1 TABULA_HOST_IP=192.168.1.126 tools/device/check_p90.sh
+```
+
+The 10-minute cost run needs a pty so Ctrl-C reaches it, and places its own
+call:
+
+```sh
+TABULA_AUDIO_OK=1 script -q /dev/null tools/device/check_p90_cost.sh
+```
+
+`check_p90_cost.sh` prints each process's CPU as a share of **one core**
+(`dumpsys cpuinfo`'s unit) beside the device's `TOTAL` line, the audio HAL's
+share, the app's PSS and the battery temperature. Fire OS 7 exposes no readable
+`thermal_zone*/temp` on this device, so battery temperature is the heat measure.
+
+The judgments that need a person — speech at 1 m and 3 m, both tablets in one
+room, and the clap — are `check_p90_owner.sh`, run from an interactive shell:
+
+```sh
+TABULA_AUDIO_OK=1 TABULA_HOST_IP=192.168.1.126 tools/device/check_p90_owner.sh
+```
+
+It places a 6-minute call and asks; the numbers of record stay the ones
+`check_p90.sh` prints (connection times, jitter, loss, the instrumented tone
+latency). Mouth-to-ear latency and hands-free quality are only ever this run's
+judgment, and stay "not measured, needs an owner-scheduled run" until it
+happens. Paste the whole output of each run into the packet Result.
+
 ## Known device behaviors
 
 - **Boot start needs one launch first.** Android's stopped state (above).

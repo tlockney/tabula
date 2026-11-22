@@ -32,3 +32,5 @@ include(":ha")
 // The P7.0 voice spike: a separate module with its own applicationId, built as
 // a debug APK only (never part of a release). See the P7.0 ADR.
 include(":spike-voice")
+// P9.0's debug-only intercom spike (its own applicationId; ADR 0028).
+include(":spike-intercom")
