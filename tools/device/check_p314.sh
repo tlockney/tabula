@@ -38,6 +38,9 @@ shift_interval="${TABULA_SHIFT_INTERVAL:-10}"
 step() { echo; echo "== $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
+
 ha_call() { # ha_call <domain> <service> <json body>
     curl -fsS -X POST \
         -H "Authorization: Bearer ${TABULA_HA_TOKEN}" -H "Content-Type: application/json" \
@@ -58,12 +61,6 @@ wait_for() { # wait_for <description> <timeout s> <command...>
         sleep 1; waited=$((waited + 1))
     done
     echo "-- $what after ${waited}s"
-}
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
 }
 tap_centre() { # only while the screensaver shows: the overlay takes the touch
     local size w h
