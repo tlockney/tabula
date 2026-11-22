@@ -74,6 +74,12 @@ SETTING_SWITCHES = (
         setting="schedule_enabled",  # F-SSV-18
     ),
     TabulaEntityDescription(
+        key="voice_wake_word_enabled",
+        translation_key="voice_wake_word_enabled",
+        entity_category=EntityCategory.CONFIG,
+        setting="voice_wake_word_enabled",  # ADR 0030: off by default
+    ),
+    TabulaEntityDescription(
         key="widgets_shown",
         translation_key="widgets_shown",
         entity_category=EntityCategory.CONFIG,

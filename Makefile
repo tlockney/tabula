@@ -103,6 +103,11 @@ voice-spike-apk: ## Build the P7.0 voice spike debug APK (separate applicationId
 check-p70: ## Run the P7.0 voice spike measurements against the attached tablet
 	@tools/device/check_p70.sh
 
+.PHONY: voice-desk
+voice-desk: ## Desk wake-word harness: Mac-made clips through the shipped model (needs macOS say + ffmpeg)
+	$(UV) run --with ai-edge-litert --with pymicro-features --with numpy \
+		python tools/desk/wake_word.py $(if $(JSON),--json,)
+
 .PHONY: codegen
 codegen: ## Regenerate the Kotlin settings classes from the schema
 	$(UV) run python tools/codegen.py

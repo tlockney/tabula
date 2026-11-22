@@ -63,6 +63,9 @@ enum class Capability {
     @SerialName("navigation") NAVIGATION,
     @SerialName("logs") LOGS,
     @SerialName("screenshot") SCREENSHOT,
+    // P7.1: declared only while voice.wake_word_enabled is on and RECORD_AUDIO
+    // is granted (ADR 0030 item 2).
+    @SerialName("wake_word") WAKE_WORD,
 }
 
 /** Tabula error codes (command_result.error.code, docs/PROTOCOL.md 6). */
@@ -144,6 +147,7 @@ enum class EventName {
     @SerialName("screensaver_stopped") SCREENSAVER_STOPPED,
     @SerialName("media_finished") MEDIA_FINISHED,
     @SerialName("page_changed") PAGE_CHANGED,
+    @SerialName("wake_word_detected") WAKE_WORD_DETECTED,
 }
 
 /** http_error error names (docs/PROTOCOL.md 2, 5). */

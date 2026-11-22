@@ -12,6 +12,8 @@
   "command_result.nack_without_error": "",
   "command_screen.no_args": "event/args",
   "event.bad_reason": "data/reason",
+  "event.wake_word_probability_range": "data/probability",
+  "event.wake_word_bad_phrase": "data/phrase",
   "http_claim_request.short_nonce": "nonce",
   "http_pair_request.short_code": "code",
   "log.too_many_lines": "lines",
@@ -23,5 +25,6 @@
   "state_delta.empty": "state",
   "state_delta.page_with_query": "state/current_page",
   "state_delta.unknown_key": "state",
+  "state_delta.null_last_wake_word": "state/last_wake_word",
   "state_delta.negative_illuminance": "state/illuminance"
 }

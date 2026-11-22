@@ -27,6 +27,7 @@ ALL_CAPABILITIES = [
     "logs",
     "screenshot",
     "illuminance",
+    "wake_word",
 ]
 
 # Which capability a command needs (docs/PROTOCOL.md 4.5); None = always available.
@@ -142,6 +143,9 @@ class MockDevice:
             "volume": 50,
             "muted": False,
             "media_state": "idle",
+            # the capability is always declared, so the flag is always sent;
+            # off until a settings push switches it on (P7.1, ADR 0030)
+            "wake_word_active": False,
             "app_version": __version__,
         }
 
@@ -250,6 +254,7 @@ class MockDevice:
             raise CommandError("stale_revision", f"revision {applied} applied on this connection")
         old_delay = self._return_after()
         self.settings = args["settings"]
+        self._apply_voice_settings()
         # A changed return delay restarts the countdown (ADR 0021 item 5);
         # a changed start path never moves the page (F-DSH-02).
         if self._return_after() != old_delay:
@@ -257,6 +262,32 @@ class MockDevice:
         self.settings_revision = args["revision"]
         self._connection_revision = args["revision"]
         return {"revision": self.settings_revision}
+
+    # --- wake word (P7.1, ADR 0030) ---------------------------------------
+
+    def _apply_voice_settings(self) -> None:
+        """Follow voice.wake_word_enabled the way the app does at startup.
+
+        ``wake_word`` is declared from the start: the app ships the detector in
+        every build and the capability list is read once per session, so a
+        device that declared it only while listening could not report that it
+        is not listening (ADR 0030 items 3 and 5). The setting shows up in
+        ``wake_word_active`` instead, which the mock sets to "on and not
+        playing" because it has no audio to play.
+        """
+        enabled = bool(self.settings.get("voice", {}).get("wake_word_enabled"))
+        self.update(wake_word_active=enabled)
+
+    def detect_wake_word(self, phrase: str = "okay_nabu", probability: int = 231) -> None:
+        """Simulate one accepted detection: the event, then the new timestamp.
+
+        Raises CommandError when the wake word is off, which is what the real
+        detector cannot do - it is not listening.
+        """
+        if not self.settings.get("voice", {}).get("wake_word_enabled"):
+            raise CommandError("unsupported_command", "wake word is off")
+        self.on_event("wake_word_detected", {"phrase": phrase, "probability": probability})
+        self.update(last_wake_word=now_iso())
 
     def _cmd_screen(self, args: dict[str, Any]) -> None:
         changes: dict[str, Any] = {}

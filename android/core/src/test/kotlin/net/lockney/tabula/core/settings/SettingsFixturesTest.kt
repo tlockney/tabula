@@ -6,6 +6,9 @@ import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The generated settings classes against the golden fixtures in
@@ -167,7 +170,10 @@ class SettingsFixturesTest {
     @Test
     fun `schema version matches the schema`() {
         val schema = File(TestRepo.root(), "schema/settings.schema.json").readText()
-        assertTrue(schema.contains("\"x-tabula-schema-version\": 2"))
-        assertEquals(2, SCHEMA_VERSION)
+        val version = kotlinx.serialization.json.Json
+            .parseToJsonElement(schema)
+            .jsonObject["x-tabula-schema-version"]!!
+            .jsonPrimitive.int
+        assertEquals(version, SCHEMA_VERSION)
     }
 }

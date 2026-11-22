@@ -41,7 +41,15 @@ import kotlin.math.roundToInt
  * stays with plain views too (ADR 0013).
  */
 class MainActivity : Activity() {
+    private companion object {
+        /** The RECORD_AUDIO prompt the wake word asks for once (ADR 0030). */
+        const val REQUEST_RECORD_AUDIO = 2
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Set once the microphone prompt has been shown, so a refusal is not a loop. */
+    private var askedRecordAudio = false
     private lateinit var store: TabulaStore
     private lateinit var root: FrameLayout
     private lateinit var native: LinearLayout
@@ -59,6 +67,9 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
+        // the microphone is asked for only when the wake word is switched on:
+        // a tablet that never enables it never sees the prompt (ADR 0030)
+        requestRecordAudioIfNeeded()
         root = FrameLayout(this)
         native = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -148,6 +159,45 @@ class MainActivity : Activity() {
         ScreenWindow.onResume(this)
     }
 
+    /**
+     * Asks for `RECORD_AUDIO` when the setting is on and the grant is missing.
+     *
+     * Called at creation and again on every settings revision: the switch is
+     * usually flipped from HA while the kiosk already runs, and the prompt is
+     * the only thing that can produce a grant on a device that was never
+     * provisioned over ADB. Asked once per process so a refusal is not a
+     * dialog loop; a later flip reuses [askedRecordAudio] and the service
+     * reports the setting as on but not listening.
+     */
+    private fun requestRecordAudioIfNeeded() {
+        if (!store.settings.voice.wakeWordEnabled) return
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        if (askedRecordAudio) return
+        askedRecordAudio = true
+        requestPermissions(
+            arrayOf(android.Manifest.permission.RECORD_AUDIO),
+            REQUEST_RECORD_AUDIO,
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            // the service collects this: granted starts listening, refused
+            // leaves the switch on with wake_word_active false (ADR 0030)
+            TabulaStatus.wakeWordPermission.value =
+                grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
     override fun onDestroy() {
         scope.cancel()
         destroyDashboard()
@@ -187,6 +237,11 @@ class MainActivity : Activity() {
             // (F-SSV-09: the revision change is the signal, P3.3)
             TabulaStatus.settingsRevision.collect {
                 if (screensaver.showingFace) screensaver.applyClock(store.settings.screensaver.clock)
+                // the switch can be flipped from HA while the kiosk is already
+                // showing, so the prompt cannot live in onCreate alone; asking
+                // here keeps the setting's promise that turning it on is what
+                // asks (ADR 0030 item 3, F-KSK-21)
+                requestRecordAudioIfNeeded()
             }
         }
         scope.launch {

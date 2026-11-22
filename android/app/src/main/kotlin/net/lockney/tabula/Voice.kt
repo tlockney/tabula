@@ -1,0 +1,283 @@
+package net.lockney.tabula
+
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import android.util.Log
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import net.lockney.tabula.core.voice.WakeWordDetector
+import org.tensorflow.lite.DataType
+import org.tensorflow.lite.Interpreter
+
+/**
+ * Wake-word listening inside the foreground service (P7.1, ADR 0030).
+ *
+ * Off unless `voice.wake_word_enabled` is on, and dependent on RECORD_AUDIO
+ * being granted: the app asks once when the setting is first turned on, and a
+ * device that says no keeps working, with [WakeWordMonitor.onListening] false,
+ * so HA can show that it is not listening.
+ *
+ * The audio path is the spike's (P7.0, ADR 0029 item 2): 16 kHz mono 16-bit,
+ * `MIC` first and `VOICE_RECOGNITION` as the fallback, no echo canceller, no
+ * noise suppressor, the same 100 ms read size. Because there is no echo
+ * canceller to lean on, detection is half-duplex (ADR 0029 item 3): [pause]
+ * closes the microphone while the tablet plays and [start] reopens it with the
+ * detector reset, so no window carries audio from before the sound. The
+ * decision to pause is [net.lockney.tabula.core.voice.WakeWordGate]'s.
+ *
+ * The model and the feature frontend are the core module's
+ * (net.lockney.tabula.core.voice), which is what the unit tests exercise.
+ */
+class WakeWordMonitor(
+    private val context: Context,
+    private val scope: CoroutineScope,
+    private val onDetection: (WakeWordDetector.Detection) -> Unit,
+    private val onListening: (Boolean) -> Unit,
+    private val log: (String) -> Unit = { Log.i(TAG, it) },
+) {
+    private var job: Job? = null
+    private var record: AudioRecord? = null
+    private var detector: WakeWordDetector? = null
+
+    /** Set by [pause]: the next [start] forgets the audio before it opens. */
+    private var resetOnOpen = false
+
+    val running: Boolean get() = job != null
+
+    /** True when the app holds the microphone permission the detector needs. */
+    fun permitted(): Boolean =
+        context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Opens the microphone and starts scoring, reusing the loaded model.
+     * Returns false when capture could not start - no permission, no model, a
+     * failed open - so the gate can try again on the next trigger. A failed
+     * open reports [onListening] false rather than throwing, so a tablet whose
+     * microphone is busy keeps its other functions.
+     */
+    fun start(): Boolean {
+        if (job != null) return true
+        if (!permitted()) {
+            log("wake word: RECORD_AUDIO not granted; not listening")
+            onListening(false)
+            return false
+        }
+        if (detector == null) {
+            detector = try {
+                WakeWordDetector(scorer = openModel(), onDetection = onDetection)
+            } catch (e: Exception) {
+                log("wake word: model did not load: $e")
+                onListening(false)
+                return false
+            }
+        }
+        job = scope.launch(Dispatchers.Default) { listen() }
+        return true
+    }
+
+    /**
+     * Half-duplex pause: closes the microphone while the tablet plays, keeps
+     * the model loaded, and marks the next opening for a [WakeWordDetector.reset].
+     */
+    fun pause() {
+        resetOnOpen = true
+        closeCapture()
+        onListening(false)
+    }
+
+    /** The setting went off (or the service stops): close capture and the model. */
+    fun stop() {
+        resetOnOpen = false
+        closeCapture()
+        runCatching { detector?.close() }
+        detector = null
+        onListening(false)
+    }
+
+    /**
+     * Cancels the loop and stops the recorder, which unblocks a `read()`. The
+     * loop's own `finally` releases the recorder exactly once; both sides are
+     * guarded so a stop racing that release is harmless.
+     */
+    private fun closeCapture() {
+        job?.cancel()
+        job = null
+        record?.let { rec -> runCatching { rec.stop() } }
+    }
+
+    private suspend fun listen() {
+        val minBuffer = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        )
+        if (minBuffer <= 0) {
+            log("wake word: getMinBufferSize=$minBuffer")
+            onListening(false)
+            job = null
+            return
+        }
+        val rec = openRecorder(minBuffer)
+        if (rec == null) {
+            onListening(false)
+            job = null
+            return
+        }
+        val active = detector
+        if (active == null) {
+            log("wake word: no detector; not listening")
+            runCatching { rec.release() }
+            onListening(false)
+            job = null
+            return
+        }
+        record = rec
+        try {
+            // after a pause the window holds audio from before the sound
+            if (resetOnOpen) {
+                active.reset()
+                resetOnOpen = false
+            }
+            rec.startRecording()
+            onListening(true)
+            log("wake word: listening at ${rec.sampleRate} Hz")
+            val chunk = ShortArray(CHUNK_SAMPLES)
+            while (currentCoroutineContext().isActive) {
+                val read = rec.read(chunk, 0, chunk.size)
+                if (read <= 0) {
+                    if (read == AudioRecord.ERROR_INVALID_OPERATION ||
+                        read == AudioRecord.ERROR_BAD_VALUE
+                    ) {
+                        log("wake word: read failed ($read); stopping")
+                        break
+                    }
+                    continue
+                }
+                active.feed(chunk, read)
+            }
+        } finally {
+            runCatching { rec.stop() }
+            runCatching { rec.release() }
+            if (record === rec) record = null
+            job = null
+            onListening(false)
+        }
+    }
+
+    /**
+     * `MIC` first, then `VOICE_RECOGNITION` (ADR 0029 item 2): the spike's
+     * cost and accuracy figures were measured on `MIC`, and the speech source
+     * may put OS processing in the path, so it is only the fallback.
+     */
+    private fun openRecorder(minBuffer: Int): AudioRecord? {
+        for (source in SOURCES) {
+            val rec = try {
+                AudioRecord(
+                    source,
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    minBuffer * 4,
+                )
+            } catch (e: Exception) {
+                log("wake word: AudioRecord source $source failed: $e")
+                continue
+            }
+            if (rec.state == AudioRecord.STATE_INITIALIZED) {
+                log("wake word: capture source $source")
+                return rec
+            }
+            log("wake word: AudioRecord source $source state=${rec.state}")
+            runCatching { rec.release() }
+        }
+        return null
+    }
+
+    /** Opens the pinned model from the app's assets. */
+    private fun openModel(): WakeWordDetector.Scorer {
+        val bytes = context.assets.open(MODEL_ASSET).use { it.readBytes() }
+        val buffer = ByteBuffer.allocateDirect(bytes.size)
+        buffer.put(bytes)
+        buffer.rewind()
+        return TfliteScorer(buffer)
+    }
+
+    companion object {
+        private const val TAG = "TabulaWakeWord"
+
+        /** The pinned microWakeWord v2 model; the build fetches it into assets. */
+        const val MODEL_ASSET = "wakeword/okay_nabu.tflite"
+
+        /** Its sha256, asserted by the build task that fetches the model (ADR 0030). */
+        const val MODEL_SHA256 =
+            "0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891"
+
+        const val SAMPLE_RATE = 16000
+
+        /** 100 ms per read: ten feature rows, the chunk the spike measured. */
+        const val CHUNK_SAMPLES = 1600
+
+        /** The capture sources in ADR 0029 item 2's order: `MIC`, then fallback. */
+        private val SOURCES =
+            intArrayOf(MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.VOICE_RECOGNITION)
+    }
+}
+
+/** The int8 streaming model behind [WakeWordDetector.Scorer]. */
+class TfliteScorer(flatModel: ByteBuffer, threads: Int = 1) : WakeWordDetector.Scorer {
+    private val interpreter = Interpreter(flatModel, Interpreter.Options().apply { numThreads = threads })
+    private val rows: Int
+    private val bins: Int
+    private val input: ByteBuffer
+    private val output: ByteBuffer
+
+    init {
+        interpreter.allocateTensors()
+        val tensor = interpreter.getInputTensor(0)
+        require(tensor.dataType() == DataType.INT8) { "model input is ${tensor.dataType()}" }
+        val shape = tensor.shape()
+        require(shape.size == 3 && shape[0] == 1) { "model input shape is ${shape.toList()}" }
+        rows = shape[1]
+        bins = shape[2]
+        input = ByteBuffer.allocateDirect(tensor.numBytes()).order(ByteOrder.nativeOrder())
+        output = ByteBuffer.allocateDirect(interpreter.getOutputTensor(0).numBytes())
+            .order(ByteOrder.nativeOrder())
+    }
+
+    override fun rows(): Int = rows
+
+    override fun bins(): Int = bins
+
+    override fun score(window: ByteArray): Int {
+        require(window.size == rows * bins) {
+            "expected ${rows * bins} feature bytes, got ${window.size}"
+        }
+        input.rewind()
+        input.put(window)
+        input.rewind()
+        output.rewind()
+        interpreter.run(input, output)
+        output.rewind()
+        return output.get().toInt() and 0xff
+    }
+
+    override fun close() {
+        interpreter.close()
+    }
+}
+
+/** RFC 3339 UTC to the second, the form state.last_wake_word takes (PROTOCOL 4.4). */
+fun wakeWordTimestamp(clock: Instant = Instant.now()): String =
+    clock.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString()

@@ -53,6 +53,9 @@ data class EventFrame(
 
         EventName.PAGE_CHANGED ->
             json.decodeFromJsonElement(PageChanged.serializer(), data)
+
+        EventName.WAKE_WORD_DETECTED ->
+            json.decodeFromJsonElement(WakeWordDetected.serializer(), data)
     }
 
     companion object {
@@ -110,6 +113,16 @@ data class EventFrame(
 
         fun pageChanged(id: Int, path: String) =
             frame(id, EventName.PAGE_CHANGED, buildJsonObject { put("path", path) })
+
+        fun wakeWordDetected(id: Int, phrase: String, probability: Int) =
+            frame(
+                id,
+                EventName.WAKE_WORD_DETECTED,
+                buildJsonObject {
+                    put("phrase", phrase)
+                    put("probability", probability)
+                },
+            )
     }
 }
 
@@ -166,6 +179,23 @@ data class ScreensaverStopped(
 data class MediaFinished(
     val reason: MediaFinishedReason,
 ) : EventData
+
+/**
+ * One accepted wake-word detection (P7.1, PROTOCOL 4.7). ``probability`` is the
+ * model's quantised score 0-255 at the moment of detection; the threshold is a
+ * constant (ADR 0002), not part of the frame.
+ */
+@Serializable
+data class WakeWordDetected(
+    val phrase: String,
+    val probability: Int,
+) : EventData {
+    init {
+        Wire.requireLength("event.phrase", phrase, 1, 32)
+        Wire.requirePattern("event.phrase", phrase, Wire.wakeWordPhrase)
+        Wire.requireRange("event.probability", probability, 0, 255)
+    }
+}
 
 @Serializable
 data class PageChanged(

@@ -1,0 +1,8 @@
+{
+  "id": 4,
+  "type": "tabula/state",
+  "state": {
+    "wake_word_active": true,
+    "last_wake_word": "2026-11-22T09:15:04Z"
+  }
+}
