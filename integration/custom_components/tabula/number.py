@@ -85,29 +85,15 @@ CHIME_VOLUME = TabulaEntityDescription(
 )
 
 
-class TabulaChimeVolume(TabulaSettingEntity, NumberEntity):
+class TabulaChimeVolume(TabulaSettingsNumber):
     """Card chime loudness, percent of the media volume (F-NTF-09, ADR 0026).
 
     The chime plays on the media stream, so 100 is as loud as TTS; bounds
-    come from the schema (ADR 0002).
+    come from the schema (ADR 0002), read from the entity's own setting key.
     """
 
-    _attr_native_step = 1
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_mode = NumberMode.SLIDER
-
-    def __init__(self, hub: TabulaHub, record, description: TabulaEntityDescription) -> None:
-        super().__init__(hub, record, description)
-        field_ = hub.settings.schema.field("audio_chime_volume")
-        self._attr_native_min_value = field_.minimum
-        self._attr_native_max_value = field_.maximum
-
-    @property
-    def native_value(self) -> float | None:
-        return self.setting_value
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self.async_write_setting(round(value))
 
 
 async def async_setup_entry(
