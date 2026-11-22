@@ -254,17 +254,23 @@ def voice(revision: int, enabled: bool) -> dict:
     }
 
 
-async def test_wake_word_setting_drives_the_capability_and_listening_flag():
-    """P7.1: the mock declares wake_word only while the setting is on (ADR 0030)."""
+async def test_wake_word_listening_follows_the_setting_not_the_capability():
+    """P7.1: wake_word is always declared; the switch drives wake_word_active.
+
+    The app cannot re-register mid-session, so a capability that tracked the
+    switch would only reach HA on the next connection, and a device whose
+    grant was withdrawn could never say it is not listening (ADR 0030 3, 5).
+    """
     device = MockDevice()
-    assert "wake_word" not in device.capabilities
+    assert "wake_word" in device.capabilities
+    assert device.state.get("wake_word_active") is False
 
     await device.handle("set_settings", voice(1, True))
     assert "wake_word" in device.capabilities
     assert device.state["wake_word_active"] is True
 
     await device.handle("set_settings", voice(2, False))
-    assert "wake_word" not in device.capabilities
+    assert "wake_word" in device.capabilities
     assert device.state["wake_word_active"] is False
 
 
