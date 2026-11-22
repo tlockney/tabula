@@ -69,13 +69,9 @@ wait_for() { # wait_for <description> <timeout s> <command...>
     done
     echo "-- $what after ${waited}s"
 }
-sensor_is() { [[ "x$(ha_state "$1")" == "x$2" ]]; }
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+sensor_is() { [[ "$(ha_state "$1")" == "$2" ]]; }
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 
 # --- what the script must restore on any exit --------------------------------
 completed=0

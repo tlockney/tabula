@@ -74,12 +74,8 @@ changed_since() { # changed_since <iso8601> - the number of state changes since
         "${TABULA_HA_URL%/}/api/history/period/$1?filter_entity_id=$TABULA_ILLUMINANCE&minimal_response" \
         | python3 -c 'import json,sys; print(sum(len(states) for states in json.load(sys.stdin)))'
 }
-ask() { # ask <question> - fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 
 step "1. baseline: the tablet is paired and the illuminance entity is live"
 adb devices -l
