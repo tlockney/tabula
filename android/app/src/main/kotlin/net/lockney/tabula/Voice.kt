@@ -161,10 +161,10 @@ class WakeWordMonitor(
     companion object {
         private const val TAG = "TabulaWakeWord"
 
-        /** The pinned microWakeWord v2 model, committed as an asset (ADR 0030). */
-        const val MODEL_ASSET = "okay_nabu.tflite"
+        /** The pinned microWakeWord v2 model; the build fetches it into assets. */
+        const val MODEL_ASSET = "wakeword/okay_nabu.tflite"
 
-        /** Its sha256, asserted by the unit test that guards the asset. */
+        /** Its sha256, asserted by the build task that fetches the model (ADR 0030). */
         const val MODEL_SHA256 =
             "0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891"
 

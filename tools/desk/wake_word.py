@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """The wake-word desk harness: the shipped model, Mac-made clips, no device.
 
-`make desk-wake-word` (or `uv run python tools/desk/wake_word.py`) synthesises
-clips with `say` and converts them with ffmpeg, then scores them exactly as the
-device does: the same `.tflite` asset from the app, the same 0-26 frontend
-values from pymicro-features, the same int8 quantisation, the same non-
-overlapping three-row windows, the same 200/255 cutoff and the same four-second
-cooldown (ADR 0002, ADR 0030). It prints one row per clip and a summary of
-detections on positives and false accepts on negatives.
+`make voice-desk` (or `uv run --with ... python tools/desk/wake_word.py`)
+synthesises clips with `say` and converts them with ffmpeg, then scores them
+exactly as the device does: the same `.tflite` the build fetches into the APK,
+the same 0-26 frontend values from pymicro-features, the same int8
+quantisation, the same non-overlapping three-row windows, the same 200/255
+cutoff and the same four-second cooldown (ADR 0002, ADR 0030). It prints one
+row per clip and a summary of detections on positives and false accepts on
+negatives.
 
 `say -o` writes a file and plays nothing; ffmpeg only reads and writes files.
 Nothing here opens a microphone or an audio device, which is what the owner's
@@ -29,16 +30,35 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-#: The app's own model, so the harness cannot drift from what ships.
-MODEL = REPO / "android" / "app" / "src" / "main" / "assets" / "okay_nabu.tflite"
+#: The pinned model, the same one the build fetches into the APK's assets
+#: (ADR 0030 item 8). The harness uses the built copy when there is one, then
+#: a copy here, and only downloads when neither exists - always checking the
+#: hash, so it can never score a different model from the one that ships.
+MODEL_URL = (
+    "https://raw.githubusercontent.com/esphome/micro-wake-word-models/"
+    "40ff33f57f8fc6ad71a75ef085abbf742495b225/models/v2/okay_nabu.tflite"
+)
+GENERATED_MODEL = (
+    REPO
+    / "android"
+    / "app"
+    / "build"
+    / "generated"
+    / "wakeword"
+    / "assets"
+    / "wakeword"
+    / "okay_nabu.tflite"
+)
+CACHED_MODEL = REPO / "build" / "wakeword" / "okay_nabu.tflite"
 
-#: sha256 of that file, also recorded in ADR 0030 and asserted in the app.
+#: sha256 of that file, also recorded in ADR 0030 and asserted by the build.
 MODEL_SHA256 = "0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891"
 
 #: The phrase the model was trained on (ADR 0002), as `say` should pronounce it.
@@ -93,12 +113,24 @@ def missing_tools() -> list[str]:
     return missing
 
 
-def check_model() -> None:
-    if not MODEL.is_file():
-        raise SystemExit(f"no model at {MODEL}; it is committed as an app asset")
-    digest = hashlib.sha256(MODEL.read_bytes()).hexdigest()
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def resolve_model() -> Path:
+    """The pinned model: the built copy, else a cached one, else a download."""
+    for candidate in (GENERATED_MODEL, CACHED_MODEL):
+        if candidate.is_file() and sha256(candidate) == MODEL_SHA256:
+            return candidate
+    CACHED_MODEL.parent.mkdir(parents=True, exist_ok=True)
+    print(f"fetching the wake-word model from {MODEL_URL}", file=sys.stderr)
+    with urllib.request.urlopen(MODEL_URL) as response:  # pinned https URL, hash checked
+        CACHED_MODEL.write_bytes(response.read())
+    digest = sha256(CACHED_MODEL)
     if digest != MODEL_SHA256:
+        CACHED_MODEL.unlink()
         raise SystemExit(f"model sha256 is {digest}, expected {MODEL_SHA256} (ADR 0030)")
+    return CACHED_MODEL
 
 
 def run(command: list[str]) -> None:
@@ -284,14 +316,14 @@ def run_harness(
     keep: Path | None = None,
 ) -> Report:
     """Generates the clips, scores them and returns the report."""
-    check_model()
     missing = missing_tools()
     if missing:
         raise SystemExit(f"cannot run the desk harness: missing {', '.join(missing)}")
+    model = resolve_model()
     directory = keep if keep is not None else Path(tempfile.mkdtemp(prefix="tabula-wake-"))
     directory.mkdir(parents=True, exist_ok=True)
     clips = make_clips(directory, voices, negatives)
-    score_clips(clips, MODEL)
+    score_clips(clips, model)
     return Report(clips)
 
 

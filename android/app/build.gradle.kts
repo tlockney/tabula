@@ -8,9 +8,66 @@
 // coreLibraryDesugaring is required because :core uses java.time, which
 // predates API 26 (ADR 0008).
 
+import java.io.File
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+}
+
+// --- the wake-word model (ADR 0030 item 8) -----------------------------------
+// The model is not in git. It is fetched at build time from microWakeWord's
+// model repository at a pinned commit, checked against the hash below and
+// copied into the generated assets directory, so a build after the first is
+// offline. A wrong hash fails the build rather than shipping another model.
+val wakeWordUrl =
+    "https://raw.githubusercontent.com/esphome/micro-wake-word-models/" +
+        "40ff33f57f8fc6ad71a75ef085abbf742495b225/models/v2/okay_nabu.tflite"
+val wakeWordSha256 = "0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891"
+val wakeWordAssets = layout.buildDirectory.dir("generated/wakeword/assets")
+
+val fetchWakeWordModel by tasks.registering {
+    description = "Fetches the pinned wake-word model and writes its NOTICE."
+    outputs.dir(wakeWordAssets)
+    doLast {
+        fun sha256(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            return digest.digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        }
+
+        val directory = wakeWordAssets.get().asFile.resolve("wakeword")
+        directory.mkdirs()
+        val target = directory.resolve("okay_nabu.tflite")
+
+        // Reuse a model already on disk, so only the first build needs network.
+        if (!target.isFile || sha256(target) != wakeWordSha256) {
+            logger.lifecycle("wake-word: fetching $wakeWordUrl")
+            URI.create(wakeWordUrl).toURL().openStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            val actual = sha256(target)
+            if (actual != wakeWordSha256) {
+                target.delete()
+                throw GradleException(
+                    "wake-word model sha256 is $actual, expected $wakeWordSha256 (ADR 0030)",
+                )
+            }
+        }
+        directory.resolve("NOTICE.txt").writeText(
+            """
+            okay_nabu.tflite - the microWakeWord v2 wake-word model.
+
+            Copyright the Open Home Foundation and contributors.
+            Source: https://github.com/esphome/micro-wake-word-models,
+            commit 40ff33f57f8fc6ad71a75ef085abbf742495b225, models/v2/okay_nabu.tflite.
+            Licensed under the Apache License, Version 2.0; see docs/THIRD-PARTY.md.
+
+            sha256 $wakeWordSha256
+            """.trimIndent() + "\n",
+        )
+    }
 }
 
 android {
@@ -25,6 +82,8 @@ android {
         versionName = "0.1.0"
     }
 
+    sourceSets.getByName("main").assets.srcDir(wakeWordAssets)
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -37,6 +96,8 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 }
+
+tasks.named("preBuild") { dependsOn(fetchWakeWordModel) }
 
 kotlin {
     compilerOptions {
