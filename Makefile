@@ -91,6 +91,14 @@ android-test: ## Android unit tests via the Gradle wrapper (skipped without a JD
 android-apk: ## Build the debug APK for device provisioning (skipped without a JDK)
 	@tools/android_build.sh
 
+.PHONY: voice-spike-apk
+voice-spike-apk: ## Build the P7.0 voice spike debug APK (separate applicationId, debug only)
+	@tools/android_build.sh spike-voice
+
+.PHONY: check-p70
+check-p70: ## Run the P7.0 voice spike measurements against the attached tablet
+	@tools/device/check_p70.sh
+
 .PHONY: codegen
 codegen: ## Regenerate the Kotlin settings classes from the schema
 	$(UV) run python tools/codegen.py

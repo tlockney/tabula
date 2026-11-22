@@ -328,3 +328,46 @@ async def test_check_p21_dry_run(ha, stub_adb):
     airplane = [c[-1] for c in calls if c[:4] == ["shell", "cmd", "connectivity", "airplane-mode"]]
     assert airplane == ["enable", "disable"]
     assert sum(f["type"] == "config/device_registry/list" for f in fake.received) == 3
+
+
+# --- audio opt-in ---------------------------------------------------------------
+
+# Audio checks make the tablet listen and speak in the room it lives in, so they
+# run only in a session the owner scheduled. The guard is the first executable
+# line of the script and needs no device to fire.
+AUDIO_SCRIPTS = [DEVICE / "check_p70.sh", DEVICE / "check_p25.sh"]
+
+
+@pytest.mark.parametrize("script", AUDIO_SCRIPTS, ids=lambda p: p.name)
+def test_audio_script_refuses_without_the_opt_in(script: Path, stub_adb):
+    bin_dir, log = stub_adb
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "STUB_ADB_LOG": str(log),
+    }
+    env.pop("TABULA_AUDIO_OK", None)
+    env.pop("ANDROID_SERIAL", None)
+    result = subprocess.run(
+        ["bash", str(script)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "scheduled with the owner" in result.stderr
+    assert "TABULA_AUDIO_OK" in result.stderr
+    # nothing reached the device: the stub adb was never called
+    assert not log.exists(), log.read_text()
+
+
+def test_every_audio_script_is_behind_the_opt_in():
+    for script in SCRIPTS:
+        text = script.read_text()
+        if "RECORD_AUDIO" in text or "tts.speak" in text or "media_player" in text:
+            assert script in AUDIO_SCRIPTS, (
+                f"{script.name} drives audio but is not in AUDIO_SCRIPTS, so nothing "
+                "checks that it refuses to run without TABULA_AUDIO_OK=1"
+            )
