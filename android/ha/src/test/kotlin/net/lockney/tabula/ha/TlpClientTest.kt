@@ -1,5 +1,6 @@
 package net.lockney.tabula.ha
 
+import java.io.IOException
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,7 +14,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.lockney.tabula.core.Constants
-import net.lockney.tabula.core.tlp.Capability
 import net.lockney.tabula.core.tlp.CommandResultFrame
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.EventFrame
@@ -48,6 +48,7 @@ class TlpClientTest {
         tokens: TokenRefresher,
         commands: CommandHandler = FakeCommands(),
         deviceEvents: kotlinx.coroutines.channels.ReceiveChannel<(Int) -> EventFrame>? = null,
+        logger: (String) -> Unit = {},
     ) = TlpClient(
         TlpClient.Config(
             haUrl = "http://ha:8123",
@@ -66,6 +67,7 @@ class TlpClientTest {
         tokens,
         server,
         Backoff(Random(3)),
+        logger = logger,
     )
 
     @Test
@@ -85,7 +87,7 @@ class TlpClientTest {
         val job = launch { client(state, server, tokens(granted("access-1")), commands).run(events) }
         runCurrent()
         assertEquals(1, events.registered.size)
-        assertEquals(listOf(Capability.BATTERY), events.registered.single().capabilities)
+        assertEquals(listOf("battery"), events.registered.single().capabilities)
 
         val register = Tlp.strict.decodeFromString(
             RegisterFrame.serializer(),
@@ -106,6 +108,74 @@ class TlpClientTest {
         assertEquals("auth", auth.str("type"))
         assertEquals("access-1", auth.str("access_token"))
         assertEquals(1, commands.connections)
+        job.cancel()
+    }
+
+    @Test
+    fun `an accepted capability this build does not know still registers`() = runTest {
+        // PROTOCOL 8: the capability set is open on the wire. A server that
+        // accepts a capability newer than this build's vocabulary must not
+        // fail the registration of a device that declared it - the closed
+        // enum decode did, and the session looped "connection lost" forever.
+        val server = ScriptedServer()
+        server.suppress.add("tabula/register")
+        server.onFrame = { frame ->
+            if (frame.str("type") == "tabula/register") {
+                toClient(
+                    """
+                    {"id":${frame.int("id")},"type":"result","success":true,
+                     "result":{"ha_device_id":"hadevice1","protocol_version":1,
+                     "settings_revision":0,"server_time":"2026-11-21T12:00:00+00:00",
+                     "capabilities":["battery","go_home","teleport"]}}
+                    """.trimIndent(),
+                )
+            }
+        }
+        val events = RecordingEvents()
+        val job = launch { client(FakeState(), server, tokens(granted("access-1"))).run(events) }
+        runCurrent()
+        assertEquals(1, events.registered.size, "a newer accepted capability must not drop the session")
+        assertEquals(listOf("battery", "go_home", "teleport"), events.registered.single().capabilities)
+        assertEquals(0, events.disconnected)
+        assertTrue(!server.connections.single().closed)
+        job.cancel()
+    }
+
+    @Test
+    fun `a session failure reports its reason to the logger`() = runTest {
+        // The reconnect loop's catch-all used to swallow every failure reason,
+        // so a device looping "connection lost" gave no cause to debug from.
+        // A connect that fails without timing out must reach the sink.
+        val logged = mutableListOf<String>()
+        val failing = object : WsTransportFactory {
+            override fun open(url: String, listener: WsTransportFactory.Listener): WsTransport =
+                throw IOException("connect refused")
+        }
+        val events = RecordingEvents()
+        val job = launch {
+            TlpClient(
+                TlpClient.Config(
+                    haUrl = "http://ha:8123",
+                    deviceId = deviceId,
+                    appVersion = "0.1.0",
+                    manufacturer = "Tabula",
+                    model = "test",
+                    osVersion = "test",
+                    capabilities = listOf("battery"),
+                    settingsRevision = { 0 },
+                    refreshToken = { refreshToken },
+                    state = FakeState(),
+                    commands = FakeCommands(),
+                ),
+                tokens(granted("access-1")),
+                failing,
+                Backoff(Random(3)),
+                logger = { logged.add(it) },
+            ).run(events)
+        }
+        runCurrent()
+        assertTrue("session failed: IOException: connect refused" in logged, logged.toString())
+        assertTrue(events.disconnected >= 1, "a failed session reports a disconnect")
         job.cancel()
     }
 
@@ -140,9 +210,10 @@ class TlpClientTest {
         val server = ScriptedServer()
         server.suppress.add("ping") // never answer pings
         val events = RecordingEvents()
+        val logged = mutableListOf<String>()
         // same seed as the client's backoff, so it predicts the reconnect delay
         val oracle = Backoff(Random(3))
-        val job = launch { client(FakeState(), server, tokens(granted("access-1"))).run(events) }
+        val job = launch { client(FakeState(), server, tokens(granted("access-1")), logger = { logged.add(it) }).run(events) }
         runCurrent()
         assertEquals(1, server.connections.size)
         // APP_PING_INTERVAL + PONG_TIMEOUT of silence ends the connection (PROTOCOL 4)
@@ -150,6 +221,8 @@ class TlpClientTest {
         runCurrent()
         assertTrue(server.connections.first().closed)
         assertEquals(1, events.disconnected)
+        // the failure carries a reason, not a bare "connection lost" (issue #128)
+        assertTrue("session failed: IOException: no pong within PONG_TIMEOUT" in logged, logged.toString())
         // the client reconnects after the attempt-0 backoff delay
         advanceTimeBy(oracle.nextDelayMs() + 1)
         runCurrent()

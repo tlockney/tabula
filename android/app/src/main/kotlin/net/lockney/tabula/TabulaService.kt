@@ -401,6 +401,7 @@ class TabulaService : Service() {
                 ),
                 (application as TabulaApp).tokens,
                 OkHttpWsTransportFactory(),
+                logger = { line -> Log.i(TAG, line) },
             )
             val events = object : TlpClient.Events {
                 override fun onRegistered(result: net.lockney.tabula.core.tlp.RegisterResultData) {
