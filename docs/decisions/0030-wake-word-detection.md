@@ -50,7 +50,7 @@ to say "I am not listening" instead of looking healthy and hearing nothing.
    be pushed to an older app whose strict codec rejects unknown keys, which is
    the failure the version exists to prevent.
 
-3. **The device reports three things, all gated by a new `wake_word`
+3. **The device reports three things, all covered by a new `wake_word`
    capability.** `wake_word_active` (bool) is true exactly while the microphone
    is open and the frontend is computing features; `last_wake_word` (date-time)
    is the device's clock at the last accepted detection and is omitted until
@@ -58,12 +58,21 @@ to say "I am not listening" instead of looking healthy and hearing nothing.
    the event `wake_word_detected` carries `phrase` and `probability`
    (0–255, the model's own scale). `wake_word_active` is not decoration: ADR
    0029 item 7 requires "no capture" to be visible, and without the key a
-   revoked permission is indistinguishable from a quiet room.
+   revoked permission is indistinguishable from a quiet room. The capability is
+   declared on every register, not only while listening: the app reads its
+   capability list once per session and cannot re-register mid-session, so a
+   list that tracked the setting would reach HA only after a reconnect - and a
+   device whose grant was withdrawn would never declare the capability and so
+   could never report that it is not listening, the exact case this item
+   exists for. The switch and the grant show up in `wake_word_active`, and the
+   integration creates the three entities from the capability's presence.
 
 4. **One event, three HA surfaces.** The TLP event becomes the
    `tabula_wake_word` bus event (like every other device event, plan 5.7), an
-   `event` entity with the phrase as its event type, and a
-   `sensor.<device>_last_wake_word` timestamp. They answer different questions:
+   `event` entity whose event type is `detected` with the phrase and
+   probability as attributes (a second phrase later stays a type, not a new
+   event), and a `sensor.<device>_last_wake_word` timestamp. They answer
+   different questions:
    the bus event is the trigger an automation subscribes to, the sensor is "when
    did this last happen" (history, conditions, a dashboard card), and the event
    entity is what the device page shows with the payload attached. `wake_word_active`
@@ -90,12 +99,20 @@ to say "I am not listening" instead of looking healthy and hearing nothing.
    phrase, and 4 s keeps a single "okay nabu" from producing a burst of events
    without being so long that a second attempt a moment later is dropped.
 
-7. **Half-duplex, as ADR 0029 item 3 settled.** Detection is suspended whenever
-   the device is playing anything it started (media, announcement, chime
-   sequence), and resumes when the player goes idle. The suspended state closes
-   nothing and keeps no audio: the capture thread flushes, the frontend resets,
-   and `wake_word_active` goes false, so HA sees the pause rather than a device
-   that silently stopped hearing.
+7. **Half-duplex, as ADR 0029 item 3 settled.** Detection stops whenever the
+   device is playing anything it started (a media stream, including a TTS
+   announcement, and the notification chime) and resumes when the sound ends.
+   Stopping means the microphone is *closed*, not muted: the capture job is
+   cancelled, the `AudioRecord` is stopped and released, and the model stays
+   loaded. Resuming reopens the capture and calls the detector's `reset()`
+   first, so the window that still holds the tail of the sound is dropped
+   rather than scored. `wake_word_active` goes false while paused, so HA sees
+   the pause rather than a device that silently stopped hearing. The inputs are
+   the media channel's own state and the chime: the tone has no completion
+   callback, so a chime keeps detection closed for `WAKE_WORD_CHIME_GUARD_MS`
+   (500 ms, ADR 0002) measured from the moment it plays. The three inputs are
+   combined in `WakeWordGate`, which is plain Kotlin in `:core` so the
+   transitions are unit-tested on a JVM rather than only on a tablet.
 
 8. **The model is fetched at build time and never committed.** A Gradle task
    downloads `models/v2/okay_nabu.tflite` from

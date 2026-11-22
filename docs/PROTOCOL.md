@@ -113,7 +113,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `network` | `wifi` \| `ethernet` \| `none` | |
 | `wifi_rssi` | dBm \| null | |
 | `illuminance` | 0–100000 | Ambient light, lux (P3.16); covered by the `illuminance` capability |
-| `wake_word_active` | bool | The microphone is open and the wake-word frontend is computing features now (setting on, permission held, nothing playing); covered by the `wake_word` capability (P7.1) |
+| `wake_word_active` | bool | Always present, because the APK always ships the detector and the capability is declared on every register: true while the microphone is open and the wake-word frontend is computing features (setting on, permission held, nothing playing), false otherwise (P7.1) |
 | `last_wake_word` | date-time | Device clock at the last accepted detection; omitted until there is one (P7.1) |
 | `current_page` | string \| null | Frontend path shown in the WebView, without query string or fragment |
 | `volume` | 0–100 | Media stream volume |

@@ -289,6 +289,7 @@ The detector's constants. ADR 0029 already fixed the model, its cutoff and the a
 | `WAKE_WORD_DYNAMIC_RANGE_DB` | 20 dB | The frontend's per-frame normalisation: the loudest bin at the top of the model's input range and 20 dB below it at the bottom, which is the span of the reference features in the model's own training data. |
 | `WAKE_WORD_FEATURE_TOP` | 26.0 | Top of the input tensor's real range: 255 steps of the 0.10196 scale from the -128 zero point. A frontend emitting 0–1 would use ten of the 256 levels. |
 | `AUDIO_SOURCE` order | `MIC`, then `VOICE_RECOGNITION` | ADR 0029 item 2: the raw path first, the OS's speech path when another app holds `MIC`. |
+| `WAKE_WORD_CHIME_GUARD_MS` | 500 ms | Half-duplex keeps detection closed after a chime (ADR 0030 item 7). `TONE_PROP_BEEP` is a short one-shot with no completion callback, so the guard is the tone's length plus the speaker's tail: long enough that the microphone never reopens on the beep's last samples, short enough not to swallow a phrase spoken right after the notification. |
 
 ### Phase 1–2 behavior defaults
 
