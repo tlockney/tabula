@@ -690,8 +690,9 @@ Recording the clips pulls them back to `build/spike/clips/` and scores them
 with the reference frontend (`uv run --with pymicro-features --with
 ai-edge-litert python tools/device/score_wakeword.py`), because the app's own
 frontend is a cost proxy: a microphone that cannot hear the wake word at 3 m
-and a frontend that does not match the model look identical on the tablet.
-Paste the whole output into the packet Result.
+and a frontend that does not match the model look identical on the tablet. The
+scorer's default cutoff is the device's own (200/255), so its hit count and the
+app's agree. Paste the whole output into the packet Result.
 
 ## Hardware check (P2.2)
 

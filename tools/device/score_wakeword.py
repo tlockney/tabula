@@ -16,8 +16,9 @@ Usage (the dependencies come from PyPI, never a release download):
 
 Prints one row per clip: seconds, inferences, the highest probability the model
 gave, and how many times it crossed the cutoff. A clip is a hit when it crossed
-the cutoff at all; the wake-word accuracy table in the packet's Result is those
-counts, per distance, with and without playback.
+the cutoff at all, at the same 200/255 the spike counts on the device; the
+wake-word accuracy table in the packet's Result is those counts, per distance,
+with and without playback.
 
 Both libraries are Apache-2.0. The model is microWakeWord's, fetched by
 tools/device/check_p70.sh at a pinned commit with a sha256 check; see the P7.0
@@ -38,6 +39,11 @@ FEATURE_SCALE = 0.10196078
 FEATURE_ZERO_POINT = -128
 FEATURE_DIVISOR = 25.6
 
+# The spike counts a detection at DETECTION_CUTOFF = 200 in SpikeService.kt, in
+# the model's own 0-255 scale. Scoring at any other level would call a clip a
+# hit on the host that the device ignored, so this is the default here too.
+DETECTION_CUTOFF = 200
+
 
 def read_clip(path: Path) -> bytes:
     """Returns 16-bit mono PCM bytes; refuses anything else rather than guessing."""
@@ -57,7 +63,13 @@ def main() -> int:
     parser.add_argument("clips", type=Path, help="directory of 16 kHz mono WAV clips")
     parser.add_argument("--model", type=Path, required=True, help="the wake-word .tflite")
     parser.add_argument(
-        "--cutoff", type=float, default=0.5, help="probability cutoff (default 0.5)"
+        "--cutoff",
+        type=float,
+        default=DETECTION_CUTOFF / 255,
+        help=(
+            "probability cutoff in 0-1; the default is the device's "
+            f"{DETECTION_CUTOFF}/255, so a clip is a hit at the same level in both"
+        ),
     )
     args = parser.parse_args()
 

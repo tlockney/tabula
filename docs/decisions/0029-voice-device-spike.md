@@ -73,8 +73,10 @@ Every source except `VOICE_CALL` opens at 16 kHz mono in 16-bit PCM;
 `MIC`, `VOICE_RECOGNITION`, `CAMCORDER` and `VOICE_COMMUNICATION`.
 
 `UNPROCESSED` is the one line that does not behave like the others. It printed
--38.1, -38.2 and -38.3 dBFS in the three runs in which everything else moved
-by roughly 30 dB between the 20:01 run and the other two. A level that does not
+-38.1, -38.2 and -38.3 dBFS in the three runs, while the other four sources
+moved by 17 to 35 dB between the 20:01 run and the other two (`MIC` 31.3,
+`VOICE_RECOGNITION` 16.8, `VOICE_COMMUNICATION` 34.7, `CAMCORDER` 32.6), and
+the 20:01 run's section 1 is pasted in the packet Result. A level that does not
 move with the room is not a measurement of the room's loudness, so this run
 does **not** establish that `UNPROCESSED` is louder, quieter or better than
 `MIC`; it is recorded as uncharacterised.
@@ -214,7 +216,11 @@ SPIKE cost t=445.0s frames=44438 invocations=14812 capture_ms=419303.3 frontend_
    capture, frontend and model together after warm-up, against the Phase 4 idle
    target of 15 %; the first 45 s read 7.7 %, so the figure is quoted as
    "settles at 6.0 %". Heat and battery over the run were not measured, so this
-   item is a CPU decision and not yet a thermal one. The fallback stays
+   item is a CPU decision and not yet a thermal one. A clip counts as a
+   detection at `DETECTION_CUTOFF` = 200/255 (about 0.78) in the spike, and the
+   host scorer (`tools/device/score_wakeword.py`) defaults to that same cutoff,
+   so the device and the scorer call a hit at the same level; scored at a lower
+   one the table would claim hits the device ignored. The fallback stays
    documented rather than implemented: 31,957 bytes/s, about 115 MB/h, and it
    would need the HA-side engine for a device that cannot afford item 5's
    numbers.
@@ -241,9 +247,9 @@ SPIKE cost t=445.0s frames=44438 invocations=14812 capture_ms=419303.3 frontend_
    16 kHz, 16-bit, little-endian, mono, the format `assist_satellite` takes;
    chunks of 3200 bytes (100 ms) per binary frame, ten frames a second, so a
    reply's first audio can start within one chunk of the end of speech while a
-   frame stays far below the existing 64 KiB cap. Smaller chunks multiply
-   per-frame overhead without helping latency on a local network; larger ones
-   delay the pipeline's first STT bytes.
+   frame stays far below `FRAME_MAX_BYTES` (256 KiB, ADR 0002). Smaller chunks
+   multiply per-frame overhead without helping latency on a local network;
+   larger ones delay the pipeline's first STT bytes.
 9. **What changes in ADR 0024.** Item 3's fallback is not needed for this
    device; item 1's capability gating stands and now has its measurements; add
    that detection is suspended while a reply plays (item 3 here).
