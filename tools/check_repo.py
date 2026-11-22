@@ -18,6 +18,9 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
+if __package__ in (None, ""):  # run as `python tools/check_repo.py`
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from tools import doc_index
 
 ROOT = Path(__file__).resolve().parent.parent

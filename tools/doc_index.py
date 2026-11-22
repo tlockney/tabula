@@ -28,6 +28,7 @@ PROVENANCE_DIR = "docs/provenance"
 # A packet ID (P3.15, P0.2r) or a task issue (issue-99).
 PROVENANCE_FILE = re.compile(r"^(P\d+\.\d+[a-z]?|issue-\d+)\.md$")
 PROVENANCE_HEADER = ("Behavior", "Source", "Packet")
+SEPARATOR_CELL = re.compile(r"^:?-{3,}:?$")
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,11 @@ def read_adrs(root: Path) -> tuple[list[Adr], list[str]]:
         if not status:
             errors.append(f"{rel}: missing 'Status:' line under the title")
             continue
-        adrs.append(Adr(number, title.group(2).strip(), status, _field(lines, "Packet") or "", rel))
+        packet = _field(lines, "Packet") or _field(lines, "Issue") or ""
+        if "|" in title.group(2) + status + packet:
+            errors.append(f"{rel}: no '|' in the title, Status or Packet lines (breaks the index)")
+            continue
+        adrs.append(Adr(number, title.group(2).strip(), status, packet, rel))
     return adrs, errors
 
 
@@ -106,9 +111,14 @@ def table_rows(text: str, where: str) -> tuple[list[list[str]], list[str]]:
             break
     if start is None:
         return [], [f"{where}: no '| Behavior | Source | Packet |' table"]
+    separator = _cells(lines[start + 1]) if start + 1 < len(lines) else None
+    if not separator or len(separator) != 3 or not all(SEPARATOR_CELL.match(c) for c in separator):
+        return [], [f"{where}:{start + 2}: expected '| --- | --- | --- |' under the header"]
+    end = len(lines)
     for offset, line in enumerate(lines[start + 2 :], start=start + 3):
         cells = _cells(line)
         if cells is None:
+            end = offset - 1
             break
         if len(cells) != 3 or not all(cells):
             errors.append(f"{where}:{offset}: rows need three non-empty cells")
@@ -116,6 +126,9 @@ def table_rows(text: str, where: str) -> tuple[list[list[str]], list[str]]:
         rows.append(cells)
     if not rows and not errors:
         errors.append(f"{where}: table has no rows")
+    for offset, line in enumerate(lines[end:], start=end + 1):
+        if _cells(line) == list(PROVENANCE_HEADER):
+            errors.append(f"{where}:{offset}: one table per file; append rows to the first")
     return rows, errors
 
 
