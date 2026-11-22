@@ -46,6 +46,9 @@ object Constants {
     /** RESTART_EXIT_DELAY: ms the process waits after restart_app's result frame before it exits. */
     const val RESTART_EXIT_DELAY_MS = 500L
 
+    /** RESTART_RELAUNCH_DELAY: ms after that exit before the system relaunches the app. */
+    const val RESTART_RELAUNCH_DELAY_MS = 1000L
+
     /** STATE_MIN_INTERVAL: minimum gap between two tabula/state frames, milliseconds. */
     const val STATE_MIN_INTERVAL_MS = 250L
 
