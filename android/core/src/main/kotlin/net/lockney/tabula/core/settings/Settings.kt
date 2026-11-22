@@ -16,8 +16,8 @@ const val SCHEMA_VERSION: Int = 2
 /** Schema pattern for ConnectionHaUrlPattern: ^https?://[^/@\s?#]+(/[^\s?#]*)?$ */
 private val ConnectionHaUrlPattern: Regex = Regex("^https?://[^/@\\s?#]+(/[^\\s?#]*)?\$")
 
-/** Schema pattern for DashboardStartPathPattern: ^(?:$|/(?![/\\])[^\\s\\?]*$) */
-private val DashboardStartPathPattern: Regex = Regex("^(?:\$|/(?![/\\\\])[^\\\\s\\\\?]*\$)")
+/** Schema pattern for DashboardStartPathPattern: ^(?:$|/(?![/\\])[^\s\\?]*$) */
+private val DashboardStartPathPattern: Regex = Regex("^(?:\$|/(?![/\\\\])[^\\s\\\\?]*\$)")
 
 /** Schema pattern for ScreensaverClockTextColorPattern: ^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$ */
 private val ScreensaverClockTextColorPattern: Regex = Regex("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\$")
