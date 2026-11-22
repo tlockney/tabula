@@ -59,7 +59,8 @@
         "battery",
         "navigation",
         "logs",
-        "screenshot"
+        "screenshot",
+        "illuminance"
       ]
     },
     "error_code": {
@@ -159,6 +160,12 @@
           ],
           "minimum": -127,
           "maximum": 0
+        },
+        "illuminance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Ambient light, lux. Omitted until the sensor has reported; never null."
         },
         "current_page": {
           "type": [
