@@ -46,8 +46,15 @@ def load(name: str) -> Any:
 
 # --- fake HA core -------------------------------------------------------------
 
-# Keys HA's call_service command accepts; anything else is invalid_format.
-CALL_SERVICE_KEYS = {"id", "type", "domain", "service", "service_data", "target", "return_response"}
+# Per command: (required keys, optional keys), as in HA core's websocket
+# schemas. A missing required key or any other key is invalid_format.
+SCHEMAS: dict[str, tuple[set[str], set[str]]] = {
+    "config/device_registry/list": (set(), set()),
+    "config/entity_registry/list": (set(), set()),
+    "get_states": (set(), set()),
+    "subscribe_events": (set(), {"event_type"}),
+    "call_service": ({"domain", "service"}, {"service_data", "target", "return_response"}),
+}
 
 
 class FakeHa:
@@ -97,6 +104,15 @@ class FakeHa:
             return {"id": frame["id"], "type": "result", "success": True, "result": result}
 
         kind = frame["type"]
+        required, optional = SCHEMAS.get(kind, (None, set()))
+        keys = set(frame) - {"id", "type"}
+        if required is None or not required <= keys or not keys <= required | optional:
+            return {
+                "id": frame["id"],
+                "type": "result",
+                "success": False,
+                "error": {"code": "invalid_format", "message": f"bad message: {sorted(frame)}"},
+            }
         if kind == "config/device_registry/list":
             return ok(self.devices)
         if kind == "config/entity_registry/list":
@@ -105,14 +121,7 @@ class FakeHa:
             return ok(self.states)
         if kind == "subscribe_events":
             return ok(None)
-        if kind == "call_service" and set(frame) <= CALL_SERVICE_KEYS:
-            return ok({"context": {"id": "ctx"}, "response": None})
-        return {
-            "id": frame["id"],
-            "type": "result",
-            "success": False,
-            "error": {"code": "invalid_format", "message": f"bad message: {sorted(frame)}"},
-        }
+        return ok({"context": {"id": "ctx"}, "response": None})  # call_service
 
 
 @pytest.fixture(autouse=True)
@@ -154,6 +163,21 @@ async def test_fake_ha_rejects_data_like_ha_does(ha):
         {"id": 1, "type": "call_service", "domain": "a", "service": "b", "data": {}}
     )
     assert reply["success"] is False
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        {"type": "call_service", "domain": "tabula"},  # no service
+        {"type": "call_service", "service": "navigate"},  # no domain
+        {"type": "get_states", "extra": 1},
+        {"type": "subscribe_events", "eventType": "x"},
+        {"type": "no/such_command"},
+    ],
+)
+async def test_fake_ha_rejects_what_ha_rejects(ha, frame):
+    fake, _ = ha
+    assert fake.answer({"id": 1, **frame})["success"] is False
 
 
 async def test_query_lists_the_device_and_its_entities(ha, capsys):

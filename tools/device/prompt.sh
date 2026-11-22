@@ -7,6 +7,8 @@
 # fail fast instead. Scripts never call `read -p` directly; the repo tests
 # (tools/tests/test_device_scripts.py) enforce that.
 
+# Exit status 3 means "no terminal", distinct from a failed check (1). It is
+# local to these scripts, not a protocol or product constant.
 need_tty() { # need_tty <what the prompt asks>
     if [[ ! -t 0 ]]; then
         echo "FAIL: this step needs a person at a terminal: $1" >&2
@@ -25,6 +27,8 @@ ask() { # ask <question>: fails unless the verifier answers y
     local answer
     read -r -p "$1 [y/n] " answer
     if [[ "$answer" != y* ]]; then
+        # the script's own fail() when it has one (it may print extra context)
+        if declare -F fail > /dev/null; then fail "verifier answered '$answer' to: $1"; fi
         echo "FAIL: verifier answered '$answer' to: $1" >&2
         exit 1
     fi
