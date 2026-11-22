@@ -178,12 +178,12 @@ class TabulaService : Service() {
     /**
      * Notifications (packet P2.5) run for the service's lifetime too. Cards
      * arrive only from HA, but the ones already up keep timing out while HA
-     * is down, and the chime is a synthesized tone on the notification
-     * stream (F-NTF-09). A card's tap travels back through
+     * is down, and the chime is a synthesized tone on the media stream at
+     * `audio.chime_volume` (F-NTF-09, ADR 0027). A card's tap travels back through
      * [TabulaStatus.cardDismiss]; it removes only that card (F-NTF-08).
      */
     private fun startNotifications() {
-        chime = NotificationChime()
+        chime = NotificationChime(volume = { store.settings.audio.chimeVolume })
         notifications = NotificationsManager(
             controller = net.lockney.tabula.core.notifications.NotificationCards(),
             show = { cards -> TabulaStatus.notifications.value = cards },

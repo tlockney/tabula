@@ -106,9 +106,6 @@ object Constants {
      * sends none; inside the schema's 10-95 range (P3.13, 0002-constants.md). */
     const val SCREENSHOT_JPEG_QUALITY = 80
 
-    /** CHIME_VOLUME: the notification chime generator's own scale, at the top (P2.5). */
-    const val CHIME_VOLUME = 100
-
     /**
      * CARD_BACKGROUND: a notification card's near-opaque dark body, ARGB
      * (P2.5). Not const: the literal needs the Long-to-Int narrowing.

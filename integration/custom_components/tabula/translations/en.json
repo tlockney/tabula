@@ -51,6 +51,7 @@
           "notifications_chime_by_level_error": "Chime for error notifications",
           "notifications_max_visible": "Maximum visible notifications",
           "audio_media_volume": "Media volume (%)",
+          "audio_chime_volume": "Chime volume (% of media volume)",
           "audio_announce_volume_boost": "Announcement volume boost",
           "screensaver_dim_brightness": "Dim mode brightness (%)",
           "screensaver_clock_face": "Clock face",
@@ -187,6 +188,9 @@
       },
       "return_home_after": {
         "name": "Return to start page after"
+      },
+      "chime_volume": {
+        "name": "Chime volume"
       }
     },
     "select": {

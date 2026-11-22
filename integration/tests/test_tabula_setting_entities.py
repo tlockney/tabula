@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 import aiohttp
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
-from custom_components.tabula.number import IDLE_TIMEOUT, RETURN_HOME_AFTER
+from custom_components.tabula.number import CHIME_VOLUME, IDLE_TIMEOUT, RETURN_HOME_AFTER
 from custom_components.tabula.settings import SettingsSchema
 from custom_components.tabula.switch import SETTING_SWITCHES
 from custom_components.tabula.text import CLOCK_BACKGROUND, START_PATH
@@ -31,6 +31,7 @@ SETTING_ENTITIES = [
     *(("switch", d.key, d.setting) for d in SETTING_SWITCHES),
     ("number", IDLE_TIMEOUT.key, IDLE_TIMEOUT.setting),
     ("number", RETURN_HOME_AFTER.key, RETURN_HOME_AFTER.setting),
+    ("number", CHIME_VOLUME.key, CHIME_VOLUME.setting),
     ("text", CLOCK_BACKGROUND.key, CLOCK_BACKGROUND.setting),
     ("text", START_PATH.key, START_PATH.setting),
 ]
@@ -99,6 +100,7 @@ def test_every_setting_entity_names_a_shared_schema_leaf():
         "screensaver_clock_background_source": 2,
         "dashboard_start_path": 2,
         "dashboard_return_home_after": 2,
+        "audio_chime_volume": 2,
     }
 
 
@@ -257,6 +259,35 @@ async def test_idle_timeout_bounds_come_from_the_schema(hass_setup, server, hub,
         assert state.attributes["max"] == field_.maximum
         assert state.attributes["unit_of_measurement"] == "s"
         assert state.state == str(field_.default)
+
+
+async def test_chime_volume_is_a_schema_bounded_percent_slider(
+    hass_setup, server, hub, paired, tmp_path
+):
+    """The chime volume number: 0-100 from the schema, percent, slider (ADR 0027)."""
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=2) as (device, _):
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        dev = paired.device_id
+        await until(lambda: eid(hass_setup, dev, "number", "chime_volume") is not None)
+        chime = eid(hass_setup, dev, "number", "chime_volume")
+        state = hass_setup.states.get(chime)
+        field_ = SettingsSchema().field("audio_chime_volume")
+        assert state.attributes["min"] == field_.minimum == 0
+        assert state.attributes["max"] == field_.maximum == 100
+        assert state.attributes["unit_of_measurement"] == "%"
+        assert state.attributes["mode"] == "slider"
+        assert state.state == str(field_.default) == "100"
+
+        await hass_setup.services.async_call(
+            "number", "set_value", {"entity_id": chime, "value": 40}, blocking=True
+        )
+        stored = runtime.settings.get(dev)
+        assert stored is not None
+        assert stored.settings["audio"]["chime_volume"] == 40
+        assert hass_setup.states.get(chime).state == "40"
+        await until(lambda: device.settings_revision >= 1)
+        assert device.settings["audio"]["chime_volume"] == 40
 
 
 async def test_concurrent_edits_do_not_interleave_revisions(

@@ -6,7 +6,6 @@ import android.media.MediaPlayer
 import android.media.ToneGenerator
 import java.io.File
 import kotlin.math.roundToInt
-import net.lockney.tabula.core.Constants
 
 /**
  * The Android side of notifications and audio (packet P2.5): the music
@@ -71,23 +70,63 @@ object AndroidPlayer : MediaPlayerHandle {
 }
 
 /**
- * The card chime (F-NTF-09): a short synthesized beep on the notification
- * stream, so it follows the OS notification volume. The sound library and a
- * per-device notification level (F-NTF-10) have no settings-schema fields or
- * ADR 0002 defaults yet and are deferred; the OS stream level is the volume.
+ * The card chime (F-NTF-09): a short synthesized beep on the media stream
+ * (ADR 0027), the stream TTS uses, so the tablet's silent mode and
+ * notification volume do not mute it. Its loudness is `audio.chime_volume`,
+ * a share of the media volume ([volume], read at each chime). The generator
+ * is kept between chimes and rebuilt only when the level changes; 0 plays
+ * nothing. The sound library (F-NTF-10) is deferred.
  */
-class NotificationChime {
-    private var tone: ToneGenerator? = null
+class NotificationChime(
+    private val volume: () -> Int,
+    private val newTone: (stream: Int, volume: Int) -> Tone = { stream, level -> AndroidTone(stream, level) },
+) {
+    /** One synthesized beep source; [AndroidTone] on the device. */
+    interface Tone {
+        fun beep()
 
+        fun release()
+    }
+
+    private var tone: Tone? = null
+    private var toneVolume = -1
+
+    @Synchronized
     fun play() {
+        val level = volume().coerceIn(0, 100)
+        if (level == 0) return
         runCatching {
-            (tone ?: ToneGenerator(AudioManager.STREAM_NOTIFICATION, Constants.CHIME_VOLUME).also { tone = it })
-                .startTone(ToneGenerator.TONE_PROP_BEEP)
+            if (tone == null || toneVolume != level) {
+                tone?.release()
+                tone = newTone(STREAM, level)
+                toneVolume = level
+            }
+            tone?.beep()
         }
     }
 
+    @Synchronized
     fun release() {
         runCatching { tone?.release() }
         tone = null
+        toneVolume = -1
+    }
+
+    companion object {
+        /** The media stream (ADR 0027): the ringer mode does not mute it. */
+        const val STREAM = AudioManager.STREAM_MUSIC
+    }
+}
+
+/** A [ToneGenerator] beep at [volume] percent of [stream]'s level. */
+private class AndroidTone(stream: Int, volume: Int) : NotificationChime.Tone {
+    private val generator = ToneGenerator(stream, volume)
+
+    override fun beep() {
+        generator.startTone(ToneGenerator.TONE_PROP_BEEP)
+    }
+
+    override fun release() {
+        generator.release()
     }
 }

@@ -636,6 +636,15 @@
           "x-tabula-feature": "F-TTS-07",
           "description": "Media channel volume, percent; the level the HA media_player controls (F-TTS-07). Default per ADR 0002."
         },
+        "chime_volume": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 100,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-09",
+          "description": "Notification chime loudness, percent of the media volume: the chime plays on the media stream, so the OS silent mode does not mute it, and 100 matches the media volume (F-NTF-09, ADR 0027). Default per ADR 0002."
+        },
         "announce_volume_boost": {
           "enum": [
             "none"
