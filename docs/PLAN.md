@@ -193,7 +193,7 @@ Kiosk Satellite is licensed CC BY-NC-ND 4.0, which forbids derivatives of its co
 | Bluetooth proxy | Deferred indefinitely (no free path without ESPHome) |
 | Plugin ecosystem | Deferred: keep the `window.tabula` JS bridge + action registry as the seam |
 | Voice satellite | Phase 7: native `assist_satellite` entity (ADR 0024), gated per device type on the P7.0 spike |
-| Intercom | Kept as future (Phase 9), designed but not scheduled |
+| Intercom | First-priority feature (Phase 9, with the voice work it needs, scheduled ahead of Phase 6): two-way calls with per-device auto-answer and live broadcast over native WebRTC (ADR 0025), gated per device on the P9.0 spike |
 
 In scope across phases:
 
@@ -569,7 +569,7 @@ Each phase gets a packet breakdown by the architect (`docs/packets/P{n}-*.md`) b
   - Read-only calendar views and a calendar screensaver.
 - **Phase 7 — Voice (gated).** Approach in ADR 0024: an `assist_satellite` entity in the `tabula` integration, PCM as HA binary frames on the device's existing connection, wake word on the device (server-side detection as a per-device fallback), replies through the existing media path. P7.0 (`docs/packets/P7.0-voice-device-spike.md`) measures mic persistence, background capture, echo cancellation and wake-word cost on every v1 device type, and does not wait for Phase 6. For each device type that passes, the architect writes packets for: the protocol and mock-device voice capability, the satellite entity and pipeline forwarding, the Android capture and wake-word service, the voice overlay and chimes, announce (and start-conversation where HA has it), voice timers (depends on Phase 6 timers) and cross-device arbitration of our own design. Device types that fail get no voice.
 - **Phase 8 — Media (gated).** Following other HA media players, a DLNA renderer, a now-playing overlay, Music Assistant. EQ, echo cancellation and AirPlay only if voice lands.
-- **Phase 9 — Intercom (future).** HA as the directory. Direct device-to-device PCM audio with our own framing. Signaling over TLP.
+- **Phase 9 — Intercom (first priority).** Approach in ADR 0025: two-way calls with per-device auto-answer (off by default, limited to chosen callers), one-way live broadcast with reply, audio directly between devices over a native WebRTC library, HA as directory and signaling path over TLP. Started from HA (`tabula.intercom_call` with a device or area target, for dashboard and Zigbee buttons through automations) or from the device's intercom screen; events for answered and missed calls. Devices without a working mic are listen-only. Numbered 9 but scheduled ahead of Phase 6: P9.0 (`docs/packets/P9.0-intercom-webrtc-spike.md`) runs alongside P7.0 once the Phase 2 milestone is met, and its packets (protocol and mock-device capability, signaling relay and services, Android call engine, intercom screen and ringing UI, auto-answer settings) follow it. Voice-started calls ("call the kitchen", "call Thomas") are part of the first release: an intercom intent packet on top of the Phase 7 satellite entity, audio transport and on-device wake word, which move up with Phase 9.
 - **Phase 10 — Presence.** A presence rule fed by several sources: an HA occupancy/motion entity (F-SSV-24) and the tablet's front camera. Numbered last but not sequenced after Phase 9: it depends only on Phase 3 work (P3.5, night power-off from P3.4) and runs in parallel with Phases 4 onward. Packets and constraints in 7.6.
 
 Hooks to preserve, not build:
@@ -650,6 +650,7 @@ Device constraints, which P10.1 measures and its ADR settles:
 | Recovery page used to re-point a tablet | Off by default, no default PIN, auto-off timeout, lockout; Phase 4 |
 | Voice on Fire OS (mic revocation) | P7.0 spike per device type; voice may be non-Fire only (ADR 0024) |
 | Silent updates on Fire OS | Shizuku in Phase 4; otherwise a manual tap |
+| Intercom feedback or echo on tablet speakers | Native WebRTC echo cancellation; P9.0 measures it per device type, including two devices in one room |
 | Weather animation on API 28 | Canvas path first; AGSL optional |
 | Front camera unusable or too costly on Fire OS | P10.1 spike measures access, CPU, battery and heat before any presence code; on no-go only the HA presence source ships |
 | Camera presence read as surveillance | Off by default; frames never leave memory; HA shows when the camera runs; enabling needs a person at the device or ADB |
