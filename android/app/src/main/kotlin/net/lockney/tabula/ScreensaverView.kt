@@ -33,8 +33,8 @@ import net.lockney.tabula.core.tlp.ScreensaverMode
  * out on dismissal when the fade is on ([fade], F-SSV-23), except for modes
  * that show the live page itself or web content, and its content steps by
  * small offsets on the [pixelShift] schedule (F-SSV-22), never in black mode.
- * Both are read from the settings each time the screensaver starts, the same
- * rule as the gallery (ADR 0016).
+ * Both are read once when a run starts, so an edit lands at the next start
+ * and a running screensaver keeps its current shift and fade (ADR 0022).
  *
  * Any mode takes the touch that dismisses it, so that touch does not also
  * press something on the dashboard underneath. The dismissal itself comes
@@ -68,6 +68,15 @@ class ScreensaverView(
 
     /** The mode this overlay is showing, for the dismissal fade (F-SSV-23). */
     private var shownMode: ScreensaverMode? = null
+
+    /**
+     * This run's shift and fade, read once when the run started: an edit to
+     * the settings lands at the next start, and a running screensaver keeps
+     * its current shift and fade (ADR 0022's Consequences). The dismissal
+     * fade uses the rule the run started with.
+     */
+    private var shift = PixelShift()
+    private var fadeRule = FadeRule()
     private var shiftStep = 0
 
     init {
@@ -86,9 +95,9 @@ class ScreensaverView(
         removeCallbacks(tick)
         removeCallbacks(shiftTick)
         if (mode == null) {
-            val fadingOut = shownMode?.let(fade()::onDismiss) == true
+            // the dismissal fade is the started run's own (ADR 0022's cadence)
+            val fadingOut = shownMode?.let(fadeRule::onDismiss) == true
             shownMode = null
-            resetShift()
             if (fadingOut) {
                 Log.i(TAG, "fade out")
                 animate()
@@ -97,14 +106,20 @@ class ScreensaverView(
                     .withEndAction {
                         visibility = View.GONE
                         alpha = 1f
+                        // the content keeps its last offset for the fade; back at rest once it ends
+                        resetShift()
                     }
             } else {
                 visibility = View.GONE
                 alpha = 1f
+                resetShift()
             }
             return
         }
-        val fadingIn = fade().onShow(mode)
+        // a start: this run's shift and fade, read once (ADR 0022's cadence)
+        shift = pixelShift()
+        fadeRule = fade()
+        val fadingIn = fadeRule.onShow(mode)
         shownMode = mode
         visibility = View.VISIBLE
         alpha = if (fadingIn) 0f else 1f
@@ -138,13 +153,13 @@ class ScreensaverView(
     }
 
     /**
-     * Schedule the first shift. Dim draws nothing, so nothing can move; black
-     * never shifts (F-SSV-22).
+     * Schedule the first shift from this run's snapshot. Dim draws nothing,
+     * so nothing can move; black never shifts (F-SSV-22).
      */
     private fun startShift(mode: ScreensaverMode) {
         resetShift()
-        if (mode == ScreensaverMode.DIM || !pixelShift().appliesTo(mode)) return
-        postDelayed(shiftTick, pixelShift().intervalMs)
+        if (mode == ScreensaverMode.DIM || !shift.appliesTo(mode)) return
+        postDelayed(shiftTick, shift.intervalMs)
     }
 
     private fun resetShift() {
@@ -155,7 +170,6 @@ class ScreensaverView(
 
     private fun stepShift() {
         val mode = shownMode ?: return
-        val shift = pixelShift()
         if (clock.visibility != View.VISIBLE || !shift.appliesTo(mode)) return
         val offset = shift.offset(shiftStep)
         shiftStep += 1
