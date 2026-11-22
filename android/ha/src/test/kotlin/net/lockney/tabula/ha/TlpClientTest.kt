@@ -1,5 +1,6 @@
 package net.lockney.tabula.ha
 
+import java.io.IOException
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -135,6 +136,44 @@ class TlpClientTest {
         assertEquals(listOf("battery", "go_home", "teleport"), events.registered.single().capabilities)
         assertEquals(0, events.disconnected)
         assertTrue(!server.connections.single().closed)
+        job.cancel()
+    }
+
+    @Test
+    fun `a session failure reports its reason to the logger`() = runTest {
+        // The reconnect loop's catch-all used to swallow every failure reason,
+        // so a device looping "connection lost" gave no cause to debug from.
+        // A connect that fails without timing out must reach the sink.
+        val logged = mutableListOf<String>()
+        val failing = object : WsTransportFactory {
+            override fun open(url: String, listener: WsTransportFactory.Listener): WsTransport =
+                throw IOException("connect refused")
+        }
+        val events = RecordingEvents()
+        val job = launch {
+            TlpClient(
+                TlpClient.Config(
+                    haUrl = "http://ha:8123",
+                    deviceId = deviceId,
+                    appVersion = "0.1.0",
+                    manufacturer = "Tabula",
+                    model = "test",
+                    osVersion = "test",
+                    capabilities = listOf("battery"),
+                    settingsRevision = { 0 },
+                    refreshToken = { refreshToken },
+                    state = FakeState(),
+                    commands = FakeCommands(),
+                ),
+                tokens(granted("access-1")),
+                failing,
+                Backoff(Random(3)),
+                logger = { logged.add(it) },
+            ).run(events)
+        }
+        runCurrent()
+        assertTrue("session failed: IOException: connect refused" in logged, logged.toString())
+        assertTrue(events.disconnected >= 1, "a failed session reports a disconnect")
         job.cancel()
     }
 
