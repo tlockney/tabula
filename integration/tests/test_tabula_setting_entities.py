@@ -123,9 +123,7 @@ async def test_entity_set_follows_the_device_schema_version(
 
     async with tablet(hass_setup, server, paired, tmp_path, schema_version=2):
         up_to_v2 = [(p, k) for p, k, s in SETTING_ENTITIES if schema.since(s) <= 2]
-        await until(
-            lambda: all(eid(hass_setup, paired.device_id, p, k) for p, k in up_to_v2)
-        )
+        await until(lambda: all(eid(hass_setup, paired.device_id, p, k) for p, k in up_to_v2))
         # the wake-word switch arrived with schema 3 (P7.1), so a v2 device has none
         assert eid(hass_setup, paired.device_id, "switch", "voice_wake_word_enabled") is None
         runtime = TabulaHub.get(hass_setup)

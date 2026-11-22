@@ -85,8 +85,10 @@ async def test_wake_word_event_relays_and_fills_the_entity(
     assert delta["success"], delta
 
     await until(
-        lambda: hass_setup.states.get(event_entity) is not None
-        and hass_setup.states.get(last).state != "unknown"
+        lambda: (
+            hass_setup.states.get(event_entity) is not None
+            and hass_setup.states.get(last).state != "unknown"
+        )
     )
     await hass_setup.async_block_till_done()
 
@@ -113,9 +115,7 @@ async def test_wake_word_event_relays_and_fills_the_entity(
 
     runtime = TabulaHub.get(hass_setup)
     assert runtime is not None
-    assert [f["event"] for f in runtime.devices[paired.device_id].events] == [
-        "wake_word_detected"
-    ]
+    assert [f["event"] for f in runtime.devices[paired.device_id].events] == ["wake_word_detected"]
     await client.close()
 
 

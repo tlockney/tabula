@@ -26,7 +26,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Callable
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ _FROZEN_FILES = {
 }
 
 
-@lru_cache(maxsize=None)
+@cache
 def frozen_schema(version: int) -> dict[str, Any]:
     """The frozen schema document of an older settings version (1 or 2)."""
     try:

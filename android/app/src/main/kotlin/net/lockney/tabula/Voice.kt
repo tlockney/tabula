@@ -152,7 +152,10 @@ class WakeWordMonitor(
     /** Opens the pinned model from the app's assets. */
     private fun openModel(): WakeWordDetector.Scorer {
         val bytes = context.assets.open(MODEL_ASSET).use { it.readBytes() }
-        return TfliteScorer(ByteBuffer.allocateDirect(bytes.size).apply { put(bytes) }.rewind())
+        val buffer = ByteBuffer.allocateDirect(bytes.size)
+        buffer.put(bytes)
+        buffer.rewind()
+        return TfliteScorer(buffer)
     }
 
     companion object {

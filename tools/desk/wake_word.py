@@ -192,7 +192,9 @@ def score_clips(clips: list[Clip], model: Path) -> None:
                 window = quantise(pending).reshape(1, ROWS, BINS)
                 interpreter.set_tensor(interpreter.get_input_details()[0]["index"], window)
                 interpreter.invoke()
-                probability = int(interpreter.get_tensor(interpreter.get_output_details()[0]["index"])[0][0])
+                probability = int(
+                    interpreter.get_tensor(interpreter.get_output_details()[0]["index"])[0][0]
+                )
                 windows += 1
                 pending = []
                 clip.peak = max(clip.peak, probability)
@@ -244,15 +246,30 @@ class Report:
         return json.dumps(
             {
                 "positives": [
-                    {"clip": c.path.stem, "label": c.label, "peak": c.peak, "hits": len(c.detections)}
+                    {
+                        "clip": c.path.stem,
+                        "label": c.label,
+                        "peak": c.peak,
+                        "hits": len(c.detections),
+                    }
                     for c in self.positives
                 ],
                 "noisy_positives": [
-                    {"clip": c.path.stem, "label": c.label, "peak": c.peak, "hits": len(c.detections)}
+                    {
+                        "clip": c.path.stem,
+                        "label": c.label,
+                        "peak": c.peak,
+                        "hits": len(c.detections),
+                    }
                     for c in self.noisy
                 ],
                 "negatives": [
-                    {"clip": c.path.stem, "label": c.label, "peak": c.peak, "hits": len(c.detections)}
+                    {
+                        "clip": c.path.stem,
+                        "label": c.label,
+                        "peak": c.peak,
+                        "hits": len(c.detections),
+                    }
                     for c in self.negatives
                 ],
             },

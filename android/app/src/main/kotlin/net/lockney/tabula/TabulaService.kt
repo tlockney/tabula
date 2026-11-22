@@ -16,10 +16,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import net.lockney.tabula.core.voice.WakeWordDetector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import net.lockney.tabula.core.voice.WakeWordDetector
 import net.lockney.tabula.ha.CredentialRevoked
 import net.lockney.tabula.ha.EntityDataConnection
 import net.lockney.tabula.ha.HaChannel

@@ -9,7 +9,7 @@ step - both are fed from the one TLP event.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from homeassistant.components.event import EventEntity
 from homeassistant.config_entries import ConfigEntry
@@ -28,7 +28,7 @@ WAKE_WORD = TabulaEntityDescription(
 class TabulaWakeWordEvent(TabulaEntity, EventEntity):
     """Fires ``detected`` each time the tablet reports the wake phrase."""
 
-    _attr_event_types = ["detected"]
+    _attr_event_types: ClassVar[list[str]] = ["detected"]
     # Set on the first detection; None renders as no attributes at all.
     _attributes: dict[str, Any] | None = None
 
@@ -40,9 +40,7 @@ class TabulaWakeWordEvent(TabulaEntity, EventEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.hass.bus.async_listen("tabula_wake_word", self._handle_detection)
-        )
+        self.async_on_remove(self.hass.bus.async_listen("tabula_wake_word", self._handle_detection))
 
     @callback
     def _handle_detection(self, event: Event) -> None:
@@ -55,9 +53,7 @@ class TabulaWakeWordEvent(TabulaEntity, EventEntity):
         if event.data.get("tabula_device_id") != self.device_id:
             return
         self._attributes = {
-            key: event.data[key]
-            for key in ("phrase", "probability")
-            if key in event.data
+            key: event.data[key] for key in ("phrase", "probability") if key in event.data
         }
         self._trigger_event("detected", self._attributes)
         self.async_write_ha_state()
@@ -72,6 +68,4 @@ async def async_setup_entry(
     def factory(hub: TabulaHub, record: DeviceRecord, description: Any) -> TabulaEntity:
         return TabulaWakeWordEvent(hub, record, description)
 
-    entry.async_on_unload(
-        setup_platform(hass, hub, async_add_entities, [WAKE_WORD], factory)
-    )
+    entry.async_on_unload(setup_platform(hass, hub, async_add_entities, [WAKE_WORD], factory))

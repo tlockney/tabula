@@ -31,6 +31,7 @@ import argparse
 import sys
 import wave
 from pathlib import Path
+from typing import Any
 
 # The model's input quantisation: int8, scale 0.10196078, zero point -128.
 # pymicro_features already returns the frontend's 0-26 log-mel values - the
@@ -48,7 +49,7 @@ FEATURE_BINS = 40
 DETECTION_CUTOFF = 200
 
 
-def quantise(features: list[float]) -> "np.ndarray":
+def quantise(features: list[float]) -> Any:
     """Maps frontend features (0-26) to the model's int8 input, one window."""
     import numpy as np
 
@@ -88,7 +89,6 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        import numpy as np
         from ai_edge_litert.interpreter import Interpreter
         from pymicro_features import MicroFrontend
     except ImportError as error:  # pragma: no cover - the docstring has the command
