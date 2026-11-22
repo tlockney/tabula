@@ -201,6 +201,11 @@ class MainActivity : Activity() {
             TabulaStatus.pairingError.collect { render(TabulaStatus.phase.value) }
         }
         scope.launch {
+            // so does the line explaining a pair request that cannot reach HA
+            // (issue #127): the attempt keeps retrying behind the form
+            TabulaStatus.pairingNotice.collect { render(TabulaStatus.phase.value) }
+        }
+        scope.launch {
             TabulaStatus.pairing.collect { view ->
                 val codeText = native.findViewWithTag<TextView>("code")
                 codeText?.text = view?.let { "${it.code}" } ?: ""
@@ -241,7 +246,12 @@ class MainActivity : Activity() {
         native.removeAllViews()
         when (phase) {
             Phase.UNPAIRED, Phase.REVOKED -> pairingForm(phase)
-            Phase.PAIRING -> waitingForConfirm()
+            Phase.PAIRING -> when (val state = PairingScreen.state()) {
+                // PAIRING without a code is not confirmable, so it draws the
+                // form with the reason instead of a blank code (issue #127)
+                is PairingScreenState.Confirm -> waitingForConfirm(state)
+                is PairingScreenState.Form -> pairingForm(Phase.UNPAIRED)
+            }
             Phase.CONNECTING -> status("Connecting to Home Assistant…")
             Phase.REJECTED -> rejected()
             else -> {} // CONNECTED never lands here
@@ -252,8 +262,10 @@ class MainActivity : Activity() {
         if (phase == Phase.REVOKED) {
             text("Home Assistant revoked this device's credential.", bold = false)
         }
-        // a terminal pairing failure (PROTOCOL 2.5), e.g. a refused nonce
-        TabulaStatus.pairingError.value?.let { text(it, bold = false) }
+        // a terminal pairing failure (PROTOCOL 2.5), e.g. a refused nonce; else
+        // the attempt in flight that has not reached HA yet (issue #127)
+        (TabulaStatus.pairingError.value ?: TabulaStatus.pairingNotice.value)
+            ?.let { text(it, bold = false) }
         text("Enter your Home Assistant address", bold = false)
         val input = EditText(this).apply {
             hint = "http://homeassistant.local:8123"
@@ -298,11 +310,10 @@ class MainActivity : Activity() {
         text("Tabula ${versionName()}", small = true)
     }
 
-    private fun waitingForConfirm() {
+    private fun waitingForConfirm(state: PairingScreenState.Confirm) {
         text("Confirm this code in Home Assistant", bold = false)
-        val current = TabulaStatus.pairing.value
-        text(current?.code.orEmpty(), tag = "code", size = 96f)
-        text(current?.let { "Device ${it.deviceIdShort}" }.orEmpty(), tag = "device", size = 20f)
+        text(state.code, tag = "code", size = 96f)
+        text("Device ${state.deviceIdShort}", tag = "device", size = 20f)
         text("Settings → Devices & services → Tabula", small = true)
     }
 

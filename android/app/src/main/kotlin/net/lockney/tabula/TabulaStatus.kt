@@ -13,7 +13,11 @@ enum class Phase {
     /** No credential: the pairing screen is up. */
     UNPAIRED,
 
-    /** Pairing in progress: [TabulaStatus.code] carries the code to confirm in HA. */
+    /**
+     * Pairing in progress with a code to confirm: [TabulaStatus.pairing]
+     * carries it. An attempt that has not reached HA yet stays UNPAIRED, so
+     * the confirm screen never shows an empty code (issue #127).
+     */
     PAIRING,
 
     /** Paired, working towards a registered connection. */
@@ -42,6 +46,13 @@ object TabulaStatus {
      * a new pairing attempt starts.
      */
     val pairingError = MutableStateFlow<String?>(null)
+
+    /**
+     * A non-terminal line about the attempt in flight, shown on the pairing
+     * form: the pair request cannot reach HA and keeps retrying (issue #127).
+     * Cleared as soon as HA answers or a new attempt starts.
+     */
+    val pairingNotice = MutableStateFlow<String?>(null)
 
     /** The last rejection (code, message) when [Phase.REJECTED]. */
     val rejection = MutableStateFlow<Pair<String, String>?>(null)
