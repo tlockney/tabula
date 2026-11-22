@@ -412,6 +412,43 @@ blur copies and normal jitter, ADR 0016).
 The URL source needs no photos: point `screensaver.photos.image_url` at any
 image URL and the slideshow fetches it fresh for every slide.
 
+## Hardware check (P3.3, clock faces and background)
+
+Install a P3.3 build, provision and pair, and configure the clock settings
+on the tablet's HA entry (they apply while the clock shows, F-SSV-09):
+
+- screensaver mode `clock`
+- clock face `digital`, font family `serif`, font weight `700`
+- seconds on, date line on
+- background source empty, darkening at the default 40 %
+
+Generate the test photos as for P3.8 (the check serves two of them as the
+background over plain HTTP), then leave Tabula in front with the panel on
+and run:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver \
+TABULA_BACKGROUND=text.<tablet>_clock_background \
+ANDROID_SERIAL=<serial> tools/device/check_p33.sh
+```
+
+The script serves the background from this machine (set `TABULA_HOST_IP`
+when the tablet reaches the Mac on another interface than en0), starts the
+clock from HA, and walks the faces and the background rules: the digital
+face with the changed font, seconds and date line; the analog face (the
+verifier switches it in HA — the save is the settings write, and the face
+changes while the screensaver stays up); the digital face over a URL
+background with the darkening layer visible; a broken URL keeping the
+previous image; and the same URL written again reloading it with new bytes
+behind the same address (F-SSV-09: the revision change is the signal). The
+app's `TabulaClock` logcat lines are the load, show and failure evidence.
+The centre-tap dismissal closes the check.
+
+The background's other source is a local file path: push any image the app
+can read (its own storage, ADR 0016) and set it as the background source to
+check that route by hand.
+
 ## Hardware check (P3.13, screenshots)
 
 Install a P3.13 build (or later), provision and pair, leave Tabula in

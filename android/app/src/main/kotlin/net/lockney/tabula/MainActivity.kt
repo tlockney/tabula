@@ -70,10 +70,12 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         setContentView(root)
-        // the screensaver overlay sits above everything else in the window (P2.4);
-        // the engine polish reads its settings when the screensaver starts (P3.14)
+        // the screensaver overlay sits above everything else in the window
+        // (P2.4); the engine polish reads its settings when the screensaver
+        // starts (P3.14)
         screensaver = ScreensaverView(
             this,
+            scope,
             pixelShift = { PixelShift(store.settings.screensaver.pixelShift) },
             fade = { FadeRule(store.settings.screensaver.fade.enabled) },
         )
@@ -87,8 +89,8 @@ class MainActivity : Activity() {
             scope,
             clockStandIn = {
                 // a playlist with nothing decodable: the clock stand-in
-                // (ADR 0013 item 3, ADR 0016)
-                screensaver.show(net.lockney.tabula.core.tlp.ScreensaverMode.CLOCK)
+                // (ADR 0013 item 3, ADR 0016), with the clock settings applied
+                screensaver.show(net.lockney.tabula.core.tlp.ScreensaverMode.CLOCK, store.settings.screensaver.clock)
             },
             pixelShift = { PixelShift(store.settings.screensaver.pixelShift) },
             fade = { FadeRule(store.settings.screensaver.fade.enabled) },
@@ -154,9 +156,13 @@ class MainActivity : Activity() {
 
     private fun observe() {
         scope.launch {
-            // the slideshow pauses with the window (F-SSV-02): a powered-off
-            // panel stops the activity, so no decode or fetch runs in the dark
-            TabulaStatus.foreground.collect { gallery.setActive(it) }
+            // the slideshow and the clock background pause with the window
+            // (F-SSV-02): a powered-off panel stops the activity, so no
+            // decode or fetch runs in the dark
+            TabulaStatus.foreground.collect {
+                gallery.setActive(it)
+                screensaver.setActive(it)
+            }
         }
         scope.launch {
             TabulaStatus.screensaver.collect { mode ->
@@ -169,8 +175,18 @@ class MainActivity : Activity() {
                     screensaver.show(null)
                 } else {
                     gallery.hide()
-                    screensaver.show(mode)
+                    // the clock draws with the v2 clock settings (P3.3); the
+                    // other modes ignore them (black, dim) or stand in (ADR 0013)
+                    screensaver.show(mode, store.settings.screensaver.clock)
                 }
+            }
+        }
+        scope.launch {
+            // a settings write re-applies the clock while a face shows, so
+            // the background image always reloads, identical source or not
+            // (F-SSV-09: the revision change is the signal, P3.3)
+            TabulaStatus.settingsRevision.collect {
+                if (screensaver.showingFace) screensaver.applyClock(store.settings.screensaver.clock)
             }
         }
         scope.launch {
