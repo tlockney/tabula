@@ -15,6 +15,7 @@ class DashboardBusTest {
     private class FakeDashboard(var page: String? = "/") : DashboardBus.Handle {
         var reloads = 0
         var clears = 0
+        var startLoads = 0
         val loaded = mutableListOf<String>()
 
         override fun reload() {
@@ -27,6 +28,10 @@ class DashboardBusTest {
 
         override fun load(url: String) {
             loaded.add(url)
+        }
+
+        override fun loadStart() {
+            startLoads++
         }
 
         override fun currentPage(): String? = page
@@ -48,8 +53,10 @@ class DashboardBusTest {
         assertTrue(bus.reload())
         assertTrue(bus.clearCache())
         assertTrue(bus.load("http://ha:8123/config"))
+        assertTrue(bus.loadStart())
         assertEquals(1, dashboard.reloads)
         assertEquals(1, dashboard.clears)
+        assertEquals(1, dashboard.startLoads)
         assertEquals(listOf("http://ha:8123/config"), dashboard.loaded)
         assertEquals("/", bus.currentPage())
     }
@@ -60,6 +67,7 @@ class DashboardBusTest {
         assertFalse(bus.reload())
         assertFalse(bus.clearCache())
         assertFalse(bus.load("http://ha:8123/config"))
+        assertFalse(bus.loadStart())
         assertNull(bus.currentPage())
     }
 

@@ -140,6 +140,21 @@ object DashboardLinks {
         return resolved.toString()
     }
 
+    /**
+     * Append a query parameter to [url], before its fragment (a fragment cut
+     * the query off). The launch load adds the external-auth bootstrap to a
+     * start target that may carry a fragment (F-DSH-02); a URL that does not
+     * parse is returned unchanged.
+     */
+    fun withParam(url: String, param: String): String {
+        if (runCatching { URI(url.trim()) }.getOrNull() == null) return url
+        val fragmentAt = url.indexOf('#')
+        val base = if (fragmentAt >= 0) url.substring(0, fragmentAt) else url
+        val fragment = if (fragmentAt >= 0) url.substring(fragmentAt) else ""
+        val separator = if (base.contains('?')) "&" else "?"
+        return "$base$separator$param$fragment"
+    }
+
     private fun sameOrigin(uri: URI, haOrigin: URI): Boolean {
         val scheme = uri.scheme?.lowercase() ?: return false
         if (scheme != haOrigin.scheme?.lowercase()) return false

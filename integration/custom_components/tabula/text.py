@@ -1,4 +1,5 @@
-"""Text entities (P3.2, F-HA-11): the clock background image source (F-SSV-09)."""
+"""Text entities: the clock background image source (P3.2, F-SSV-09) and the
+start page path (P3.15, F-DSH-02)."""
 
 from __future__ import annotations
 
@@ -18,14 +19,23 @@ CLOCK_BACKGROUND = TabulaEntityDescription(
     setting="screensaver_clock_background_source",
 )
 
+START_PATH = TabulaEntityDescription(
+    key="start_path",
+    translation_key="start_path",
+    entity_category=EntityCategory.CONFIG,
+    setting="dashboard_start_path",  # a frontend path until the catalog (ADR 0021)
+)
 
-class TabulaClockBackground(TabulaSettingEntity, TextEntity):
-    """Empty, a local path on the tablet, or a URL it downloads (F-SSV-09).
+
+class TabulaTextSetting(
+    TabulaSettingEntity,
+    TextEntity,
+):
+    """A settings text leaf; its length bound comes from the schema.
 
     Every write is a new revision and a push, identical value or not
-    (SettingsStore.async_save always bumps): the device reloads the image on
-    each applied write, which is how an automation refreshes a picture served
-    under a fixed address (ADR 0015).
+    (SettingsStore.async_save always bumps), which is what the clock
+    background's image refresh relies on (ADR 0015 item 6).
     """
 
     _attr_mode = TextMode.TEXT
@@ -34,7 +44,8 @@ class TabulaClockBackground(TabulaSettingEntity, TextEntity):
 
     def __init__(self, hub: TabulaHub, record, description: TabulaEntityDescription) -> None:
         super().__init__(hub, record, description)
-        field_ = hub.settings.schema.field("screensaver_clock_background_source")
+        assert description.setting is not None
+        field_ = hub.settings.schema.field(description.setting)
         self._attr_native_max = field_.max_length
 
     @property
@@ -51,5 +62,7 @@ async def async_setup_entry(
     hub = TabulaHub.get(hass)
     assert hub is not None
     entry.async_on_unload(
-        setup_platform(hass, hub, async_add_entities, [CLOCK_BACKGROUND], TabulaClockBackground)
+        setup_platform(
+            hass, hub, async_add_entities, [CLOCK_BACKGROUND, START_PATH], TabulaTextSetting
+        )
     )

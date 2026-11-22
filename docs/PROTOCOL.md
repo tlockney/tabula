@@ -81,7 +81,7 @@ The device waits up to `REGISTER_TIMEOUT` for each reply; on timeout it closes t
 
 ### 4.2 `register` → `register_result`
 
-Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and its current `state`: every state key it supports, so HA starts from a complete picture. (The schema checks only that `state` is non-empty, since the same object type carries deltas.)
+Device sends identity and versions (`device_id`, `protocol_version`, `schema_version`, `app_version`, `manufacturer`, `model`, `os_version`), `capabilities`, its applied `settings_revision` and its current `state`: every state key it supports, so HA starts from a complete picture. (The schema checks only that `state` is non-empty, since the same object type carries deltas.) A supported state key whose value the device does not have yet — the `illuminance` key before the light sensor's first reading — is omitted from `register` and sent in the first delta that has one; the schema requires a value, so there is no null placeholder.
 
 Integration:
 
@@ -112,6 +112,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `charging` | bool | |
 | `network` | `wifi` \| `ethernet` \| `none` | |
 | `wifi_rssi` | dBm \| null | |
+| `illuminance` | 0–100000 | Ambient light, lux (P3.16); covered by the `illuminance` capability |
 | `current_page` | string \| null | Frontend path shown in the WebView, without query string or fragment |
 | `volume` | 0–100 | Media stream volume |
 | `muted` | bool | |
@@ -133,6 +134,7 @@ Every command event has `command_id` (unique per device for the integration's li
 | `media_control` (`command_media_control`) | `action`: pause, resume, stop, seek (needs `position`, seconds), next, previous, set_volume (needs `volume`), mute, unmute. `seek` on a stream that cannot seek, and `next`/`previous` without a queue, get `failed` (FEATURES F-MED-01) | `audio` |
 | `screensaver` (`command_screensaver`) | `active`, optional `mode` | `screensaver` |
 | `navigate` (`command_navigate`) | `path` starting with a single `/`. The device resolves it against its HA base URL and refuses (`invalid_args`) if the result leaves that origin (ADR 0001 item 3) | `navigation` |
+| `go_home` (`command_go_home`) | `{}`. Load the start target (F-DSH-02, `dashboard.start_path`); with none set, HA's default page | `go_home` |
 | `reload`, `restart_app`, `clear_cache` | `{}` | always |
 | `log_subscription` (`command_log_subscription`) | `enabled`, optional minimum `level` | `logs` |
 | `screenshot` (`command_screenshot`) | optional JPEG `quality` | `screenshot` (Phase 3) |

@@ -90,11 +90,43 @@ class DashboardView(
         bus.attach(this)
     }
 
-    /** Load the dashboard with the external-auth bootstrap (F-DSH-01). */
+    /** Load the dashboard with the external-auth bootstrap (F-DSH-01), on the
+     * start target when one is set (F-DSH-02: launch, crash restart and
+     * restart_app land there; a fragment target keeps its fragment).
+     *
+     * Always posted to the main thread: this is also the in-session fallback
+     * for an unset, invalid or off-origin start target ([loadStart]), whose
+     * callers run on the service's timer scope or the command thread, and
+     * WebView throws when touched off the main thread. */
     fun load() {
         val url = store.haUrl ?: return
-        Log.i(TAG, "dashboard: loading $url")
-        view.loadUrl("$url/?external_auth=1")
+        val target = startTargetUrl()?.let { DashboardLinks.withParam(it, "external_auth=1") }
+        main.post {
+            if (target == null) {
+                Log.i(TAG, "dashboard: loading $url")
+                view.loadUrl("$url/?external_auth=1")
+            } else {
+                Log.i(TAG, "dashboard: loading start target $target")
+                view.loadUrl(target)
+            }
+        }
+    }
+
+    /**
+     * The resolved start target (F-DSH-02), or null when none is set or the
+     * value is invalid or off-origin - the caller then loads HA's default
+     * page. Validation is `navigate`'s own (single leading slash, resolved
+     * against the HA base URL, refused off the origin, ADR 0001 item 3).
+     */
+    private fun startTargetUrl(): String? {
+        val path = store.settings.dashboard.startPath
+        if (path.isEmpty()) return null
+        val origin = haUri ?: return null
+        val resolved = DashboardLinks.resolveNavigatePath(path, origin)
+        if (resolved == null) {
+            Log.w(TAG, "dashboard: start path '$path' is not a valid HA frontend path; falling back to HA's default page")
+        }
+        return resolved
     }
 
     /** The activity is done with it: detach first so a dying handle is never used. */
@@ -120,6 +152,16 @@ class DashboardView(
 
     override fun load(url: String) {
         main.post { view.loadUrl(url) }
+    }
+
+    override fun loadStart() {
+        // In-session (go_home, the idle return): the frontend keeps its own
+        // session, so no external-auth bootstrap is appended - same as
+        // navigate. Unset, invalid or off-origin falls back to HA's default
+        // page (F-DSH-02); load() main-posts its WebView call, so neither the
+        // timer scope nor the command thread touches the WebView here.
+        val resolved = startTargetUrl() ?: return load()
+        main.post { view.loadUrl(resolved) }
     }
 
     override fun currentPage(): String? = currentUrl?.let(DashboardLinks::pagePath)
@@ -260,6 +302,24 @@ class DashboardView(
             val path = DashboardLinks.pagePath(url) ?: url
             Log.i(TAG, "dashboard: loaded $path")
             bus.pageChanged(DashboardLinks.pagePath(url))
+        }
+
+        override fun doUpdateVisitedHistory(webView: WebView, url: String, isReload: Boolean) {
+            // The frontend routes client-side (history pushState/replaceState),
+            // which never reaches onPageStarted/Finished but does reach here.
+            // Feeding currentUrl and the page-change listeners from it keeps
+            // current_page (F-NAV-02) and the return-to-start countdown's
+            // compare and reset (F-DSH-15, ADR 0021 item 3) in step with what
+            // the dashboard really shows after a client-side move. A full load
+            // reports first through onPageStarted, so the equality check keeps
+            // it to one event per page.
+            val origin = haUri ?: return
+            if (DashboardLinks.offOriginLoad(url, origin)) return
+            if (url == currentUrl) return
+            currentUrl = url
+            val path = DashboardLinks.pagePath(url)
+            Log.i(TAG, "dashboard: routed to ${path ?: url}")
+            bus.pageChanged(path)
         }
 
         override fun onReceivedError(

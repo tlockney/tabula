@@ -71,6 +71,7 @@ async def test_entities_created_from_register(hass_setup, server, hub, session, 
         ("sensor", "current_page"): "/lovelace/0",
         ("sensor", "network"): "wifi",
         ("sensor", "app_version"): "0.1.0",
+        ("sensor", "illuminance"): "128.5",
         ("media_player", "speaker"): "idle",
     }
     for (platform, key), value in expected.items():
@@ -87,6 +88,9 @@ async def test_entities_created_from_register(hass_setup, server, hub, session, 
     assert nxt.state == "2026-11-21T14:08:12+00:00"
     for key in ("reload", "restart_app", "clear_cache"):
         assert entity_id(hass_setup, "button", paired, key) is not None
+    # the fixture's registration predates the go_home capability (P3.15), so
+    # a device that does not declare it gets no go-to-start-page button (F-HA-02)
+    assert entity_id(hass_setup, "button", paired, "go_home") is None
     assert entity_id(hass_setup, "notify", paired, "notifications") is not None
     await client.close()
 
@@ -245,6 +249,35 @@ async def test_dropped_capability_removes_its_entities(hass_setup, server, hub, 
     await hass_setup.async_block_till_done()
     assert entity_id(hass_setup, "media_player", paired, "speaker") is None
     assert entity_id(hass_setup, "light", paired, "screen") is not None
+    await client.close()
+
+
+async def test_illuminance_sensor_follows_capability_and_state(
+    hass_setup, server, hub, session, paired
+):
+    """The illuminance sensor exists only with the capability (P3.16, F-HA-02/F-HA-06)."""
+    client = await ws_connect(session, server, paired.refresh_token)
+    await register(client, paired, [c for c in ALL_CAPS if c != "illuminance"])
+    await hass_setup.async_block_till_done()
+    assert entity_id(hass_setup, "sensor", paired, "illuminance") is None
+    await client.close()
+
+    client = await ws_connect(session, server, paired.refresh_token)
+    await register(client, paired, ALL_CAPS)
+    await hass_setup.async_block_till_done()
+    eid = entity_id(hass_setup, "sensor", paired, "illuminance")
+    assert eid is not None
+    state = hass_setup.states.get(eid)
+    # register's complete picture carries the reading (PROTOCOL.md 4.2)
+    assert state.state == "128.5"
+    assert state.attributes["device_class"] == "illuminance"
+    assert state.attributes["unit_of_measurement"] == "lx"
+    assert state.attributes["state_class"] == "measurement"
+    # not a diagnostic: the room's light, for automations (ADR 0020)
+    assert "entity_category" not in state.attributes
+
+    await client.send(frame_fixture("state_delta", id=3, state={"illuminance": 96.0}))
+    await wait_state(hass_setup, eid, lambda s: s.state == "96.0")
     await client.close()
 
 

@@ -54,6 +54,7 @@ fun mergeState(base: StateDelta, other: StateDelta): StateDelta = StateDelta(
     charging = other.charging ?: base.charging,
     network = other.network ?: base.network,
     wifiRssi = other.wifiRssi ?: base.wifiRssi,
+    illuminance = other.illuminance ?: base.illuminance,
     currentPage = other.currentPage ?: base.currentPage,
     volume = other.volume ?: base.volume,
     muted = other.muted ?: base.muted,

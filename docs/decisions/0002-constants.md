@@ -83,6 +83,7 @@ These appear as bounds in `schema/tlp-v1.schema.json` and are chosen here:
 | `current_page`, `navigate.path`, `page_changed.path` | 2048 chars | Common URL length limit in browsers and proxies. |
 | `play_media.url` | 4096 chars | Signed media URLs carry long query strings. |
 | `wifi_rssi` | −127 to 0 dBm | The range Android reports. |
+| `illuminance` | 0–100000 lx | Sunlight is about 100000 lx and Android light sensors top out below it, so the bound admits every real reading while keeping the number sane. The floor is why a supported key with no value yet is omitted rather than sent as a placeholder (PROTOCOL.md 4.2): the schema requires a number, never null or negative. |
 | `capabilities` (register) | 64 items, names `[a-z][a-z0-9_]{0,31}` | Room for many future capabilities while bounding the frame. |
 | `credential.refresh_token` | at least 32 chars | HA refresh tokens are far longer; a shorter one is a bug. |
 
@@ -133,6 +134,13 @@ Photo-slideshow constants (F-SSV-12, packet P3.8). Same rules: chosen here only.
 ### Settings schema v2 (P3.1)
 
 Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as above: bounds and defaults live here only. Every value is a round number chosen from the feature's own text (docs/FEATURES.md) and the Office Kiosk's panel (plan 3). All keys are `shared` role. `media_browser` is in the photos source enum from day one so P3.9 adds no schema bump.
+
+**Dashboard start target and idle return (`dashboard`, F-DSH-02/F-DSH-15, P3.15).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| start_path | 0–2048 chars, empty or `^/(?![/\\])[^\s?]*$` (single leading slash, optional fragment, no query), default "" (HA's default page) | The same shape `navigate` already carries (its 2048-char URL bound, ADR 0002), minus the query string: a start target with a query would break the launch load, which appends the external-auth parameter. Empty is the neutral default: existing tablets keep opening HA's default page, and "go home" without a target is still meaningful (back to the default). The fragment stays because F-DSH-02 lands on it (a pop-up a view opens by fragment). |
+| return_home_after | 0–86400 s, default 0 (never) | 0 is "never", not "instantly": F-DSH-15 calls the return optional, and the default must keep existing tablets' behavior unchanged. A day is the longest sensible idle wait (matches `screensaver.idle_timeout`'s ceiling); the tablet that truly never resets sets 0. |
 
 **Clock mode (`screensaver.clock`, F-SSV-08/F-SSV-09).** Nothing is bundled: font family and weight name system fonts only.
 
@@ -233,6 +241,15 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 | slot.brightness / power_off_delay / presence_dismiss / widgets / at_a_glance | nullable (`null` = inherit), bounds as the global keys (0–100 %, 0–1440 min, booleans) | F-SSV-18's "null/absent means inherit": the schema carries nulls so a partial slot inherits the global values, and a set value overrides. Overrides can only turn off globally configured overlays, which the device enforces. `power_off_delay` is carried now and no-ops until F-SSV-19's countdown ships. |
 
 **NightState (pre-committed interface).** The night-mode flag is a plain-JVM interface in `android/core`, `net.lockney.tabula.core.screensaver.NightState` with two members — `isNight: Boolean` and `addListener`, a listener registration that returns a removal function — plus a never-night default (`NightState.NEVER`, false, whose listeners never fire). P3.4 implements it from the light sensor against `screensaver.night_mode`'s threshold and hysteresis, firing listeners on each transition; P3.6 (At a Glance) and P3.11 (widgets) consume it for the night color. Landing the interface in P3.1 — before the hardware-dependent P3.4 — lets those packets compile against the contract; the never-night default is the honest pre-P3.4 behavior: night mode never engages, so consumers render their day colors. The interface is observable, not polled: consumers register a listener and re-render on each transition instead of re-reading the flag every frame. The observation seam is a plain listener rather than a coroutine flow because `android/core` carries no coroutine dependency; P3.4 owns the threading guarantees.
+
+### Ambient light sensor reporting (P3.16)
+
+F-HA-06's rate limit for the illuminance state key. Same rules: chosen here only. The filter that applies them is plain JVM code in `android/core` (packet P3.16), and `STATE_MIN_INTERVAL` still coalesces bursts on top of both values.
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `ILLUMINANCE_CHANGE_THRESHOLD` | 20 % of the last value sent | A real change in room light — a lamp switched on, a curtain opened, dusk crossing a threshold — moves the lux reading by several tens of percent, while sensor quantization and noise around a steady level is a few percent (the same reasoning as `ADAPTIVE_CHANGE_THRESHOLD`). 20 % separates the two: a step beyond it goes out at once (F-HA-06 "a real change goes out at once"), oscillation below it does not. From total dark (last value 0 lx) any positive reading is a step, since 20 % of zero is zero. |
+| `ILLUMINANCE_MIN_INTERVAL` | 30 s | The most generous rate at which sub-threshold drift reaches HA (F-HA-06: one update per interval so HA's recorder is not flooded): at most 120 updates per hour while the light drifts, and none at all in a steady room, where identical readings produce nothing. Slow daylight drift crosses the 20 % threshold in a couple of minutes anyway; covering and uncovering the sensor moves in seconds. Because Android light sensors report on change, a sub-threshold change reaches HA only when the next reading arrives past the interval: a room that drifts and then holds steady keeps HA's older value, an error bounded by the 20 % threshold (review, PR #108) - acceptable, not a bug. |
 
 ### Phase 1–2 behavior defaults
 
