@@ -273,6 +273,21 @@ checks:
    timed out, tapped) and at least one `tabula_media` (`media_finished`)
    event.
 
+### Chime in silent mode (#121, ADR 0023)
+
+The chime plays on the media stream, so the tablet's silent mode must not
+mute it. By ear, with the media volume around half:
+
+1. Silence the notification and ring streams:
+   `adb shell media volume --stream 5 --set 0` and
+   `adb shell media volume --stream 2 --set 0`. Confirm with
+   `adb shell dumpsys audio | grep -A3 "STREAM_NOTIFICATION:"`.
+2. `tabula.notify` with `level: warning` and `chime: true`: the beep is
+   audible.
+3. Set the tablet's **Chime volume** entity to 30 and send the card again:
+   the beep is quieter. At 0, the card shows silently.
+4. Set **Chime volume** back to 100 and restore the two streams.
+
 ## Hardware check (P2.6, offline-first)
 
 Install a P2.6 build (or later; the build contains no P2.6 code changes on

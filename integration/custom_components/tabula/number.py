@@ -1,5 +1,6 @@
-"""Screensaver brightness (plan 5.5) and the idle timeout setting (P3.2, F-HA-11).
-Volume lives on the media player."""
+"""Screensaver brightness (plan 5.5), the idle timeout setting (P3.2, F-HA-11)
+and the chime volume setting (F-NTF-09, ADR 0023). Media volume lives on the
+media player."""
 
 from __future__ import annotations
 
@@ -72,6 +73,39 @@ class TabulaIdleTimeout(TabulaSettingEntity, NumberEntity):
         await self.async_write_setting(round(value))
 
 
+CHIME_VOLUME = TabulaEntityDescription(
+    key="chime_volume",
+    translation_key="chime_volume",
+    entity_category=EntityCategory.CONFIG,
+    setting="audio_chime_volume",  # F-NTF-09; a share of the media volume (ADR 0023)
+)
+
+
+class TabulaChimeVolume(TabulaSettingEntity, NumberEntity):
+    """Card chime loudness, percent of the media volume (F-NTF-09, ADR 0023).
+
+    The chime plays on the media stream, so 100 is as loud as TTS; bounds
+    come from the schema (ADR 0002).
+    """
+
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, hub: TabulaHub, record, description: TabulaEntityDescription) -> None:
+        super().__init__(hub, record, description)
+        field_ = hub.settings.schema.field("audio_chime_volume")
+        self._attr_native_min_value = field_.minimum
+        self._attr_native_max_value = field_.maximum
+
+    @property
+    def native_value(self) -> float | None:
+        return self.setting_value
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.async_write_setting(round(value))
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -84,4 +118,7 @@ async def async_setup_entry(
     )
     entry.async_on_unload(
         setup_platform(hass, hub, async_add_entities, [IDLE_TIMEOUT], TabulaIdleTimeout)
+    )
+    entry.async_on_unload(
+        setup_platform(hass, hub, async_add_entities, [CHIME_VOLUME], TabulaChimeVolume)
     )

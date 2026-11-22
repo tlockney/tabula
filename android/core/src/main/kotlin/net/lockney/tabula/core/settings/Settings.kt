@@ -424,11 +424,14 @@ data class Notifications(
 data class Audio(
     /** Media channel volume, percent; the level the HA media_player controls (F-TTS-07). Default per ADR 0002. */
     @SerialName("media_volume") val mediaVolume: Int = 50,
+    /** Notification chime loudness, percent of the media volume: the chime plays on the media stream, so the OS silent mode does not mute it, and 100 matches the media volume (F-NTF-09, ADR 0023). Default per ADR 0002. */
+    @SerialName("chime_volume") val chimeVolume: Int = 100,
     /** Announcements play at the current volume; no hidden volume jumps. 'none' is the only v1 value (ADR 0002); a boost level, if ever designed, is added with its own ADR and bumps nothing else. */
     @SerialName("announce_volume_boost") val announceVolumeBoost: AudioAnnounceVolumeBoost = AudioAnnounceVolumeBoost.None
 ) {
     init {
         require(mediaVolume in 0..100) { "audio.media_volume must be 0..100" }
+        require(chimeVolume in 0..100) { "audio.chime_volume must be 0..100" }
     }
 }
 

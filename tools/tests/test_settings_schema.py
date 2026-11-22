@@ -109,6 +109,7 @@ LEAF_SPEC: dict[tuple[str, ...], tuple[str, Any]] = {
     ("notifications", "chime_by_level", "error"): ("shared", True),
     ("notifications", "max_visible"): ("shared", 3),
     ("audio", "media_volume"): ("shared", 50),
+    ("audio", "chime_volume"): ("shared", 100),
     ("audio", "announce_volume_boost"): ("shared", "none"),
     ("at_a_glance", "entities"): ("shared", []),
     ("at_a_glance", "style"): ("shared", "pill"),

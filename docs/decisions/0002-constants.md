@@ -114,7 +114,6 @@ Manual brightness from HA (the light entity, the `screen` command) is applied at
 | `MEDIA_MAX_BYTES` | 50 MiB | The media player downloads the audio it plays rather than streaming it, so the fetch is JVM-testable and its redirects stay under Tabula's control (PROTOCOL 4.5; ADR 0001 item 5 still holds: no credential is ever attached). The cap bounds a runaway or endless stream, which would otherwise fill storage: HA TTS clips are well under 1 MiB, and ordinary music files and podcast episodes are a few to a few dozen MiB, so 50 MiB passes every real clip and fails only what could never be a sensible announcement — with `media_finished` reason `error`. |
 | `MEDIA_MAX_REDIRECTS` | 5 | The media fetch follows redirects (the P2.1 no-redirect rule exists so a *credential* cannot be re-sent somewhere else, and this fetch carries none, ADR 0001 item 5) but refuses a downgrade from https to http. Common CDN and signed-URL chains are one or two hops; a chain longer than 5 is a misconfiguration or a loop. |
 | `MEDIA_READ_TIMEOUT` | 30 s | The media download's socket read timeout, set explicitly instead of the HTTP library's default (P2.5 review nit). HA TTS clips are well under 1 MiB on a LAN and even a multi-MiB music file lands in seconds; a stalled or silently dead server is failed after 30 s instead of holding the load slot (and the speaker) forever. Same tolerance for a weak SoC on Wi-Fi as `SCREENSHOT_TIMEOUT`. |
-| `CHIME_VOLUME` | 100 (ToneGenerator scale, top) | The notification chime generator runs at the top of its scale, so the OS notification stream is what decides loudness (F-NTF-09). A per-device notification volume (F-NTF-10) has no settings field yet; when one lands it replaces this constant. |
 | `CARD_BACKGROUND` | 0xEE1C1C1C (ARGB) | A near-opaque dark card body (P2.5): whatever is behind — dashboard or screensaver — shows through faintly, and the severity accent stripe carries the color (F-NTF-02). |
 
 The idle timeout, mode and brightness defaults are in "Phase 1–2 behavior defaults" below.
@@ -262,6 +261,7 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 | Notification level when missing or unknown | `info` | FEATURES F-NTF-02 fallback; the neutral level. |
 | Notifications shown at once | 3 | More would cover the dashboard; older ones collapse. |
 | Media volume | 50 % | Middle of the range; TTS is audible without startling. |
+| Chime volume | 100 % of the media volume | The chime plays on the media stream (ADR 0023), so at 100 it is as loud as TTS and media; a household that wants quieter chimes lowers it. It can only scale the media level down: raising the chime above it would mean moving the stream volume behind the user's back, which the no-hidden-volume-jumps rule (announce volume boost) rules out. Replaces the P2.5 `CHIME_VOLUME` constant. |
 | Announce volume boost | none | `announce` plays at the current volume; no hidden volume jumps. |
 
 ### Settings bounds in the settings schema
@@ -272,6 +272,7 @@ These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen he
 | --- | --- | --- |
 | `screensaver.idle_timeout` | 1–86400 s | A non-zero floor: 0 would mean "start instantly", not "never" (a disabled screensaver already expresses never). A day is the longest sensible idle wait; longer than that is "leave it on", and 86400 sits far inside a Kotlin `Int`. |
 | `notifications.max_visible` | 1–10 | A non-zero floor: a cap of 0 would hide every card. Ten full-width cards already cover a phone-height panel, so more would bury the dashboard rather than show anything. |
+| `audio.chime_volume` | 0–100 % | A share of the media volume (ADR 0023): 0 silences chimes without turning off `chime_by_level`, 100 is the media level itself. |
 
 ## Consequences
 

@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 import aiohttp
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
-from custom_components.tabula.number import IDLE_TIMEOUT
+from custom_components.tabula.number import CHIME_VOLUME, IDLE_TIMEOUT
 from custom_components.tabula.settings import SettingsSchema
 from custom_components.tabula.switch import SETTING_SWITCHES
 from custom_components.tabula.text import CLOCK_BACKGROUND
@@ -30,6 +30,7 @@ from mockdevice.store import DeviceStore
 SETTING_ENTITIES = [
     *(("switch", d.key, d.setting) for d in SETTING_SWITCHES),
     ("number", IDLE_TIMEOUT.key, IDLE_TIMEOUT.setting),
+    ("number", CHIME_VOLUME.key, CHIME_VOLUME.setting),
     ("text", CLOCK_BACKGROUND.key, CLOCK_BACKGROUND.setting),
 ]
 
@@ -95,6 +96,7 @@ def test_every_setting_entity_names_a_shared_schema_leaf():
         "schedule_enabled": 2,
         "widgets_shown": 2,
         "screensaver_clock_background_source": 2,
+        "audio_chime_volume": 2,
     }
 
 

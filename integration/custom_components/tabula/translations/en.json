@@ -49,6 +49,7 @@
           "notifications_chime_by_level_error": "Chime for error notifications",
           "notifications_max_visible": "Maximum visible notifications",
           "audio_media_volume": "Media volume (%)",
+          "audio_chime_volume": "Chime volume (% of media volume)",
           "audio_announce_volume_boost": "Announcement volume boost",
           "screensaver_dim_brightness": "Dim mode brightness (%)",
           "screensaver_clock_face": "Clock face",
@@ -182,6 +183,9 @@
       },
       "screensaver_idle_timeout": {
         "name": "Screensaver idle timeout"
+      },
+      "chime_volume": {
+        "name": "Chime volume"
       }
     },
     "select": {
