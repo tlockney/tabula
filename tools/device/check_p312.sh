@@ -73,12 +73,8 @@ wait_for() { # wait_for <description> <timeout s> <command...>
     done
     echo "-- $what after ${waited}s"
 }
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 tap_centre() { # only while the screensaver shows: the overlay takes the touch
     local size w h
     size="$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tail -1)"

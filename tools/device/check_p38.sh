@@ -94,12 +94,8 @@ wait_for_slides() { # wait_for_slides <count> <timeout s>
     done
     echo "-- $want slides after ${waited}s"
 }
-ask() { # ask <question> -> fails unless the verifier answers y
-    local answer
-    read -r -p "$1 [y/n] " answer
-    [[ "$answer" == y* ]] || fail "verifier answered '$answer' to: $1"
-    echo "-- verifier: yes ($1)"
-}
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
 slide_count() { # logcat lines the gallery logged so far
     adb logcat -d -s TabulaGallery:I 2>/dev/null | grep -c "slide: " || true
 }
