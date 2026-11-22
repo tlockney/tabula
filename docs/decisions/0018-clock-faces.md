@@ -26,7 +26,7 @@ One behavior change from P2.4 comes with the settings: 12/24-hour time now follo
 - Night mode (P3.4) re-renders the face colors through the same re-apply path the settings write uses; the background's hide-at-night option will sit where the darkening layer sits.
 - The reload-on-write rule is observable from HA: writing the same background source twice produces two loads and two draws on the tablet.
 - The clock's background engine pauses with the window like the gallery (F-SSV-02), so no fetch or decode runs against a dark screen.
-- Pixel shift (F-SSV-22) and fade (F-SSV-23) will move the face and background together in their own packets.
+- Pixel shift (F-SSV-22) moves the face and the background image together, the background oversized by the amplitude while a shift runs so no offset bares the panel's edge (ADR 0022's mechanism, as the gallery's container); fade (F-SSV-23) animates the whole overlay's alpha, face and background together. The darkening layer is a uniform overlay and stays full-screen.
 
 ## Alternatives considered
 

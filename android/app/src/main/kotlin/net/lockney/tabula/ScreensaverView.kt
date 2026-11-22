@@ -56,7 +56,8 @@ import net.lockney.tabula.ha.MediaFetcher
  *
  * Engine polish (packet P3.14, ADR 0022): the overlay fades in on start and
  * out on dismissal when the fade is on ([fade], F-SSV-23), and the face
- * steps by small offsets on the [pixelShift] schedule (F-SSV-22), never in
+ * and the background image step together by small offsets on the
+ * [pixelShift] schedule (F-SSV-22), never in
  * black mode. Both are read once when a run starts, so an edit lands at the
  * next start and a running screensaver keeps its current shift and fade
  * (ADR 0022) - a settings write through [applyClock] re-renders the face
@@ -380,12 +381,16 @@ class ScreensaverView(
     /**
      * Schedule the first shift from this run's snapshot. Dim draws nothing,
      * so nothing can move; black never shifts (F-SSV-22). The shift moves
-     * the face - the background image is cropped to cover the panel, so
-     * moving the face alone keeps the clock legible over a steady image.
+     * the face and the background image together (ADR 0018: the face and
+     * background move as one): while a shift runs the background is
+     * oversized by the amplitude on every side, so no offset ever bares
+     * the panel's edge (ADR 0022's mechanism, as the gallery's container).
+     * The darkening layer is a uniform overlay and stays full-screen.
      */
     private fun startShift(mode: ScreensaverMode) {
         resetShift()
         if (mode == ScreensaverMode.DIM || !shift.appliesTo(mode)) return
+        setBackgroundInset(shift.amplitudePx)
         postDelayed(shiftTick, shift.intervalMs)
     }
 
@@ -393,6 +398,9 @@ class ScreensaverView(
         shiftStep = 0
         face.translationX = 0f
         face.translationY = 0f
+        background.translationX = 0f
+        background.translationY = 0f
+        setBackgroundInset(0)
     }
 
     private fun stepShift() {
@@ -402,8 +410,18 @@ class ScreensaverView(
         shiftStep += 1
         face.translationX = offset.x.toFloat()
         face.translationY = offset.y.toFloat()
+        background.translationX = offset.x.toFloat()
+        background.translationY = offset.y.toFloat()
         Log.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
         postDelayed(shiftTick, shift.intervalMs)
+    }
+
+    /** Oversize the background by [inset] on every side, so a shift never bares the panel edge (ADR 0022). */
+    private fun setBackgroundInset(inset: Int) {
+        val lp = background.layoutParams as FrameLayout.LayoutParams
+        if (lp.leftMargin == -inset && lp.topMargin == -inset) return
+        lp.setMargins(-inset, -inset, -inset, -inset)
+        background.layoutParams = lp
     }
 
     /** Show the loaded background image with its darkening layer, or clear to the configured background color (F-SSV-09). */
