@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -17,6 +18,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lockney.tabula.core.Constants
+import net.lockney.tabula.core.screensaver.FadeRule
+import net.lockney.tabula.core.screensaver.PixelShift
 import net.lockney.tabula.core.screensaver.gallery.FitPlan
 import net.lockney.tabula.core.screensaver.gallery.GalleryController
 import net.lockney.tabula.core.screensaver.gallery.PanelCorner
@@ -25,6 +28,7 @@ import net.lockney.tabula.core.screensaver.gallery.detailsCorner
 import net.lockney.tabula.core.screensaver.gallery.edgeZoneAt
 import net.lockney.tabula.core.settings.ScreensaverPhotos
 import net.lockney.tabula.core.settings.ScreensaverPhotosSource
+import net.lockney.tabula.core.tlp.ScreensaverMode
 
 /**
  * The photo slideshow's overlay (packet P3.8, F-SSV-12), drawn over the whole
@@ -47,12 +51,21 @@ import net.lockney.tabula.core.settings.ScreensaverPhotosSource
  * out (the engine holds it GALLERY_RELEASE_MARGIN_MS past the animation,
  * ADR 0016, and renders synchronously before any release applies, so a
  * recycled bitmap is never drawn).
+ *
+ * Engine polish (packet P3.14, ADR 0022): the overlay fades in and out with
+ * the fade on ([fade], F-SSV-23), and its content steps by small offsets on
+ * the [pixelShift] schedule (F-SSV-22) — the shifted [layers] container is
+ * oversized by the amplitude, so no shift ever bares the panel's edge. Both
+ * are read once when a run starts, so an edit lands at the next start and a
+ * running screensaver keeps its current shift and fade (ADR 0022).
  */
 @SuppressLint("ViewConstructor")
 class GalleryView(
     context: Context,
     private val scope: CoroutineScope,
     private val clockStandIn: () -> Unit,
+    private val pixelShift: () -> PixelShift = { PixelShift() },
+    private val fade: () -> FadeRule = { FadeRule() },
 ) : FrameLayout(context) {
     /** Smart fill's bars: a blurred, darkened enlargement of the photo (F-SSV-12). */
     private val blur = ImageView(context).apply {
@@ -79,21 +92,41 @@ class GalleryView(
         visibility = View.GONE
     }
 
+    /**
+     * The shifted content: blur, scrim, slides and details, in one container
+     * (F-SSV-22). While a shift runs it is oversized by the amplitude on every
+     * side, so no offset bares the panel's edge (ADR 0022).
+     */
+    private val layers = FrameLayout(context)
+
     private var showingFront = false
     private var photos: ScreensaverPhotos? = null
     private var engine: GalleryEngine? = null
     private var backgroundBitmap: Bitmap? = null
+
+    /**
+     * This run's shift and fade, read once when the run started: an edit to
+     * the settings lands at the next start, and a running screensaver keeps
+     * its current shift and fade (ADR 0022's Consequences). The oversize is
+     * sized from the shift snapshot, so no later edit can out-step it; the
+     * dismissal fade uses the rule the run started with.
+     */
+    private var shift = PixelShift()
+    private var fadeRule = FadeRule()
+    private var shiftStep = 0
+    private val shiftTick = Runnable { stepShift() }
 
     /** The window's last known state (F-SSV-02), applied to each new engine. */
     private var active = true
 
     init {
         setBackgroundColor(Color.BLACK)
-        addView(blur, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(slides[0], LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(slides[1], LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(details, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
+        layers.addView(blur, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        layers.addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        layers.addView(slides[0], LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        layers.addView(slides[1], LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        layers.addView(details, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
+        addView(layers, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         visibility = View.GONE
         isClickable = true
         isFocusable = false
@@ -160,13 +193,47 @@ class GalleryView(
         this.engine = engine
         engine.setActive(active)
         visibility = View.VISIBLE
+        // this run's shift and fade, read once (ADR 0022's cadence); the
+        // overlay fades in with the fade on (F-SSV-23) and the content
+        // shifts on the pixel-shift schedule (F-SSV-22)
+        shift = pixelShift()
+        fadeRule = fade()
+        if (fadeRule.onShow(ScreensaverMode.PHOTOS)) {
+            alpha = 0f
+            Log.i(TAG, "fade in")
+            animate().alpha(1f).setDuration(Constants.SCREENSAVER_FADE_MS)
+        } else {
+            alpha = 1f
+        }
+        startShift()
         return true
     }
 
     /** Stop the slideshow and clear every layer (the mode left, or the gallery cannot show). */
     fun hide() {
-        stopEngine()
-        visibility = View.GONE
+        removeCallbacks(shiftTick)
+        // the dismissal fade is the started run's own (ADR 0022's cadence)
+        if (visibility == View.VISIBLE && fadeRule.onDismiss(ScreensaverMode.PHOTOS)) {
+            // the last slide stays for the fade; the engine stops and the
+            // bitmaps release when it ends, and a re-show cancels this end
+            // action and stops the engine itself (the transitions'
+            // cancellation rule, ADR 0016 item 4)
+            Log.i(TAG, "fade out")
+            animate().cancel()
+            animate()
+                .alpha(0f)
+                .setDuration(Constants.SCREENSAVER_FADE_MS)
+                .withEndAction {
+                    stopEngine()
+                    visibility = View.GONE
+                    alpha = 1f
+                }
+        } else {
+            animate().cancel()
+            stopEngine()
+            visibility = View.GONE
+            alpha = 1f
+        }
     }
 
     /**
@@ -214,6 +281,42 @@ class GalleryView(
         details.visibility = View.GONE
         engine?.stop()
         engine = null
+        stopShift()
+    }
+
+    /** Start the content shifts (F-SSV-22) from this run's snapshot; nothing moves until the interval has passed. */
+    private fun startShift() {
+        stopShift()
+        if (!shift.appliesTo(ScreensaverMode.PHOTOS)) return
+        setLayerInset(shift.amplitudePx)
+        postDelayed(shiftTick, shift.intervalMs)
+    }
+
+    private fun stepShift() {
+        if (visibility != View.VISIBLE || !shift.appliesTo(ScreensaverMode.PHOTOS)) return
+        val offset = shift.offset(shiftStep)
+        shiftStep += 1
+        layers.translationX = offset.x.toFloat()
+        layers.translationY = offset.y.toFloat()
+        Log.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
+        postDelayed(shiftTick, shift.intervalMs)
+    }
+
+    /** Stop shifting and put the content back at rest, without the oversized inset. */
+    private fun stopShift() {
+        removeCallbacks(shiftTick)
+        shiftStep = 0
+        layers.translationX = 0f
+        layers.translationY = 0f
+        setLayerInset(0)
+    }
+
+    /** Oversize the content by [inset] on every side, so a shift never bares the panel edge. */
+    private fun setLayerInset(inset: Int) {
+        val lp = layers.layoutParams as FrameLayout.LayoutParams
+        if (lp.leftMargin == -inset && lp.topMargin == -inset) return
+        lp.setMargins(-inset, -inset, -inset, -inset)
+        layers.layoutParams = lp
     }
 
     private fun clearSlide(view: ImageView) {
@@ -232,7 +335,7 @@ class GalleryView(
         // a stale carry-out racing a stop: the engine released it already
         if (bitmap.isRecycled) return
         // the hardware check counts these lines as slide evidence (check_p38.sh)
-        android.util.Log.i(TAG, "slide: transition=${show.transition} fit=${show.fit.kind}")
+        Log.i(TAG, "slide: transition=${show.transition} fit=${show.fit.kind}")
         // Cancel both layers' animations before placing anything: a pending
         // end action from an earlier transition would otherwise clear the
         // slide this draw just placed (a cancelled animator never runs its

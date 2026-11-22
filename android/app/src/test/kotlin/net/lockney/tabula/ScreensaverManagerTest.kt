@@ -150,6 +150,19 @@ class ScreensaverManagerTest {
     }
 
     @Test
+    fun `dim holds dim_brightness, not the screensaver brightness, and releases on dismissal`() {
+        running()
+        manager.applySettings(
+            Settings(screensaver = Screensaver(enabled = true, idleTimeout = 60, brightness = 20, dimBrightness = 30)),
+        )
+        manager.command(active = true, mode = ScreensaverMode.DIM)
+        assertEquals(listOf<ScreensaverMode?>(ScreensaverMode.DIM), shown)
+        assertEquals(30, held.last(), "the panel is held at dim_brightness (F-SSV-07, P3.14)")
+        manager.command(active = false, mode = null)
+        assertNull(held.last(), "dismissed: the override releases and the previous level returns")
+    }
+
+    @Test
     fun `turning the master switch off dismisses it and no idle start follows`() {
         running()
         manager.command(active = true, mode = null)
