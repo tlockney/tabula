@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # make android-apk: build the debug APK for provisioning (docs/DEVICE.md).
+# make voice-spike-apk: build the P7.0 voice spike's debug APK, a separate
+# applicationId that installs beside the paired app. Debug only: nothing in the
+# release path knows about it.
+#
+# The module is the first argument (default: app).
 #
 # Skips with a clear message when the toolchain is missing, like
 # tools/android_test.sh. CI never needs the APK, so TABULA_REQUIRE_ANDROID is
@@ -26,9 +31,11 @@ if ! sdk_components_present "$sdk"; then
     skip "Android SDK platform $android_platform / build-tools $android_build_tools missing; run make setup-android"
 fi
 
+module="${1:-app}"
+
 cd "$here/../android"
 export JAVA_HOME="$jdk"
 export ANDROID_HOME="$sdk"
-./gradlew --no-daemon :app:assembleDebug --console=plain
+./gradlew --no-daemon ":$module:assembleDebug" --console=plain
 echo
-echo "APK: android/app/build/outputs/apk/debug/app-debug.apk"
+echo "APK: android/$module/build/outputs/apk/debug/$module-debug.apk"

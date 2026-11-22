@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${TABULA_AUDIO_OK:-0}" == 1 ]] || { echo "refusing to run: audio device tests must be scheduled with the owner; set TABULA_AUDIO_OK=1 only for an approved run" >&2; exit 2; }
 # P2.5 hardware check (docs/packets/P2.5-notifications-and-audio.md):
 #   an HA automation shows a card with a chime and a TTS announcement, and the
 #   tabula_notification and tabula_media events are visible in HA.
