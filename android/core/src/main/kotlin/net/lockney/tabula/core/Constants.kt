@@ -129,6 +129,17 @@ object Constants {
     /** GALLERY_URL_HISTORY: URL-source photos kept for stepping back (P3.8). */
     const val GALLERY_URL_HISTORY = 8
 
+    // --- Clock faces (docs/decisions/0002-constants.md, "Clock faces") ------------
+
+    /** CLOCK_TIME_BASE_SP: the digital time's text size at size=100 % (P3.3, ADR 0018). */
+    const val CLOCK_TIME_BASE_SP = 120f
+
+    /** CLOCK_DATE_BASE_SP: the date line's text size at size=100 % (P3.3, ADR 0018). */
+    const val CLOCK_DATE_BASE_SP = 32f
+
+    /** CLOCK_DIAL_FRACTION: the analog dial's diameter at size=100 %, as a fraction of the panel's smaller side (P3.3, ADR 0018). */
+    const val CLOCK_DIAL_FRACTION = 0.60f
+
     // --- Illuminance reporting (docs/decisions/0002-constants.md,
     // "Ambient light sensor reporting") -------------------------------------
 

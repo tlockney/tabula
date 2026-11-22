@@ -264,7 +264,7 @@ async def test_idle_timeout_bounds_come_from_the_schema(hass_setup, server, hub,
 async def test_chime_volume_is_a_schema_bounded_percent_slider(
     hass_setup, server, hub, paired, tmp_path
 ):
-    """The chime volume number: 0-100 from the schema, percent, slider (ADR 0026)."""
+    """The chime volume number: 0-100 from the schema, percent, slider (ADR 0027)."""
     async with tablet(hass_setup, server, paired, tmp_path, schema_version=2) as (device, _):
         runtime = TabulaHub.get(hass_setup)
         assert runtime is not None

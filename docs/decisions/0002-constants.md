@@ -136,6 +136,16 @@ Photo-slideshow constants (F-SSV-12, packet P3.8). Same rules: chosen here only.
 | `GALLERY_EDGE_ZONE_FRACTION` | 8 % of the panel width | The edge-tap zones' width (F-SSV-12). At a 1200 px panel that is 96 px — a thumb's arc from the bezel — while a deliberate dismiss tap aimed at the middle of a 1200 px panel cannot land inside 96 px of an edge by accident. |
 | `GALLERY_URL_HISTORY` | 8 photos | The URL source's history for stepping back (F-SSV-12): enough to review the last few fetches of a slow-changing source, while the ring's disk use stays bounded (8 × a screen-sized JPEG is a few MiB). |
 
+### Clock faces (P3.3)
+
+The faces' base sizes — the 100 % point of `screensaver.clock.size` (F-SSV-08). Same rules as above: chosen here only.
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `CLOCK_TIME_BASE_SP` | 120 sp | The digital time at size 100. P2.4's fixed face already used 120 sp and read from across a room; it stays as the scale's anchor so an upgraded document at 100 % looks the same as before (ADR 0018). |
+| `CLOCK_DATE_BASE_SP` | 32 sp | The date line at size 100: roughly a quarter of the time's height — legible at a glance without competing with it. P2.4's fixed face used 32 sp. |
+| `CLOCK_DIAL_FRACTION` | 0.60 of the panel's smaller side | The analog dial's diameter at size 100. Six tenths of a 1200 px panel is 720 px — hands that resolve from across a room — while leaving room under the dial for the date line (ADR 0018). |
+
 ### Settings schema v2 (P3.1)
 
 Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as above: bounds and defaults live here only. Every value is a round number chosen from the feature's own text (docs/FEATURES.md) and the Office Kiosk's panel (plan 3). All keys are `shared` role. `media_browser` is in the photos source enum from day one so P3.9 adds no schema bump.
@@ -274,7 +284,7 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 | Notification level when missing or unknown | `info` | FEATURES F-NTF-02 fallback; the neutral level. |
 | Notifications shown at once | 3 | More would cover the dashboard; older ones collapse. |
 | Media volume | 50 % | Middle of the range; TTS is audible without startling. |
-| Chime volume | 100 % of the media volume | The chime plays on the media stream (ADR 0026), so at 100 it is as loud as TTS and media; a household that wants quieter chimes lowers it. It can only scale the media level down: raising the chime above it would mean moving the stream volume behind the user's back, which the no-hidden-volume-jumps rule (announce volume boost) rules out. Replaces the P2.5 `CHIME_VOLUME` constant. |
+| Chime volume | 100 % of the media volume | The chime plays on the media stream (ADR 0027), so at 100 it is as loud as TTS and media; a household that wants quieter chimes lowers it. It can only scale the media level down: raising the chime above it would mean moving the stream volume behind the user's back, which the no-hidden-volume-jumps rule (announce volume boost) rules out. Replaces the P2.5 `CHIME_VOLUME` constant. |
 | Announce volume boost | none | `announce` plays at the current volume; no hidden volume jumps. |
 
 ### Settings bounds in the settings schema
@@ -285,7 +295,7 @@ These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen he
 | --- | --- | --- |
 | `screensaver.idle_timeout` | 1–86400 s | A non-zero floor: 0 would mean "start instantly", not "never" (a disabled screensaver already expresses never). A day is the longest sensible idle wait; longer than that is "leave it on", and 86400 sits far inside a Kotlin `Int`. |
 | `notifications.max_visible` | 1–10 | A non-zero floor: a cap of 0 would hide every card. Ten full-width cards already cover a phone-height panel, so more would bury the dashboard rather than show anything. |
-| `audio.chime_volume` | 0–100 % | A share of the media volume (ADR 0026): 0 silences chimes without turning off `chime_by_level`, 100 is the media level itself. |
+| `audio.chime_volume` | 0–100 % | A share of the media volume (ADR 0027): 0 silences chimes without turning off `chime_by_level`, 100 is the media level itself. |
 
 ## Consequences
 

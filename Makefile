@@ -39,7 +39,7 @@ lint: ## Lint, format check and repo policy checks
 	git ls-files -z '*.sh' | xargs -0 $(UV) run shellcheck -x --source-path=SCRIPTDIR
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
-	$(UV) run python tools/check_repo.py
+	$(UV) run python -m tools.check_repo
 
 .PHONY: fmt
 fmt: ## Apply formatting and auto-fixable lint
@@ -107,6 +107,16 @@ android: codegen-drift android-test ## Codegen drift check and Android unit test
 .PHONY: frames
 frames: ## Validate golden TLP fixtures against the protocol schema
 	$(UV) run python tools/validate_frames.py
+
+# --- Docs indexes (tools/doc_index.py; nothing is committed) ---
+
+.PHONY: adr-index
+adr-index: ## Print the ADR index from each ADR's header
+	@$(UV) run python -m tools.doc_index adr
+
+.PHONY: provenance
+provenance: ## Print the full provenance table (PROVENANCE.md plus docs/provenance/)
+	@$(UV) run python -m tools.doc_index provenance
 
 # --- Website ---
 

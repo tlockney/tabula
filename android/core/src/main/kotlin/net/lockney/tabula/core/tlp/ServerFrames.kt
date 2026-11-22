@@ -57,7 +57,16 @@ data class RegisterResultData(
     @SerialName("protocol_version") val protocolVersion: Int,
     @SerialName("settings_revision") val settingsRevision: Int,
     @SerialName("server_time") val serverTime: String,
-    val capabilities: List<Capability>,
+    /**
+     * The capabilities HA accepted (PROTOCOL 4.2): an open set on the wire, so
+     * this decodes as strings. Typing it as [Capability] made any accepted
+     * capability newer than this build's vocabulary fail the whole
+     * registration - a device that had itself declared it - and the session
+     * looped "connection lost" forever. The wire stays open (PROTOCOL 8:
+     * receivers tolerate future enum values); callers that need the typed
+     * vocabulary map the strings they know.
+     */
+    val capabilities: List<String>,
 ) {
     init {
         Wire.requireLength("result.ha_device_id", haDeviceId, 1, 256)

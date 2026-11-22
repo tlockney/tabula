@@ -14,5 +14,5 @@
 
 - [ ] `make check` passes
 - [ ] Packet Result section filled in
-- [ ] PROVENANCE.md updated for new user-visible behavior
+- [ ] `docs/provenance/<packet>.md` updated for new user-visible behavior
 - [ ] No restricted names outside the allowed files; no comparison wording

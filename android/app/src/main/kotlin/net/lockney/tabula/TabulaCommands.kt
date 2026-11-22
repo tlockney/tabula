@@ -135,6 +135,9 @@ class TabulaCommands(
         notifications?.applySettings(settings)
         audio?.applySettings(settings)
         startPage?.applySettings(settings)
+        // the activity re-applies the clock settings while a face shows, so
+        // every write reloads the background image (F-SSV-09, P3.3)
+        TabulaStatus.settingsRevision.value = parsed.revision
         return CommandHandler.Reply.Ok(buildJsonObject { put("revision", parsed.revision) })
     }
 }
