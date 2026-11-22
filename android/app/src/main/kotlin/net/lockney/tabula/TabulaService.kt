@@ -247,8 +247,7 @@ class TabulaService : Service() {
             }
             ACTION_UNPAIR -> {
                 store.clearCredential()
-                TabulaStatus.phase.value = Phase.UNPAIRED
-                TabulaStatus.pairing.value = null
+                PairingScreen.attemptStarted()
                 job?.cancel()
                 job = null
             }
@@ -285,7 +284,11 @@ class TabulaService : Service() {
         if (job?.isActive == true) return
         if (store.isPaired) startSession() else {
             // Paired state without a credential can still have an HA URL saved.
+            // No attempt runs after a restart, so neither a code nor the
+            // "retrying" line from before it may stay on the form (issue #127).
             TabulaStatus.phase.value = Phase.UNPAIRED
+            TabulaStatus.pairing.value = null
+            TabulaStatus.pairingNotice.value = null
         }
     }
 
@@ -293,9 +296,10 @@ class TabulaService : Service() {
         val haUrl = store.haUrl ?: return
         job?.cancel()
         job = scope.launch {
-            TabulaStatus.phase.value = Phase.PAIRING
-            TabulaStatus.pairing.value = null
-            TabulaStatus.pairingError.value = null
+            // The form stays up until HA has issued a code: an attempt that
+            // cannot reach HA is not something to confirm, and showing the
+            // confirm screen for it left a blank code on screen (issue #127).
+            PairingScreen.attemptStarted()
             try {
                 val http = OkHttpExchange()
                 val paired = PairingClient(http).pair(
@@ -305,10 +309,11 @@ class TabulaService : Service() {
                     // manufacturer: every Fire tablet would pair as "Amazon"
                     store.nameForPairing(defaultPairingName(this@TabulaService, store.deviceId)),
                     PairingName.clip(Build.MODEL),
-                ) { status ->
-                    TabulaStatus.pairing.value =
-                        TabulaStatus.PairingView(status.code, status.deviceId.take(8))
-                }
+                    onStatus = { status ->
+                        PairingScreen.codeIssued(status.code, status.deviceId.take(8))
+                    },
+                    onUnreachable = { PairingScreen.unreachableNow(haUrl) },
+                )
                 // The claim released the credential exactly once (PROTOCOL 2.5):
                 // savePairing commits synchronously, so it is durable before the
                 // claim is treated as complete. If the write fails, do not start
@@ -316,21 +321,17 @@ class TabulaService : Service() {
                 // user pairs again and deletes the HA entry this claim created.
                 if (!store.savePairing(paired.credential.refreshToken, paired.haDeviceId)) {
                     Log.e(TAG, "could not persist the pairing credential; pair again")
-                    TabulaStatus.pairingError.value = "Pairing failed: the credential could not be saved on this device. Pair again."
-                    TabulaStatus.phase.value = Phase.UNPAIRED
-                    TabulaStatus.pairing.value = null
+                    PairingScreen.failed("Pairing failed: the credential could not be saved on this device. Pair again.")
                     return@launch
                 }
-                TabulaStatus.pairing.value = null
+                PairingScreen.paired()
                 startSession()
             } catch (e: CredentialRevoked) {
                 TabulaStatus.phase.value = Phase.REVOKED
             } catch (e: net.lockney.tabula.ha.PairingException) {
                 // Terminal pairing failure (bad nonce, refused request): show it
                 // as a pairing error, PROTOCOL 2.5, then back to the pairing form.
-                TabulaStatus.pairingError.value = "Pairing failed: ${e.message ?: e.name.name}. Pair again."
-                TabulaStatus.phase.value = Phase.UNPAIRED
-                TabulaStatus.pairing.value = null
+                PairingScreen.failed("Pairing failed: ${e.message ?: e.name.name}. Pair again.")
             } catch (e: Exception) {
                 // A restart cancels the running pairing job, and that surfaces
                 // here as CancellationException; rethrow it (the block below is
@@ -341,10 +342,7 @@ class TabulaService : Service() {
                 // it must surface as a pairing error, never an uncaught exception
                 // in a coroutine that kills the app process.
                 Log.e(TAG, "pairing failed", e)
-                TabulaStatus.pairingError.value =
-                    "Pairing failed: ${e.message ?: e.javaClass.simpleName}. Pair again."
-                TabulaStatus.phase.value = Phase.UNPAIRED
-                TabulaStatus.pairing.value = null
+                PairingScreen.failed("Pairing failed: ${e.message ?: e.javaClass.simpleName}. Pair again.")
             }
         }
     }

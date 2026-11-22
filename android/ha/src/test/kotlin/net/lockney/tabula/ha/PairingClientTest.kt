@@ -96,7 +96,13 @@ class PairingClientTest {
         val http = FakeHttp { _, _ -> responses.removeFirst() }
         val client = PairingClient(http.exchange, Random(1))
         val statuses = mutableListOf<PairingStatus>()
-        val paired = client.pair("http://ha:8123", deviceId, "Desk", "mock") { statuses.add(it) }
+        val paired = client.pair(
+            "http://ha:8123",
+            deviceId,
+            "Desk",
+            "mock",
+            onStatus = { statuses.add(it) },
+        )
         assertEquals("t".repeat(48), paired.credential.refreshToken)
         assertEquals("abc123", paired.haDeviceId)
         // one pair request + two claim polls, in order
@@ -196,6 +202,38 @@ class PairingClientTest {
         val paired = client.pair("http://ha:8123", deviceId, null, null)
         assertEquals("z".repeat(48), paired.credential.refreshToken)
         assertTrue(claims >= 4, "the failures must have been retried, not fatal")
+    }
+
+    @Test
+    fun `a pair POST that cannot reach the server reports unreachable and no code`() = runTest {
+        // issue #127: the pair request itself fails (no network at all), so
+        // there is no code to show; the screen is told, and the attempt keeps
+        // retrying until the POST gets through
+        var pairs = 0
+        val http = FakeHttp { url, _ ->
+            if (url.endsWith("/api/tabula/pair")) {
+                pairs += 1
+                if (pairs <= 2) throw java.io.IOException("network is unreachable")
+                pairPending(pollInterval = 1)
+            } else {
+                claimPaired("n".repeat(48))
+            }
+        }
+        val client = PairingClient(http.exchange, Random(1))
+        var unreachable = 0
+        val statuses = mutableListOf<PairingStatus>()
+        val paired = client.pair(
+            "http://ha:8123",
+            deviceId,
+            null,
+            null,
+            onStatus = { statuses.add(it) },
+            onUnreachable = { unreachable += 1 },
+        )
+        assertEquals("n".repeat(48), paired.credential.refreshToken)
+        assertEquals(2, unreachable, "each failed pair request must be reported")
+        assertEquals(1, statuses.size, "a code is reported once, after the POST gets through")
+        assertEquals(3, pairs)
     }
 
     @Test
