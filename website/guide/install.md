@@ -7,7 +7,7 @@ There is no packaged release yet. Installation is manual and the app is installe
 ## Requirements
 
 - Home Assistant 2025.1.0 or later.
-- An Android tablet. The first target is the Amazon Fire HD 10 Plus (Fire OS 7, Android 9). Other devices are not yet tested.
+- An Android tablet with USB debugging on. The first target is the Amazon Fire HD 10 Plus (Fire OS 7). The app supports Android 7 (API 24) and later; other tablets are untested.
 - A computer with `adb`, `make`, `git`, Python 3.13 and Node 22.
 
 ## 1. Install the integration

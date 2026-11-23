@@ -2,7 +2,7 @@
 
 Tabula has two parts that talk over one protocol, the Tabula Link Protocol (TLP).
 
-- **Android app.** Kotlin, Jetpack Compose and the system WebView. It shows a Home Assistant dashboard, draws screensavers natively, and plays notifications and audio. It dials out to Home Assistant over a single WebSocket, so the tablet needs no open ports.
+- **Android app.** Kotlin, Jetpack Compose and the system WebView. It shows a Home Assistant dashboard, draws screensavers natively, and plays notifications and audio. It dials out to Home Assistant over a single WebSocket, so the tablet needs no open ports. Tablets reach Home Assistant over the local network; there is no cloud service.
 - **Home Assistant integration.** A custom integration, `tabula`. It pairs tablets, exposes each one as a Home Assistant device with standard entities, and stores and pushes its settings.
 
 ## Pairing
