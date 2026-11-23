@@ -1,6 +1,6 @@
 name: site
 
-# Publishes the website to GitHub Pages. Manual until hosting is confirmed
+# Publishes the website to GitHub Pages. Manual until the repo is public
 # (docs/decisions/0005-website.md). Requires Pages set to "GitHub Actions".
 on:
   workflow_dispatch:
