@@ -40,19 +40,19 @@ export JAVA_HOME="$jdk"
 export ANDROID_HOME="$sdk"
 ./gradlew --no-daemon ":$module:assembleDebug" --console=plain
 echo
-apk_dir="android/$module/build/outputs/apk/debug"
-# A module with ABI splits writes one APK per ABI; one without writes a single
-# file. Print what the build actually left behind, with each file's size - the
-# app ships one APK per ABI since P9.3 (ADR 0028).
+# The script runs from android/, so the build output is module-relative; the
+# printed path is from the repository root.
+apk_rel="$module/build/outputs/apk/debug"
+apk_dir="android/$apk_rel"
 shopt -s nullglob
-apks=("$apk_dir"/*.apk)
+apks=("$apk_rel"/*.apk)
 shopt -u nullglob
 if [[ ${#apks[@]} -eq 0 ]]; then
     echo "android-apk: the build left no APK in $apk_dir" >&2
     exit 1
 fi
 if [[ ${#apks[@]} -eq 1 ]]; then
-    echo "APK: ${apks[0]} ($(wc -c <"${apks[0]}" | tr -d ' ') bytes)"
+    echo "APK: android/${apks[0]} ($(wc -c <"${apks[0]}" | tr -d ' ') bytes)"
 else
     echo "APKs: $apk_dir (one per ABI)"
     for apk in "${apks[@]}"; do
