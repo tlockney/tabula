@@ -111,6 +111,10 @@ async def test_every_command_fixture_is_answered(server, store, start):
     for path in sorted(fixtures.glob("command_*.json")):
         if path.name.startswith("command_result"):
             continue
+        if path.name.startswith("command_voice_"):
+            # Voice commands have a lifecycle (start, stream, stop), so they are
+            # driven one turn at a time in test_voice.py rather than fired blind.
+            continue
         event = json.loads(path.read_text())["event"]
         # Fixtures must not depend on each other's order, so put the device in
         # the state the fixture assumes instead of relying on the glob order: a
