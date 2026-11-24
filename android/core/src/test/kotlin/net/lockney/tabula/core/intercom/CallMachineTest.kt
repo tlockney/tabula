@@ -281,13 +281,46 @@ class CallMachineTest {
 
     @Test
     fun `stale deadlines from an ended call cannot touch the next one`() {
-        scheduler.ignoreCancellation = true
+        // A deadline that still runs after its call ended must not end the next
+        // one, which is why every callback compares the call id
+        val clock = TestClock()
+        val scheduler = ManualScheduler(clock).apply { ignoreCancellation = true }
+        val peers = FakePeerFactory()
+        val locks = FakeLocks()
+        var next = 0
+        val machine = CallMachine(
+            peers = peers,
+            scheduler = scheduler,
+            clockMs = { clock.now },
+            canTalk = { true },
+            locks = locks,
+            newCallId = { "call-${++next}" },
+            closeExecutor = DIRECT,
+        )
+
+        // The first call is answered, so its connect deadline is armed, then it
+        // ends with that deadline still scheduled
         machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d1"))
-        machine.end(CALL_TEST, IntercomEndReason.HANGUP)
+        assertTrue(machine.signal("call-1", IntercomSignalKind.ANSWER, "v=0 answer"))
+        machine.end("call-1", IntercomEndReason.HANGUP)
+        assertEquals(1, locks.released)
+
+        // The second call has a different id and its own deadlines
         machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d2"))
-        // the first call's connect deadline fires here; the id guard ignores it
+        assertEquals("call-2", machine.info.value?.callId)
+
+        // The first call's connect deadline (10 s) fires here and must be ignored
         scheduler.advance(Constants.INTERCOM_CONNECT_TIMEOUT_S * 1000L)
         assertEquals(IntercomState.IN_CALL, machine.state.value)
+        assertEquals("call-2", machine.info.value?.callId)
+        // one acquire per call, one release for the call that ended
+        assertEquals(2, locks.acquired)
+        assertEquals(1, locks.released)
+
+        // The second call's own no-answer deadline (45 s) still works
+        scheduler.advance(Constants.INTERCOM_RING_LIMIT_S * 1000L)
+        assertEquals(IntercomState.IDLE, machine.state.value)
+        assertEquals(2, locks.released)
     }
 
     @Test
