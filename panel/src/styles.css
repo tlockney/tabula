@@ -346,6 +346,8 @@ td a {
 
 .outcome.error {
   color: var(--error-color, #db4437);
+}
+
 /* P5.3: the settings editor. Controls use HA's own custom properties so the
    form matches the frontend's theme instead of shipping its own palette. */
 .settings-status {

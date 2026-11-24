@@ -11,7 +11,6 @@ import type { TabulaSettingsEditor } from "./settings-editor";
 import type { TabulaPanel } from "./shell";
 import type {
   HassConnection,
-  HassEntity,
   HassStates,
   HomeAssistant,
   PanelDevice,
@@ -126,7 +125,7 @@ export function device(overrides: Partial<PanelDevice> = {}): PanelDevice {
 export function statesFrom(
   entries: Record<string, string | null>,
   pictures: Record<string, string> = {},
-): Record<string, HassEntity> {
+): HassStates {
   return Object.fromEntries(
     Object.entries(entries).map(([entityId, state]) => {
       const attributes: Record<string, unknown> = {};
@@ -228,6 +227,8 @@ export async function mountActivity(
 export async function updateHass(element: TabulaActivity, hass: HomeAssistant): Promise<void> {
   element.hass = hass;
   await settle(element);
+}
+
 /** A document with every schema default filled in, as a fresh copy. */
 export function settingsDocument(): Record<string, unknown> {
   return structuredClone(SETTINGS_DEFAULTS) as unknown as Record<string, unknown>;

@@ -13,7 +13,7 @@ import { LitElement, html, nothing, unsafeCSS, type PropertyValueMap } from "lit
 import styles from "./styles.css?inline";
 import { formatWhen } from "./devices";
 import { STRINGS, errorLine, stillRunningLine } from "./strings";
-import type { HassEntity, HomeAssistant, PanelDevice, PanelDeviceEntity } from "./types";
+import type { HassStates, HomeAssistant, PanelDevice, PanelDeviceEntity } from "./types";
 import type { TemplateResult } from "lit";
 
 /**
@@ -64,11 +64,7 @@ const ABSENT_STATES = new Set(["unknown", "unavailable", "none", ""]);
 const UNAVAILABLE_STATES = new Set(["unavailable", "none", ""]);
 
 /** One entity's live state, falling back to the payload's snapshot. */
-export function stateOf(
-  device: PanelDevice,
-  entityId: string,
-  states?: Record<string, HassEntity>,
-): string | null {
+export function stateOf(device: PanelDevice, entityId: string, states?: HassStates): string | null {
   const live = states?.[entityId];
   if (live !== undefined) {
     return live.state;
@@ -83,7 +79,7 @@ function findEntity(device: PanelDevice, entityId: string): PanelDeviceEntity | 
 }
 
 /** The image entity's picture URL, from HA's own state or the proxy path. */
-export function pictureOf(entityId: string, states?: Record<string, HassEntity>): string {
+export function pictureOf(entityId: string, states?: HassStates): string {
   const picture = states?.[entityId]?.attributes.entity_picture;
   if (typeof picture === "string" && picture.length > 0) {
     return picture;
@@ -172,7 +168,7 @@ export function commandGroups(commands: readonly CommandButton[]): {
 export function captureView(
   device: PanelDevice,
   entities: ActivityEntities,
-  states?: Record<string, HassEntity>,
+  states?: HassStates,
 ): CaptureView {
   const sensor = entities.lastCaptureId ? stateOf(device, entities.lastCaptureId, states) : null;
   const lastCapture = sensor !== null && !ABSENT_STATES.has(sensor) ? sensor : null;
@@ -248,7 +244,7 @@ export function captionFor(device: PanelDevice): string {
 export function disabledReason(
   device: PanelDevice,
   entityId: string,
-  states?: Record<string, HassEntity>,
+  states?: HassStates,
 ): string | null {
   const state = stateOf(device, entityId, states);
   // A button that was never pressed has no state of its own ("unknown") and is

@@ -106,6 +106,8 @@ export const STRINGS = {
     noCommands: "This tablet exposes no command buttons.",
     offlineReason: "The tablet is offline, so Home Assistant would refuse the command.",
     unavailableReason: "The entity is unavailable in Home Assistant.",
+  },
+
   // P5.3: the per-device settings editor. Every visible string lives here; the
   // labels map is keyed by schema path, with a humanized fallback in settings.ts.
   settings: {
