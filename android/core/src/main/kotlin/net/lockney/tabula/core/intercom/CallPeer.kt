@@ -26,6 +26,13 @@ interface CallPeer {
 
         /** The connection could not be set up; the call ends with reason `error`. */
         fun onFailed(message: String)
+
+        /**
+         * ICE lost the connection (`DISCONNECTED`) or it closed: the call ends
+         * with reason `disconnect`, so a lost link cannot leave a microphone
+         * open and both locks held (review of #171 finding 6, ADR 0028 guard 3).
+         */
+        fun onDisconnected()
     }
 
     /** Caller: build the connection and send an offer. */

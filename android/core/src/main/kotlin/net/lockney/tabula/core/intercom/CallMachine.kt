@@ -42,6 +42,13 @@ class CallMachine(
     private val locks: CallLocks = CallLocks.None,
     private val newCallId: () -> String = CallIdMint::random,
     private val timings: Timings = Timings(),
+    /**
+     * Where a finished call's connection is closed. Off this object's monitor:
+     * the WebRTC teardown blocks until its signaling thread drains, and that
+     * thread calls back into the monitor (review of #171, finding 1). Tests pass
+     * a direct executor so the fake's `closed` flag is set synchronously.
+     */
+    private val closeExecutor: java.util.concurrent.Executor = DEFAULT_CLOSER,
 ) : CallEngine {
     /** The deadlines and the grace, all from ADR 0002's constants by default. */
     data class Timings(
@@ -85,6 +92,9 @@ class CallMachine(
     private var connected = false
     private var closed = false
 
+    /** One answer per call: a relayed repeat is acknowledged and ignored. */
+    private var answerApplied = false
+
     private var ringTimer: CallScheduler.Cancelable? = null
     private var connectTimer: CallScheduler.Cancelable? = null
     private var callTimer: CallScheduler.Cancelable? = null
@@ -108,6 +118,10 @@ class CallMachine(
             startedAtMs = clockMs(),
             usesMicrophone = true,
         )
+        // A caller is `in_call` from its own start, not `ringing`: its
+        // connection and capture exist before the callee answers, because the
+        // offer has to get there first, and PROTOCOL 4.4's `ringing` is the
+        // state of a call offered *to* this device (decision 10 in the packet)
         val target = if (request.mode == IntercomMode.BROADCAST) IntercomState.BROADCASTING else IntercomState.IN_CALL
         begin(info, target)
         // The start request goes out before the offer: HA drops a signal whose
@@ -225,6 +239,8 @@ class CallMachine(
                 // side takes: acknowledge it rather than NACK a live call
                 // (review of #171, finding 4)
                 if (info.direction != CallDirection.OUTGOING) return true
+                if (answerApplied) return true
+                answerApplied = true
                 cancel(ringTimer)
                 ringTimer = null
                 peer?.answerReceived(payload)
@@ -301,11 +317,22 @@ class CallMachine(
         override fun onFailed(message: String) {
             onPeerFailed(message)
         }
+
+        override fun onDisconnected() {
+            onPeerDisconnected()
+        }
     }
 
     @Synchronized
     private fun onPeerSignal(kind: IntercomSignalKind, payload: String) {
         val info = _info.value ?: return
+        // One frame carries at most INTERCOM_SIGNAL_MAX_BYTES, and an over-long
+        // one would throw in the frame builder and take the TLP session down
+        // mid-call: end this call instead (review of #171, finding 3)
+        if (payload.toByteArray(Charsets.UTF_8).size > Constants.INTERCOM_SIGNAL_MAX_BYTES) {
+            finish(info, IntercomEndReason.ERROR, report = true)
+            return
+        }
         emit(EngineEvent.Signal(info.callId, kind, payload))
     }
 
@@ -321,6 +348,14 @@ class CallMachine(
     private fun onPeerFailed(message: String) {
         val info = _info.value ?: return
         finish(info, IntercomEndReason.ERROR, report = true)
+    }
+
+    @Synchronized
+    private fun onPeerDisconnected() {
+        val info = _info.value ?: return
+        // The link is gone: end the call rather than keep a microphone open and
+        // both locks held until the hard limit
+        finish(info, IntercomEndReason.DISCONNECT, report = true)
     }
 
     private fun answerWith(offer: String) {
@@ -349,7 +384,7 @@ class CallMachine(
     /** A two-way call's connect deadline; a broadcast has no single peer to reach. */
     private fun armConnectTimer(info: CallInfo) {
         if (info.mode != IntercomMode.CALL || connected || connectTimer != null) return
-        connectTimer = scheduler.schedule(timings.connectTimeoutMs) { onConnectTimeout() }
+        connectTimer = scheduler.schedule(timings.connectTimeoutMs) { onConnectTimeout(info.callId) }
     }
 
     private fun armCallLimit(info: CallInfo) {
@@ -375,9 +410,10 @@ class CallMachine(
     }
 
     @Synchronized
-    private fun onConnectTimeout() {
+    private fun onConnectTimeout(callId: String) {
         connectTimer = null
         val info = _info.value ?: return
+        if (info.callId != callId) return
         if (connected || _state.value != IntercomState.IN_CALL) return
         finish(info, IntercomEndReason.TIMEOUT, report = true)
     }
@@ -408,8 +444,10 @@ class CallMachine(
         pendingOffer = null
         pendingCandidates.clear()
         answeredOffer = false
+        answerApplied = false
         connected = false
-        runCatching { connection?.close() }
+        // closed outside this object's monitor, by the executor (finding 1)
+        if (connection != null) runCatching { closeExecutor.execute { connection.close() } }
         _info.value = null
         _state.value = IntercomState.IDLE
         if (locksHeld) {
@@ -430,5 +468,11 @@ class CallMachine(
     companion object {
         /** Events kept while the wiring drains them; a burst of candidates fits. */
         private const val EVENT_BUFFER = 64
+
+        /** One daemon thread for connection teardown, off the machine's monitor. */
+        private val DEFAULT_CLOSER: java.util.concurrent.Executor =
+            java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "intercom-close").apply { isDaemon = true }
+            }
     }
 }

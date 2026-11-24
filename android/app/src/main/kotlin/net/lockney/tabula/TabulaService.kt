@@ -81,8 +81,7 @@ class TabulaService : Service() {
     private lateinit var startPage: StartPageManager
     private lateinit var deviceEvents: EventFanIn
     // The intercom (P9.3, ADR 0028): one engine for the app's lifetime, idle
-    // until an explicit action or an HA ring, and one wiring to TLP.
-    private lateinit var intercomEngine: net.lockney.tabula.core.intercom.CallEngine
+    // until an explicit action or an HA ring, held by its wiring.
     private lateinit var intercom: IntercomManager
     // Wake word (P7.1, ADR 0030): null until startVoice, off until the setting
     // says otherwise. The channel is the monitor's event source in the fan-in.
@@ -163,7 +162,6 @@ class TabulaService : Service() {
             context = applicationContext,
             canTalk = ::canTalk,
         )
-        intercomEngine = engine
         intercom = IntercomManager(
             engine = engine,
             scope = scope,

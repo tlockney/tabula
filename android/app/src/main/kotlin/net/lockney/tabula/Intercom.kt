@@ -156,6 +156,15 @@ private class WebRtcPeer(
     @Volatile private var remoteSet = false
     @Volatile private var closed = false
 
+    /** The local offer is set, so an answer can be applied. */
+    private var localSet = false
+
+    /** One answer per connection; a repeat is a no-op (review of #171, finding 2). */
+    private var answerApplied = false
+
+    /** An answer that arrived before the local offer finished being set. */
+    private var pendingAnswer: String? = null
+
     init {
         audio = JavaAudioDeviceModule.builder(context)
             .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
@@ -224,6 +233,11 @@ private class WebRtcPeer(
                         object : SdpObserver {
                             override fun onSetSuccess() {
                                 listener.onLocalSignal(IntercomSignalKind.OFFER, sdp.description)
+                                val early = synchronized(this@WebRtcPeer) {
+                                    localSet = true
+                                    pendingAnswer.also { pendingAnswer = null }
+                                }
+                                if (early != null) answerReceived(early)
                             }
 
                             override fun onSetFailure(error: String?) = fail("setLocalDescription(offer)", error)
@@ -285,6 +299,23 @@ private class WebRtcPeer(
     }
 
     override fun answerReceived(answerSdp: String) {
+        // Idempotent and order-safe: a duplicate answer, or one that lands before
+        // the local offer is set, must not fail a working call
+        val apply = synchronized(this) {
+            when {
+                answerApplied -> return
+                !localSet -> {
+                    pendingAnswer = answerSdp
+                    return
+                }
+
+                else -> {
+                    answerApplied = true
+                    true
+                }
+            }
+        }
+        if (!apply) return
         val answer = SessionDescription(SessionDescription.Type.ANSWER, answerSdp)
         connection.setRemoteDescription(
             object : SdpObserver {
@@ -360,6 +391,15 @@ private class WebRtcPeer(
                 -> listener.onConnected()
 
                 PeerConnection.IceConnectionState.FAILED -> fail("ICE", "connection failed")
+
+                // The link is gone: the call ends rather than keeping a
+                // microphone open and both locks held (review of #171, finding 6).
+                // A transient blip costs the call; leaving it to FAILED is what
+                // left a dead call up for the hard limit.
+                PeerConnection.IceConnectionState.DISCONNECTED,
+                PeerConnection.IceConnectionState.CLOSED,
+                -> listener.onDisconnected()
+
                 else -> Unit
             }
         }

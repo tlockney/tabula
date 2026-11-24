@@ -30,6 +30,7 @@ class CallMachineTest {
         canTalk = { canTalk },
         locks = locks,
         newCallId = { CALL_TEST },
+        closeExecutor = DIRECT,
     )
 
     private fun ring(
@@ -224,6 +225,72 @@ class CallMachineTest {
     }
 
     @Test
+    fun `a caller is in call from its own start`() {
+        // Decision 10: the caller's connection and capture exist before the
+        // callee answers, so `ringing` - a call offered to this device - is not
+        // its state (review of #171, finding 4)
+        machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d2"))
+        assertEquals(IntercomState.IN_CALL, machine.state.value)
+        assertTrue(machine.info.value!!.usesMicrophone)
+    }
+
+    @Test
+    fun `a duplicate answer is ignored`() {
+        machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d2"))
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 answer"))
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 again"))
+        assertEquals(1, peers.last?.answerReceipts)
+        assertEquals("v=0 answer", peers.last?.answerReceived)
+    }
+
+    @Test
+    fun `a call that loses its connection ends with disconnect`() {
+        // A lost link must not keep the microphone open and both locks held
+        // (review of #171, finding 6)
+        ring()
+        machine.answer()
+        machine.signal(CALL, IntercomSignalKind.OFFER, "v=0 offer")
+        peers.last!!.connect()
+        peers.last!!.disconnect()
+        assertEquals(IntercomState.IDLE, machine.state.value)
+        assertEquals(
+            listOf<EngineEvent>(EngineEvent.Ended(CALL, IntercomEndReason.DISCONNECT)),
+            events().filterIsInstance<EngineEvent.Ended>(),
+        )
+        assertEquals(1, locks.released)
+    }
+
+    @Test
+    fun `an over-long signal ends the call, not the session`() {
+        // A frame over INTERCOM_SIGNAL_MAX_BYTES would throw in the frame
+        // builder and take the TLP session down (review of #171, finding 3)
+        ring()
+        machine.answer()
+        machine.signal(CALL, IntercomSignalKind.OFFER, "v=0 offer")
+        events()
+        peers.last!!.local(IntercomSignalKind.CANDIDATE, "x".repeat(Constants.INTERCOM_SIGNAL_MAX_BYTES + 1))
+        assertEquals(IntercomState.IDLE, machine.state.value)
+        val emitted = events()
+        assertTrue(emitted.none { it is EngineEvent.Signal })
+        assertEquals(
+            listOf<EngineEvent>(EngineEvent.Ended(CALL, IntercomEndReason.ERROR)),
+            emitted.filterIsInstance<EngineEvent.Ended>(),
+        )
+        assertEquals(1, locks.released)
+    }
+
+    @Test
+    fun `stale deadlines from an ended call cannot touch the next one`() {
+        scheduler.ignoreCancellation = true
+        machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d1"))
+        machine.end(CALL_TEST, IntercomEndReason.HANGUP)
+        machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d2"))
+        // the first call's connect deadline fires here; the id guard ignores it
+        scheduler.advance(Constants.INTERCOM_CONNECT_TIMEOUT_S * 1000L)
+        assertEquals(IntercomState.IN_CALL, machine.state.value)
+    }
+
+    @Test
     fun `a second call is refused while one is up`() {
         ring()
         assertFalse(ring(callId = "call-2"))
@@ -326,6 +393,7 @@ class CallMachineTest {
                 canTalk = { true },
                 locks = caseLocks,
                 newCallId = { CALL_TEST },
+                closeExecutor = DIRECT,
             )
             begin(caseMachine, casePeers)
             val id = caseMachine.info.value?.callId ?: error("$name has no call")
@@ -390,6 +458,7 @@ class CallMachineTest {
             clockMs = { 0 },
             canTalk = { true },
             locks = FakeLocks(),
+            closeExecutor = DIRECT,
         )
         assertEquals(IntercomState.IDLE, restarted.state.value)
         assertNull(restarted.info.value)
@@ -453,6 +522,9 @@ class CallMachineTest {
     }
 
     companion object {
+        /** Runs a peer close inline: the fakes have no threads. */
+        private val DIRECT = java.util.concurrent.Executor { it.run() }
+
         private const val CALL = "call-abc"
         private const val CALL_TEST = "call-test-1"
     }
@@ -463,6 +535,9 @@ class CallMachineTest {
 class TestClock(var now: Long = 0L)
 
 class ManualScheduler(private val clock: TestClock) : CallScheduler {
+    /** Fire cancelled entries too, to prove a stale deadline cannot act. */
+    var ignoreCancellation = false
+
     private class Entry(val at: Long, val action: () -> Unit) {
         var cancelled = false
     }
@@ -482,7 +557,9 @@ class ManualScheduler(private val clock: TestClock) : CallScheduler {
     fun advance(ms: Long) {
         val target = clock.now + ms
         while (true) {
-            val next = entries.filter { !it.cancelled && it.at <= target }.minByOrNull { it.at } ?: break
+            val next = entries
+                .filter { (ignoreCancellation || !it.cancelled) && it.at <= target }
+                .minByOrNull { it.at } ?: break
             entries.remove(next)
             clock.now = next.at
             next.action()
@@ -517,6 +594,8 @@ class FakePeer(
         private set
     var answerReceived: String? = null
         private set
+    var answerReceipts = 0
+        private set
     val candidates = mutableListOf<String>()
     var closed = false
         private set
@@ -532,6 +611,7 @@ class FakePeer(
 
     override fun answerReceived(answerSdp: String) {
         answerReceived = answerSdp
+        answerReceipts++
     }
 
     override fun candidate(payload: String) {
@@ -547,6 +627,8 @@ class FakePeer(
     fun connect() = listener.onConnected()
 
     fun fail() = listener.onFailed("connection failed")
+
+    fun disconnect() = listener.onDisconnected()
 }
 
 class FakePeerFactory : CallPeerFactory {
