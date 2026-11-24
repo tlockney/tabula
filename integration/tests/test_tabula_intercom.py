@@ -293,6 +293,13 @@ def entity_id(hass: HomeAssistant, platform: str, paired: Paired, key: str) -> s
     return er.async_get(hass).async_get_entity_id(platform, DOMAIN, f"{paired.device_id}_{key}")
 
 
+def disable_entities(hass: HomeAssistant, tablet: Tablet) -> None:
+    """Hide every entity of a tablet, as a household that disabled them has."""
+    registry = er.async_get(hass)
+    for entry in er.async_entries_for_device(registry, tablet.paired.ha_device_id):
+        registry.async_update_entity(entry.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+
 def put_in_area(hass: HomeAssistant, tablet: Tablet, area_name: str) -> str:
     """Assign a tablet's HA device to an area, creating the area once."""
     registry = ar.async_get(hass)
@@ -834,6 +841,99 @@ async def test_device_start_request_with_an_unknown_target_is_ignored(hass_setup
     )
     await kitchen.no_command("intercom_ring")
     assert active_calls(hass_setup) == 0
+
+
+async def test_a_reused_call_id_is_refused_and_the_live_call_survives(hass_setup, make_tablet, bus):
+    """A device reusing a live call's id must not orphan that call (P9.2 review)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    bedroom = await make_tablet("Bedroom Kiosk")
+    hall = await make_tablet("Hall Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+
+    await bedroom.event(
+        "event.intercom_start_request",
+        {"call_id": call_id, "mode": "call", "target_device_id": hall.paired.ha_device_id},
+    )
+    await hall.no_command("intercom_ring")
+    assert active_calls(hass_setup) == 1
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.intercom.calls[call_id].callees == [kitchen.paired.device_id]
+    assert bus.silent(INTERCOM_ENDED)
+
+    # The original call still ends from HA, on the id it was started with.
+    await end_call(hass_setup, call_id)
+    for tablet in (office, kitchen):
+        assert (await tablet.next_command("intercom_end"))["args"]["call_id"] == call_id
+    assert (await bus.wait(INTERCOM_ENDED)).data["call_id"] == call_id
+
+
+async def test_same_socket_reregister_mid_call_clears_the_stale_state(hass_setup, make_tablet, bus):
+    """A re-register on an open subscription drains the deferred end (review)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    call_id = await answered_call(hass_setup, office, kitchen)
+
+    await kitchen.reregister(INTERCOM_CAPS, kind="in_call")
+
+    assert (await office.next_command("intercom_end"))["args"] == {
+        "call_id": call_id,
+        "reason": "disconnect",
+    }
+    assert (await kitchen.next_command("intercom_end"))["args"] == {
+        "call_id": call_id,
+        "reason": "disconnect",
+    }
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.intercom._pending_reset == {}
+    assert (await bus.wait(INTERCOM_ENDED)).data["reason"] == "disconnect"
+
+
+async def test_intercom_call_by_area_reaches_a_tablet_with_no_live_entities(
+    hass_setup, make_tablet
+):
+    """An area target resolves through the device registry (P9.2 decision 10)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    area_id = put_in_area(hass_setup, kitchen, "Kitchen")
+    disable_entities(hass_setup, kitchen)
+    await hass_setup.async_block_till_done()
+
+    await hass_setup.services.async_call(
+        DOMAIN,
+        "intercom_call",
+        {"caller": office.paired.ha_device_id, "area_id": area_id},
+        blocking=True,
+    )
+    assert (await kitchen.next_command("intercom_ring"))["args"]["caller_device_id"] == (
+        office.paired.device_id
+    )
+
+    # And the same target ends it.
+    await hass_setup.services.async_call(
+        DOMAIN, "intercom_end", {"area_id": area_id}, blocking=True
+    )
+    assert (await kitchen.next_command("intercom_end"))["args"]["reason"] == "command"
+    assert active_calls(hass_setup) == 0
+
+
+async def test_notify_by_area_reaches_a_tablet_with_no_live_entities(hass_setup, make_tablet):
+    """The widened area resolution serves the other services too (review)."""
+    kitchen = await make_tablet("Kitchen Kiosk")
+    area_id = put_in_area(hass_setup, kitchen, "Kitchen")
+    disable_entities(hass_setup, kitchen)
+    await hass_setup.async_block_till_done()
+
+    await hass_setup.services.async_call(
+        DOMAIN,
+        "notify",
+        {"area_id": area_id, "message": "Dinner is ready"},
+        blocking=True,
+    )
+    assert (await kitchen.next_command("notify"))["args"]["message"] == "Dinner is ready"
 
 
 # --- the sensor --------------------------------------------------------------

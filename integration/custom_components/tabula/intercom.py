@@ -165,6 +165,11 @@ class IntercomManager:
             raise _invalid("intercom_caller_busy", device=_label(caller))
         targets = self._select_targets(caller, callees, mode)
         call_id = call_id or ulid_now()
+        if call_id in self.calls:
+            # A device chooses the id of a call it starts; one still in use is
+            # refused rather than overwriting a live call's record, which would
+            # strand its tablets and its ended event (P9.2 review).
+            raise _invalid("intercom_call_id_in_use", call_id=call_id)
         call = IntercomCall(
             call_id=call_id,
             mode=mode,

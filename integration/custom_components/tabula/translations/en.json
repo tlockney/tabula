@@ -377,6 +377,9 @@
     },
     "intercom_end_needs_target": {
       "message": "Name the call to end: give call_id, or target a tablet that is in one."
+    },
+    "intercom_call_id_in_use": {
+      "message": "The call id {call_id} is already in use, so this call was not started."
     }
   },
   "services": {

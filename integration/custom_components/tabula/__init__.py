@@ -499,6 +499,11 @@ class TabulaHub:
         # for the other side, and a stale non-idle state is cleared once this
         # connection subscribes (ADR 0028 guard 4, P9.2).
         self.intercom.device_rejoined(record)
+        if session.subscription_id is not None:
+            # A re-register on an open subscription can take the deferred
+            # intercom_end now; waiting for another subscribe would leave the
+            # reset queued for the life of the hub (P9.2 review).
+            self.hass.async_create_task(self.intercom.async_after_subscribe(record))
         self._update_device_registry(record)
         if (set(record.capabilities), record.schema_version) != previous:
             self._persist()
