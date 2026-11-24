@@ -385,6 +385,16 @@ The panel's own timings. They live in the browser, not in the integration, and e
 | --- | --- | --- |
 | `PRESS_PENDING_TIMEOUT_S` | 20 s | How long an Activity tab press may stay unacknowledged before the panel says "still running" instead of "capturing". Longer than `COMMAND_TIMEOUT` (10 s) so a real command error from HA almost always arrives first and is shown as HA's own text; shorter than `SCREENSHOT_TIMEOUT` (30 s) so a slow capture reports in before HA's own timeout would. |
 
+### Profiles (P5.6)
+
+The profile store's bounds (ADR 0035). They are enforced by the integration, so
+the panel and a service call share them.
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `PROFILE_NAME_MAX` | 64 | A profile name is a label in a picker and in the device page's assignment control, not a document. 64 characters fits a full descriptive sentence ("Upstairs tablets, night mode only") and still reads on one line in the panel's list. |
+| `PROFILE_MAX` | 32 | Far above a household's needs (one profile per room plus a couple of shared ones), and it bounds one WebSocket payload: 32 profiles of at most 100 shared keys each is a few tens of kilobytes, well inside `FRAME_MAX_BYTES`. |
+
 ### Settings bounds in the settings schema
 
 These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen here, so P2.0's generated Kotlin can use `Int` everywhere:

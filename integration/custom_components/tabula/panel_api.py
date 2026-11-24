@@ -189,3 +189,7 @@ def async_register(hass: HomeAssistant) -> None:
     from .panel_settings import async_register as register_settings
 
     register_settings(hass)
+    # The Profiles section's commands (P5.6); same deferred-import reason.
+    from .panel_profiles import async_register as register_profiles
+
+    register_profiles(hass)

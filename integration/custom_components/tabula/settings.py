@@ -525,12 +525,17 @@ async def async_set_setting(
 
 
 async def async_set_settings(
-    hub: TabulaHub, device_id: str, values: dict[str, Any]
+    hub: TabulaHub, device_id: str, values: dict[str, Any], *, record_overrides: bool = True
 ) -> DeviceSettings:
     """Write several settings leaves as one revision (see async_set_setting).
 
     One save and one push, so a device never sees half of a change that
     belongs together (the manual brightness level and adaptive off, ADR 0011).
+
+    ``record_overrides`` is the profile rule (ADR 0035 item 1): a per-device
+    write of a key the device's profile covers becomes an override for that
+    device, so a later profile save leaves it alone. Profile application passes
+    False: it writes the effective values, not a user's exception.
     """
     fields = {f.key: f for f in hub.settings.schema.fields()}
     unknown = [key for key in values if key not in fields]
@@ -541,6 +546,8 @@ async def async_set_settings(
     for key, value in values.items():
         set_path(document, fields[key].path, value)
     saved = await hub.settings.async_save(device_id, document)
+    if record_overrides:
+        await hub.profiles.async_record_overrides(device_id, values)
     if (record := hub.devices.get(device_id)) is not None:
         schedule_settings_push(hub, record)
     return saved

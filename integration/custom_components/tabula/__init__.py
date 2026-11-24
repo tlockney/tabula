@@ -55,6 +55,7 @@ from .pairing import (
     PendingPairings,
     RateLimiter,
 )
+from .profiles import ProfileStore
 from .screenshots import ScreenshotStore
 from .settings import SettingsStore
 from .tlp import TLPValidator
@@ -229,6 +230,8 @@ class TabulaHub:
         self.intercom = IntercomManager(self)
         # Per-device settings documents and revisions (settings.py, plan 5.6).
         self.settings = SettingsStore(hass)
+        # Named profiles, assignments and per-device overrides (P5.6, ADR 0035).
+        self.profiles = ProfileStore(self)
         # The panel's log streams and the device subscriptions behind them (P5.4).
         # Imported here: logs.py reads this module's DeviceRecord and TabulaHub.
         from .logs import LogStreams
@@ -361,6 +364,7 @@ class TabulaHub:
         device's live WebSocket (HA registers a revoke callback per connection)."""
         await self._revoke_user(record.user_id)
         await self.settings.async_remove(record.device_id)
+        await self.profiles.async_remove_device(record.device_id)
         self.devices.pop(record.device_id, None)
         self.by_user.pop(record.user_id, None)
         ir.async_delete_issue(
@@ -798,6 +802,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = hub
     hub.load_records()
     await hub.settings.async_load()
+    await hub.profiles.async_load()
     await hub.sweep_orphans()
     hub.listen_device_registry()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -79,6 +79,15 @@ LOG_SUBSCRIPTION_TTL = 600.0  # s; the device's own subscription limit
 # The levels a subscription may filter at (PROTOCOL 4.8), weakest first.
 LOG_LEVELS = ("debug", "info", "warning", "error")
 
+# Profiles (P5.6, ADR 0002 "Profiles", ADR 0035). A profile name is a label in a
+# picker; the profile count bounds one panel payload and the store.
+PROFILE_NAME_MAX = 64
+PROFILE_MAX = 32
+# The built-in empty profile: covers no keys, permanent and read-only. Its id is
+# a name no stored profile may take (ADR 0035 item 9).
+EMPTY_PROFILE_ID = "empty"
+EMPTY_PROFILE_NAME = "Empty"
+
 # Per-device system users (ADR 0001 items 2-4): local_only=True by default,
 # group user via homeassistant.auth.const.GROUP_ID_USER, names "Tabula <id8>".
 USER_NAME_PREFIX = "Tabula"
