@@ -569,7 +569,10 @@ async def test_intercom_start_for_another_call_is_busy():
 async def test_intercom_start_enforces_the_peer_rules():
     """The mock keeps its own copy of the cap and of the one-peer rule for call."""
     device, _, _ = intercom_device()
-    nine = [{"device_id": f"{i:08x}-1111-4111-8111-{i:012x}", "name": f"Frame {i}"} for i in range(1, 10)]
+    nine = [
+        {"device_id": f"{i:08x}-1111-4111-8111-{i:012x}", "name": f"Frame {i}"}
+        for i in range(1, 10)
+    ]
     for args in (
         started("broadcast", peer_list=[]),
         started("broadcast", peer_list=nine),
