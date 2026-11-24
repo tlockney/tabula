@@ -137,3 +137,39 @@ async def test_event_before_register_is_rejected(hass_setup, server, hub, sessio
     reply = await client.reply(frame_fixture("event", id=2))
     assert reply["success"] is False
     await client.close()
+
+
+async def test_intercom_events_relay_to_the_bus(hass_setup, server, hub, session, paired):
+    """P9.1: the five intercom events reach the bus as ``tabula_intercom``.
+
+    The services, entities and the call relay arrive with P9.2; what this
+    packet owes HA is that a device's call events are not dropped.
+    """
+    client = await _registered_subscribed(session, server, paired)
+    seen = _listen(hass_setup, ["tabula_intercom"])
+    call = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+
+    frames = [
+        ("intercom_answer", {"call_id": call}),
+        ("intercom_decline", {"call_id": call}),
+        ("intercom_signal", {"call_id": call, "kind": "answer", "payload": "v=0\r\n"}),
+        ("intercom_ended", {"call_id": call, "reason": "hangup"}),
+        (
+            "intercom_start_request",
+            {"call_id": call, "mode": "broadcast", "target_area_id": "kitchen"},
+        ),
+    ]
+    for index, (event, data) in enumerate(frames):
+        reply = await client.reply(frame_fixture("event", id=10 + index, event=event, data=data))
+        assert reply["success"], (event, reply)
+
+    for _ in range(100):
+        if len(seen) == len(frames):
+            break
+        await asyncio.sleep(0.01)
+    assert [event.data["type"] for event in seen] == [name for name, _ in frames]
+    assert seen[0].data["call_id"] == call
+    assert seen[0].data["device_id"] == paired.ha_device_id
+    assert seen[0].data["tabula_device_id"] == paired.device_id
+    assert seen[4].data["mode"] == "broadcast"
+    await client.close()
