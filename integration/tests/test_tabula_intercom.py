@@ -14,6 +14,7 @@ import contextlib
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
+from functools import partial
 from typing import Any
 
 import pytest
@@ -33,7 +34,20 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
+from homeassistant.util.async_ import run_callback_threadsafe
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+try:
+    # phacc's own wrapper: it hands the fire to HA's loop with
+    # `run_callback_threadsafe` and waits. It refuses to be called from inside
+    # any event loop, which is why `advance` stands in an executor thread.
+    from pytest_homeassistant_custom_component.common import fire_time_changed
+except ImportError:  # pragma: no cover - only the oldest supported harness
+
+    def fire_time_changed(hass: HomeAssistant, when) -> None:  # type: ignore[misc]
+        """The same wrapper, for a harness that does not export it."""
+        run_callback_threadsafe(hass.loop, partial(async_fire_time_changed, hass, when)).result()
+
 
 # The fixtures' capability list, with the intercom capabilities on top. A
 # tablet that can hear has `intercom_listen`; one that can capture as well has
@@ -225,8 +239,14 @@ def active_calls(hass: HomeAssistant) -> int:
 
 
 async def advance(hass: HomeAssistant, seconds: float = 1.0) -> None:
-    """Move HA's clock, which is what fires its call-later timers in tests."""
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=seconds))
+    """Move HA's clock, which is what fires its call-later timers in tests.
+
+    The fire happens on HA's loop (the thread-safe helper), because the timer
+    callbacks schedule work with `hass.async_create_task`, which is only legal
+    there — the same contract the integration's own timers rely on.
+    """
+    when = dt_util.utcnow() + timedelta(seconds=seconds)
+    await hass.async_add_executor_job(fire_time_changed, hass, when)
     await hass.async_block_till_done()
 
 

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -425,10 +425,22 @@ class IntercomManager:
         delay: float,
         action: Callable[[str], None],
     ) -> None:
+        """Run `action` for this call after `delay`.
+
+        The job is a `@callback` function, not a lambda: HA inspects the target
+        and runs anything that is not a callback in an executor thread, where
+        `hass.async_create_task` is not allowed. A callback keeps the timer, and
+        the work it schedules, in the event loop.
+        """
         self._cancel_timer(call, name)
-        self._timers[(call.call_id, name)] = async_call_later(
-            self.hass, delay, lambda now: action(call.call_id)
-        )
+        call_id = call.call_id
+
+        @callback
+        def _fire(_now: datetime) -> None:
+            self._timers.pop((call_id, name), None)
+            action(call_id)
+
+        self._timers[(call_id, name)] = async_call_later(self.hass, delay, _fire)
 
     def _cancel_timer(self, call: IntercomCall, name: str) -> None:
         if (cancel := self._timers.pop((call.call_id, name), None)) is not None:
@@ -438,6 +450,7 @@ class IntercomManager:
         for key in [key for key in self._timers if key[0] == call.call_id]:
             self._timers.pop(key)()
 
+    @callback
     def _on_ring_limit(self, call_id: str) -> None:
         """Nobody answered within the ring limit: a missed call (ADR 0028)."""
         self._timers.pop((call_id, TIMER_RING), None)
@@ -445,6 +458,7 @@ class IntercomManager:
         if call is not None and call.state == STATE_RINGING:
             self._end_soon(call, "timeout", missed=True)
 
+    @callback
     def _on_connect_timeout(self, call_id: str) -> None:
         """Answered, but the peers never got as far as signing in."""
         self._timers.pop((call_id, TIMER_CONNECT), None)
@@ -452,6 +466,7 @@ class IntercomManager:
         if call is not None and call.state == STATE_CONNECTING:
             self._end_soon(call, "timeout")
 
+    @callback
     def _on_limit(self, call_id: str) -> None:
         """Guard 2: every call ends at the hard limit, however it is going."""
         self._timers.pop((call_id, TIMER_LIMIT), None)
@@ -461,6 +476,7 @@ class IntercomManager:
 
     # --- ending ------------------------------------------------------------
 
+    @callback
     def _end_soon(
         self,
         call: IntercomCall,
@@ -471,36 +487,18 @@ class IntercomManager:
     ) -> None:
         """End a call from a callback (a timer, a socket closing, a register).
 
-        A timer can land while HA is stopping or after it stopped (a reload, a
-        test teardown): there is nowhere to send a command then, so the call is
-        dropped without touching the loop.
+        Every caller of this runs in the event loop (`@callback` throughout), so
+        the end work is scheduled with `hass.async_create_task`, which is where
+        HA expects it. A timer that lands while HA is stopping or after it
+        stopped has nowhere to send a command, so the call is dropped instead.
         """
         if self.hass.state is not CoreState.running:
             if self.calls.pop(call.call_id, None) is not None:
                 self._cancel_timers(call)
             return
-        self._spawn(self._async_end(call, reason, except_device=except_device, missed=missed))
-
-    def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
-        """Schedule one piece of call work from a callback.
-
-        A timer, a socket closing and a register all run as callbacks, and HA
-        may invoke a call-later callback from another thread (its own timer
-        helper is free to): the coroutine is handed to the loop's thread, which
-        is where `hass.async_create_task` is allowed to run.
-        """
-        try:
-            running = asyncio.get_running_loop()
-        except RuntimeError:
-            running = None
-        if running is self.hass.loop:
-            self.hass.async_create_task(coro)
-            return
-        try:
-            self.hass.loop.call_soon_threadsafe(self.hass.async_create_task, coro)
-        except RuntimeError:
-            # The loop is closed: nothing can run, so nothing is left dangling.
-            coro.close()
+        self.hass.async_create_task(
+            self._async_end(call, reason, except_device=except_device, missed=missed)
+        )
 
     async def async_end_call(self, call_id: str) -> IntercomCall:
         """End a call by id, wherever its devices are (the service's path)."""
