@@ -666,7 +666,7 @@ Device constraints, which P10.1 measures and its ADR settles:
 None of these block Phase 0. Decided: package name net.lockney.tabula; repo tlockney/tabula (private).
 
 - **Credential type for paired devices:** answered by P0.3.
-- **Release source for updates:** GitHub releases on the private repo (needs a token on the HA side) or a static folder on the homelab? Needed by Phase 5.
+- **Release source for updates:** ADR 0031 (proposed) recommends a static release folder on the homelab and records the GitHub option; the owner decides and only P5.7 depends on it.
 - **HTTPS on the local HA:** already in place, or http for now? Affects DEVICE.md only.
 
 ## 11. Changes from v2
