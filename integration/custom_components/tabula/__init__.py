@@ -167,6 +167,10 @@ class DeviceRecord:
     # P3.13: when the last button-started capture completed (RFC 3339),
     # persisted so the timestamp sensor survives an HA restart (F-HA-12).
     last_capture: str | None = None
+    # P5.2: when a registered session last ended (RFC 3339), persisted so an
+    # offline device shows when it was last connected across an HA restart.
+    # Not a state key and not a setting: the device never reports it.
+    last_seen: str | None = None
 
     @property
     def connected(self) -> bool:
@@ -200,6 +204,9 @@ class DeviceRecord:
             "schema_version": self.schema_version,
             # The last capture started by the capture button (F-HA-12).
             "last_capture": self.last_capture,
+            # When the device was last connected (P5.2); the Tabularium shows
+            # it for an offline device.
+            "last_seen": self.last_seen,
         }
 
 
@@ -278,6 +285,7 @@ class TabulaHub:
                 capabilities=list(info.get("capabilities", [])),
                 schema_version=info.get("schema_version"),
                 last_capture=info.get("last_capture"),
+                last_seen=info.get("last_seen"),
             )
             self.devices[record.device_id] = record
             self.by_user[record.user_id] = record.device_id
@@ -542,6 +550,12 @@ class TabulaHub:
             record = session.device
             if record is not None and record.current is session:
                 record.current = None
+                # P5.2: a registered session ended here, so this is when the
+                # device was last connected. Persisted with the record: an
+                # offline device shows it across an HA restart (F-MGT-06 leaves
+                # all other health to diagnostics).
+                record.last_seen = _utc_now()
+                self._persist()
                 self.notify_update(record)
             self.sessions.pop(session.connection, None)
             session.subscription_id = None
