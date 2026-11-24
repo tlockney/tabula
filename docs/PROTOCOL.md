@@ -67,7 +67,7 @@ Standard HA WebSocket API at `/api/websocket`: `auth_required` → `{"type":"aut
 The schema describes exactly what a sender of this version produces, and fixtures are checked against it strictly. Receivers are tolerant so the app and the integration can update independently (plan 5.4):
 
 - A receiver ignores object members it does not know (it validates with `additionalProperties` relaxed), then validates the rest strictly.
-- The integration ignores capabilities it does not know and answers, in `register_result.capabilities`, the subset it accepts.
+- The integration ignores capabilities it does not know and answers, in `register_result.capabilities`, the subset it accepts. A capability name is one to three dot-separated segments of `[a-z][a-z0-9_]{0,31}`, so `screen` and `intercom.listen` are both names, and an unknown name of either shape is ignorable rather than a frame error.
 - The device sends only state keys, events and frame types covered by the accepted capabilities (state keys and events defined in this document belong to v1 and are always covered by their capability or by none). A device with a newer feature therefore stays fully working against an older integration; the feature simply does not appear in HA.
 - The integration sends only commands and arguments covered by the device's declared capabilities.
 
@@ -115,6 +115,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `illuminance` | 0–100000 | Ambient light, lux (P3.16); covered by the `illuminance` capability |
 | `wake_word_active` | bool | Always present, because the APK always ships the detector and the capability is declared on every register: true while the microphone is open and the wake-word frontend is computing features (setting on, permission held, nothing playing), false otherwise (P7.1) |
 | `last_wake_word` | date-time | Device clock at the last accepted detection; omitted until there is one (P7.1) |
+| `intercom_state` | `idle` \| `ringing` \| `in_call` \| `broadcasting` | Where the device is in a call: idle, ringing (a call is offered and unanswered), in_call (a two-way call is up, or it is playing a broadcast), broadcasting (it is sending one). Covered by the `intercom.listen` capability (P9.1, ADR 0025) |
 | `current_page` | string \| null | Frontend path shown in the WebView, without query string or fragment |
 | `volume` | 0–100 | Media stream volume |
 | `muted` | bool | |
@@ -140,10 +141,15 @@ Every command event has `command_id` (unique per device for the integration's li
 | `reload`, `restart_app`, `clear_cache` | `{}` | always |
 | `log_subscription` (`command_log_subscription`) | `enabled`, optional minimum `level` | `logs` |
 | `screenshot` (`command_screenshot`) | optional JPEG `quality` | `screenshot` (Phase 3) |
+| `intercom_ring` (`command_intercom_ring`) | `call_id`, `caller_device_id`, `caller_name` (1–64 chars, for the incoming-call screen), `mode` (`call` or `broadcast`) | `intercom.listen` |
+| `intercom_signal` (`command_intercom_signal`) | `call_id`, `kind` (`offer`, `answer`, `candidate`), `payload` (the session description or candidate's own text, at most `INTERCOM_SIGNAL_MAX_BYTES`) | `intercom.listen` |
+| `intercom_end` (`command_intercom_end`) | `call_id`, `reason` (`hangup`, `decline`, `timeout`, `limit`, `error`, `disconnect`, `command`) | `intercom.listen` |
 
 The integration never sends a command whose capability the device did not declare.
 
 **Settings revisions.** HA is authoritative (plan 5.6). The `set_settings` the integration sends after registration, when revisions differ, is applied whatever its revision, so a device whose revision is ahead of HA's (after an HA backup restore, or after the hub was removed and added again) converges on HA's copy. Within one connection, a `set_settings` with a lower revision than one already applied on that connection gets `stale_revision`. A device whose own settings schema is newer than `schema_version` applies the document and keeps its defaults for keys HA does not send.
+
+**Intercom.** Signaling is relayed, never interpreted: `intercom_signal`'s `payload` is the peer's own session description or ICE candidate, and HA copies it unchanged between devices of the same hub (ADR 0025 decision 4). `call_id` names one call and is chosen by whoever starts it: the integration for a call an HA service started, the device for one started on its screen (`intercom_start_request`), and every later frame for that call carries it. A ring is answered with `intercom_answer` or `intercom_decline` within `INTERCOM_RING_LIMIT_S`; a device that does neither is treated as having missed the call. `intercom_end` reaches every device in the call, in every state, and each answers it with one result; a device not in that call answers `ok` and changes nothing (ADR 0028 guard 3).
 
 ### 4.6 `result`
 
@@ -165,6 +171,11 @@ The integration never sends a command whose capability the device did not declar
 | `media_finished` | `reason`: `ended`, `stopped`, `error` | `tabula_media` |
 | `page_changed` | `path` (no query string or fragment) | `tabula_page` |
 | `wake_word_detected` | `phrase` (`[a-z0-9_]{1,32}`), `probability` (0–255, the model's own scale) | `tabula_wake_word` |
+| `intercom_answer` | `call_id` | `tabula_intercom` |
+| `intercom_decline` | `call_id` | `tabula_intercom` |
+| `intercom_signal` | `call_id`, `kind`, `payload` (same shape as the command) | `tabula_intercom` |
+| `intercom_ended` | `call_id`, `reason` | `tabula_intercom` |
+| `intercom_start_request` | `call_id`, `mode`, and either `target_device_id` (an HA device registry id) or `target_area_id` (an HA area id); `call` needs one of them, the two are exclusive, a `broadcast` may carry neither | `tabula_intercom` |
 
 ### 4.8 `log`
 
@@ -216,6 +227,7 @@ HA itself may also return its own codes (`unauthorized`, `unknown_command`, …)
 - `protocol_version` is an integer major. This document is major 1.
 - The integration supports its current major and the one before it (plan 5.4). It answers `register_result.protocol_version` with the major it will speak, which is the device's.
 - Additive changes do not bump the major: new optional fields, new state keys, commands, events or frame types **gated by a new capability**. Both sides follow 4.0 (tolerant receivers, capability negotiation at registration).
+- **Capability names.** A name is one to three dot-separated segments of `[a-z][a-z0-9_]{0,31}`. A device sending a capability an older integration cannot parse as a name would have its whole `register` refused, so a new capability keeps to that shape; `intercom.listen` and `intercom.talk` are names of that shape, not a namespace change.
 - **Enum extensions.** Ignoring unknown members does not cover a new value in an existing enum (a new screensaver mode, notification level or media action), which a strict receiver would reject. Such a value is additive only when gated by a capability: a sender uses it only if the peer declared (device) or accepted (integration) that capability. A receiver that still gets a value it does not know treats it as follows: a command argument → `invalid_args`; a state value → the key is ignored for that frame; an event `data` value → the event is forwarded with the value unchanged. v1 already lists every value FEATURES.md names, so v1 needs no such capability.
 - Both sides read `protocol_version` before validating the rest of `tabula/register` or `http_pair_request`, so a mismatch is always reported as `unsupported_protocol`.
 - Anything else (removing or renaming a field, changing a type or meaning, making a field required) bumps the major, adds `schema/tlp-v<N>.schema.json` and a new fixture directory, and keeps the previous ones for the N-1 conformance run (plan 8).

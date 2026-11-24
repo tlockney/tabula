@@ -112,7 +112,9 @@ async def test_every_command_fixture_is_answered(server, store, start):
             continue
         event = json.loads(path.read_text())["event"]
         result = await server.send_command(store.device_id, event["command"], event["args"])
-        assert result["ok"] or result["error"]["code"] in {"failed", "unsupported_command"}, path
+        # busy: a second ring while the fixture's first call is still ringing.
+        allowed = {"failed", "unsupported_command", "busy"}
+        assert result["ok"] or result["error"]["code"] in allowed, path
 
 
 async def test_set_settings_persists(server, store, start):
@@ -292,3 +294,94 @@ async def test_screenshot_upload_failure_fails_the_command(server, store, start,
     await server.wait_registered(store.device_id)
     result = await server.send_command(store.device_id, "screenshot", {})
     assert result["error"]["code"] == "failed"
+
+
+# --- intercom (P9.1, ADR 0025) --------------------------------------------------
+
+CALL = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+
+
+def intercom_ring(call_id: str = CALL, mode: str = "call") -> dict:
+    return {
+        "call_id": call_id,
+        "caller_device_id": "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b",
+        "caller_name": "Office Kiosk",
+        "mode": mode,
+    }
+
+
+async def test_intercom_call_answers_and_ends_over_the_session(server, store, start):
+    """Ring, answer and hang up as HA drives them, with the events HA would act on."""
+    device = MockDevice(base_url=server.url)
+    await start(store, device)
+    record = await server.wait_registered(store.device_id)
+
+    assert (await server.send_command(store.device_id, "intercom_ring", intercom_ring()))["ok"]
+    await wait_for(lambda: record.state.get("intercom_state") == "ringing")
+
+    device.answer_intercom_call()
+    await wait_for(lambda: record.state.get("intercom_state") == "in_call")
+    await wait_for(lambda: any(e["event"] == "intercom_answer" for e in record.events))
+
+    ended = await server.send_command(
+        store.device_id, "intercom_end", {"call_id": CALL, "reason": "command"}
+    )
+    assert ended["ok"]
+    await wait_for(lambda: record.state.get("intercom_state") == "idle")
+    await wait_for(
+        lambda: any(
+            e["event"] == "intercom_ended" and e["data"]["reason"] == "command"
+            for e in record.events
+        )
+    )
+
+
+async def test_intercom_signal_is_relayed_between_the_two_sides(server, store, start):
+    device = MockDevice(base_url=server.url)
+    await start(store, device)
+    record = await server.wait_registered(store.device_id)
+    ringing = await server.send_command(store.device_id, "intercom_ring", intercom_ring())
+    assert ringing["ok"]
+    offer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+    result = await server.send_command(
+        store.device_id,
+        "intercom_signal",
+        {"call_id": CALL, "kind": "offer", "payload": offer},
+    )
+    assert result["ok"]
+    assert device.intercom_signals == [{"kind": "offer", "payload": offer}]
+
+    device.send_intercom_signal("answer", offer)
+    await wait_for(
+        lambda: any(
+            e["event"] == "intercom_signal" and e["data"]["kind"] == "answer" for e in record.events
+        )
+    )
+
+
+async def test_intercom_is_negotiated_and_commands_are_gated(server, store, start):
+    """A device that never declares the capability is not offered the commands.
+
+    The integration only sends what a device declared (PROTOCOL 4.5); the
+    conformance side here checks the two halves it can see: the capability is
+    absent from register_result, and the device NACKs the command anyway.
+    """
+    device = MockDevice(capabilities=["screen", "brightness"], base_url=server.url)
+    await start(store, device)
+    record = await server.wait_registered(store.device_id)
+    assert [c for c in record.capabilities if c.startswith("intercom")] == []
+
+    for command, args in (
+        ("intercom_ring", intercom_ring()),
+        ("intercom_signal", {"call_id": CALL, "kind": "offer", "payload": "x"}),
+        ("intercom_end", {"call_id": CALL, "reason": "command"}),
+    ):
+        result = await server.send_command(store.device_id, command, args)
+        assert result["error"]["code"] == "unsupported_command", command
+
+
+async def test_a_declared_intercom_device_is_accepted(server, store, start):
+    await start(store)
+    record = await server.wait_registered(store.device_id)
+    assert {"intercom.listen", "intercom.talk"} <= set(record.capabilities)
+    assert record.state.get("intercom_state") == "idle"
