@@ -225,6 +225,14 @@
           "dim": "Dim",
           "black": "Black"
         }
+      },
+      "intercom_auto_answer": {
+        "name": "Intercom auto-answer",
+        "state": {
+          "off": "Off",
+          "listed": "Only listed callers",
+          "all": "Every caller"
+        }
       }
     },
     "button": {
@@ -419,6 +427,9 @@
     },
     "profile_invalid": {
       "message": "The profile could not be applied: {reason}"
+    },
+    "intercom_auto_answer_needs_callers": {
+      "message": "Choose at least one caller in Intercom auto-answer callers before answering only listed callers."
     }
   },
   "services": {

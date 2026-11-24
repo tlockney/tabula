@@ -42,12 +42,12 @@ def schema() -> SettingsSchema:
 def test_bundled_settings_schema_matches_repo():
     """The shipped copy is the repo's source of truth, byte for byte."""
     assert BUNDLED_SCHEMA.read_bytes() == REPO_SCHEMA.read_bytes()
-    assert schema().version == SCHEMA_VERSION == 3
+    assert schema().version == SCHEMA_VERSION == 4
 
 
 def test_bundled_frozen_schemas_match_repo():
     """The frozen copies (down-translation, migrations/) are the repo's, byte for byte."""
-    for name in ("settings.schema.v1.json", "settings.schema.v2.json"):
+    for name in ("settings.schema.v1.json", "settings.schema.v2.json", "settings.schema.v3.json"):
         bundled = BUNDLED_SCHEMA.parent / name
         repo = REPO_SCHEMA.parent / name
         assert bundled.read_bytes() == repo.read_bytes(), name
@@ -96,7 +96,9 @@ def test_editable_fields_come_from_the_schema_tags():
     assert "screensaver_clock_face" in keys
     assert "at_a_glance_entities" in keys
     assert "widgets_entity_visible_values" in keys
-    # the two v2 list leaves and the schedule close the form, schema order
+    # the two v2 list leaves, the v4 intercom list and the schedule close the
+    # form, schema order
+    assert "intercom_auto_answer_from" in keys
     assert keys[-1] == "schedule_slots"
     assert all(f.feature for f in fields)
     assert all(f.role != "hardware" for f in fields)
@@ -108,9 +110,11 @@ def test_editable_fields_come_from_the_schema_tags():
     assert set(arrays) == {
         "at_a_glance_entities",
         "widgets_entity_visible_values",
+        "intercom_auto_answer_from",
         "schedule_slots",
     }
     assert arrays["at_a_glance_entities"].array_items == "scalar"
+    assert arrays["intercom_auto_answer_from"].array_items == "scalar"
     assert arrays["schedule_slots"].array_items == "object"
 
 

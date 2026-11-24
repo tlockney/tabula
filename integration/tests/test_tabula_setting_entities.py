@@ -13,14 +13,17 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 
 import aiohttp
+import pytest
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
 from custom_components.tabula.number import CHIME_VOLUME, IDLE_TIMEOUT, RETURN_HOME_AFTER
+from custom_components.tabula.select import INTERCOM_AUTO_ANSWER
 from custom_components.tabula.settings import SettingsSchema
 from custom_components.tabula.switch import SETTING_SWITCHES
 from custom_components.tabula.text import CLOCK_BACKGROUND, START_PATH
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from mockdevice.client import TLPClient
 from mockdevice.device import ALL_CAPABILITIES, MockDevice
@@ -34,6 +37,7 @@ SETTING_ENTITIES = [
     ("number", CHIME_VOLUME.key, CHIME_VOLUME.setting),
     ("text", CLOCK_BACKGROUND.key, CLOCK_BACKGROUND.setting),
     ("text", START_PATH.key, START_PATH.setting),
+    ("select", INTERCOM_AUTO_ANSWER.key, INTERCOM_AUTO_ANSWER.setting),
 ]
 
 
@@ -102,6 +106,7 @@ def test_every_setting_entity_names_a_shared_schema_leaf():
         "dashboard_return_home_after": 2,
         "audio_chime_volume": 2,
         "voice_wake_word_enabled": 3,
+        "intercom_auto_answer": 4,
     }
 
 
@@ -133,12 +138,21 @@ async def test_entity_set_follows_the_device_schema_version(
         assert stored["schema_version"] == 2
 
     async with tablet(hass_setup, server, paired, tmp_path, schema_version=3):
+        up_to_v3 = [(p, k) for p, k, s in SETTING_ENTITIES if schema.since(s) <= 3]
+        await until(lambda: all(eid(hass_setup, paired.device_id, p, k) for p, k in up_to_v3))
+        # the auto-answer select arrived with schema 4 (P9.5), so a v3 device has none
+        assert eid(hass_setup, paired.device_id, "select", "intercom_auto_answer") is None
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        assert runtime.entry.data["devices"][paired.device_id]["schema_version"] == 3
+
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=4):
         await until(
             lambda: all(eid(hass_setup, paired.device_id, p, k) for p, k, _ in SETTING_ENTITIES)
         )
         runtime = TabulaHub.get(hass_setup)
         assert runtime is not None
-        assert runtime.entry.data["devices"][paired.device_id]["schema_version"] == 3
+        assert runtime.entry.data["devices"][paired.device_id]["schema_version"] == 4
 
     # and back: a device that re-registers as schema 1 loses the v2-only entities
     async with tablet(hass_setup, server, paired, tmp_path, schema_version=1):
@@ -404,3 +418,59 @@ async def test_options_flow_style_save_refreshes_the_entity(
         await runtime.settings.async_save(dev, {"screensaver": {"idle_timeout": 900}})
         await hass_setup.async_block_till_done()
         assert hass_setup.states.get(timeout).state == "900"
+
+
+async def test_intercom_auto_answer_select_is_off_and_lists_the_schema_enum(
+    hass_setup, server, hub, paired, tmp_path
+):
+    """A v4 device gets the select, off by default, with the schema's options."""
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=4):
+        select = eid(hass_setup, paired.device_id, "select", "intercom_auto_answer")
+        assert select is not None
+        state = hass_setup.states.get(select)
+        assert state.state == "off"
+        assert state.attributes["options"] == ["off", "listed", "all"]
+
+
+async def test_intercom_auto_answer_write_reaches_the_device(
+    hass_setup, server, hub, paired, tmp_path
+):
+    """Choosing a mode is one revision and one push, like any other setting."""
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=4) as (device, _):
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        select = eid(hass_setup, paired.device_id, "select", "intercom_auto_answer")
+        assert select is not None
+
+        await hass_setup.services.async_call(
+            "select", "select_option", {"entity_id": select, "option": "all"}, blocking=True
+        )
+        await until(lambda: device.settings.get("intercom", {}).get("auto_answer") == "all")
+        assert runtime.settings.revision(paired.device_id) == 1
+        assert hass_setup.states.get(select).state == "all"
+
+
+async def test_intercom_auto_answer_refuses_listed_with_no_callers(
+    hass_setup, server, hub, paired, tmp_path
+):
+    """'Only listed callers' with nobody named is refused, and nothing is stored.
+
+    The device would ring the call anyway, so accepting the value would leave a
+    setting that reads as a promise it does not keep (P9.5).
+    """
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=4):
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        select = eid(hass_setup, paired.device_id, "select", "intercom_auto_answer")
+        assert select is not None
+        assert runtime.settings.revision(paired.device_id) == 0
+
+        with pytest.raises(HomeAssistantError):
+            await hass_setup.services.async_call(
+                "select",
+                "select_option",
+                {"entity_id": select, "option": "listed"},
+                blocking=True,
+            )
+        assert runtime.settings.revision(paired.device_id) == 0
+        assert hass_setup.states.get(select).state == "off"

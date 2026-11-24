@@ -15,7 +15,8 @@ whole groups included. Every bump needs its step, additive or not, because the
 device's strict codec rejects unknown keys (plan 5.4): a new key inside an
 existing group is still a key an older device would reject.
 
-The frozen copies (settings.schema.v1.json, settings.schema.v2.json) are
+The frozen copies (settings.schema.v1.json, settings.schema.v2.json,
+settings.schema.v3.json) are
 byte-identical to the repo's schema/settings.schema.v1.json and
 schema/settings.schema.v2.json, which is what the tests validate every
 translated document against.
@@ -36,6 +37,7 @@ _BUNDLED = Path(__file__).parent.parent
 _FROZEN_FILES = {
     1: _BUNDLED / "settings.schema.v1.json",
     2: _BUNDLED / "settings.schema.v2.json",
+    3: _BUNDLED / "settings.schema.v3.json",
 }
 
 
@@ -88,6 +90,7 @@ def _prune_to(version: int) -> Callable[[dict[str, Any]], dict[str, Any]]:
 DOWNS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     2: _prune_to(1),
     3: _prune_to(2),
+    4: _prune_to(3),
 }
 
 

@@ -1,0 +1,5 @@
+{
+  "intercom_auto_answer_unknown": "intercom/auto_answer",
+  "intercom_auto_answer_from_not_device_id": "intercom/auto_answer_from/0",
+  "intercom_auto_answer_from_too_many": "intercom/auto_answer_from"
+}

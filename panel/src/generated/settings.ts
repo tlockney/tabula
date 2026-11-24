@@ -3,7 +3,7 @@
 // from the schema (docs/decisions/0002-constants.md).
 
 /** The settings schema version this file was generated from. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * The leaf roles the schema declares (x-tabula-roles). Profiles may manage
@@ -126,6 +126,8 @@ export type SettingsScreensaverPhotosFit = "letterbox" | "smart_fill" | "fill";
 export type SettingsNotificationsDefaultLevel = "info" | "success" | "warning" | "error";
 /** Schema enum for audio.announce_volume_boost. */
 export type SettingsAudioAnnounceVolumeBoost = "none";
+/** Schema enum for intercom.auto_answer. */
+export type SettingsIntercomAutoAnswer = "off" | "listed" | "all";
 /** Schema enum for at_a_glance.style. */
 export type SettingsAtAGlanceStyle = "pill" | "plain";
 /** Schema enum for widgets.small_clock.corner. */
@@ -333,6 +335,13 @@ export interface SettingsVoice {
   /** Run on-device wake-word detection while the foreground service is up and RECORD_AUDIO is granted. Detection is suspended while the device plays (ADR 0029 item 3). Default per ADR 0002. */
   wake_word_enabled: boolean;
 }
+/** Intercom auto-answer (ADR 0025 decision 1, ADR 0028 guard 1). Off by default: answering opens a microphone with no tap, so a household opts in per device and only for callers it names. A ring always plays a short tone on the communication stream before the microphone opens. */
+export interface SettingsIntercom {
+  /** Which calls this device answers without a tap: none, only the devices in auto_answer_from, or every Tabula device on the hub. A device without a usable microphone never answers automatically; it still rings. Default per ADR 0002 (settings v4). */
+  auto_answer: SettingsIntercomAutoAnswer;
+  /** The Tabula device ids this device auto-answers when auto_answer is 'listed' (the ids a ring carries as caller_device_id; PROTOCOL 4.5). Empty with 'listed' answers nobody, which is the fail-safe reading. Default per ADR 0002 (settings v4). */
+  auto_answer_from: string[];
+}
 /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
 export interface SettingsAtAGlance {
   /** The entities in the row, in display order (F-AAG-01); the bound is per ADR 0002 (settings v2). Default per ADR 0002 (settings v2). */
@@ -477,6 +486,8 @@ export interface Settings {
   audio: SettingsAudio;
   /** Microphone behavior (ADR 0030). Off by default: a kiosk whose microphone is always open is a different product from one that is not, so a household opts in per device. */
   voice: SettingsVoice;
+  /** Intercom auto-answer (ADR 0025 decision 1, ADR 0028 guard 1). Off by default: answering opens a microphone with no tap, so a household opts in per device and only for callers it names. A ring always plays a short tone on the communication stream before the microphone opens. */
+  intercom: SettingsIntercom;
   /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
   at_a_glance: SettingsAtAGlance;
   /** Corner widgets (F-WGT-01): overlays anchored to the four screen corners, at most one per corner, each individually disabled without losing its corner. */
@@ -1610,6 +1621,40 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     help: "Run on-device wake-word detection while the foreground service is up and RECORD_AUDIO is granted. Detection is suspended while the device plays (ADR 0029 item 3). Default per ADR 0002.",
   },
   {
+    path: "intercom.auto_answer",
+    key: "intercom_auto_answer",
+    role: "shared",
+    feature: "independent design (ADR 0025 decision 1, ADR 0028 guard 1)",
+    type: "string",
+    enumValues: ["off", "listed", "all"],
+    minimum: null,
+    maximum: null,
+    minLength: null,
+    maxLength: null,
+    pattern: null,
+    default: "off",
+    arrayItems: null,
+    items: null,
+    help: "Which calls this device answers without a tap: none, only the devices in auto_answer_from, or every Tabula device on the hub. A device without a usable microphone never answers automatically; it still rings. Default per ADR 0002 (settings v4).",
+  },
+  {
+    path: "intercom.auto_answer_from",
+    key: "intercom_auto_answer_from",
+    role: "shared",
+    feature: "independent design (ADR 0025 decision 1, ADR 0028 guard 1)",
+    type: "array",
+    enumValues: null,
+    minimum: null,
+    maximum: 16,
+    minLength: null,
+    maxLength: null,
+    pattern: null,
+    default: [],
+    arrayItems: "scalar",
+    items: { type: "string", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", enumValues: null, properties: [], required: [] },
+    help: "The Tabula device ids this device auto-answers when auto_answer is 'listed' (the ids a ring carries as caller_device_id; PROTOCOL 4.5). Empty with 'listed' answers nobody, which is the fail-safe reading. Default per ADR 0002 (settings v4).",
+  },
+  {
     path: "at_a_glance.entities",
     key: "at_a_glance_entities",
     role: "shared",
@@ -2321,6 +2366,10 @@ export const SETTINGS_DEFAULTS: Settings = {
   },
   voice: {
     wake_word_enabled: false,
+  },
+  intercom: {
+    auto_answer: "off",
+    auto_answer_from: [],
   },
   at_a_glance: {
     entities: [],

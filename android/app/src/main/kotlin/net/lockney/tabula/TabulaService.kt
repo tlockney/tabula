@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import net.lockney.tabula.core.intercom.AutoAnswerPolicy
 import net.lockney.tabula.core.voice.WakeWordDetector
 import net.lockney.tabula.ha.CredentialRevoked
 import net.lockney.tabula.ha.EntityDataConnection
@@ -161,6 +162,11 @@ class TabulaService : Service() {
         val engine = WebRtcCallEngine(
             context = applicationContext,
             canTalk = ::canTalk,
+            // The setting is read per ring, not cached: turning auto-answer off
+            // in HA takes effect on the next call (P9.5)
+            autoAnswer = { caller ->
+                AutoAnswerPolicy.of(store.settings.intercom).answers(caller)
+            },
         )
         intercom = IntercomManager(
             engine = engine,
