@@ -15,6 +15,7 @@ from typing import Any
 
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import SCHEMA_VERSION
+from custom_components.tabula.settings import SettingsError
 from helpers import WS, Paired, frame_fixture, uid, ws_connect
 from homeassistant.auth.const import GROUP_ID_ADMIN
 from homeassistant.core import HomeAssistant
@@ -262,6 +263,49 @@ async def test_nothing_valid_saves_nothing(hass_setup, server, hub, session, pai
     assert result["revision"] is None
     assert result["applied"] == []
     assert [item["key"] for item in result["rejected"]] == ["screen_brightness"]
+    stored = runtime.settings.get(paired.device_id)
+    assert stored is not None
+    assert stored.revision == 1
+    assert stored.settings["screen"]["brightness"] == 50
+
+
+async def test_a_problem_that_blames_no_key_refuses_the_save(
+    hass_setup, server, hub, session, paired, monkeypatch
+):
+    """A document-level problem naming no submitted key rejects every accepted key.
+
+    The assembled-document guard blames the submitted keys its paths run
+    through. When the schema grows a cross-key rule whose path names none of
+    them, nothing may be saved: the whole save is refused, per key and without
+    a 500 (P5.3 step 2).
+    """
+    runtime = TabulaHub.get(hass_setup)
+    assert runtime is not None
+    await runtime.settings.async_save(paired.device_id, {"screen": {"brightness": 50}})
+
+    def cross_key(document):
+        raise SettingsError(["identity/name: a rule no submitted key is part of"])
+
+    monkeypatch.setattr(runtime.settings.schema, "validate", cross_key)
+    client = await admin_client(hass_setup, server, session)
+    try:
+        result = await write_settings(
+            client,
+            paired.device_id,
+            {"screen_brightness": 30, "screensaver_idle_timeout": 60},
+        )
+    finally:
+        await client.close()
+
+    assert result["revision"] is None
+    assert result["applied"] == []
+    assert {item["key"] for item in result["rejected"]} == {
+        "screen_brightness",
+        "screensaver_idle_timeout",
+    }
+    assert all(
+        "a rule no submitted key is part of" in item["reason"] for item in result["rejected"]
+    )
     stored = runtime.settings.get(paired.device_id)
     assert stored is not None
     assert stored.revision == 1

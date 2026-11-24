@@ -128,7 +128,9 @@ def split_values(
             schema.validate(document)
         except SettingsError as e:
             blamed = _blamed_keys(e.problems, list(accepted))
-            for key in blamed or accepted:
+            # ``blamed`` empty means the problem names no submitted key: reject
+            # them all. Copy it: the set/dict is mutated inside the loop.
+            for key in list(blamed or accepted):
                 rejected.append({"key": key, "reason": "; ".join(e.problems)})
                 del accepted[key]
             continue
