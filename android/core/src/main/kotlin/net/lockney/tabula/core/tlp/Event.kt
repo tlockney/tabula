@@ -11,6 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import net.lockney.tabula.core.Constants
 
 /**
  * tabula/event (PROTOCOL 4.7). The data member's shape depends on the event
@@ -56,6 +57,21 @@ data class EventFrame(
 
         EventName.WAKE_WORD_DETECTED ->
             json.decodeFromJsonElement(WakeWordDetected.serializer(), data)
+
+        EventName.INTERCOM_ANSWER ->
+            json.decodeFromJsonElement(IntercomAnswer.serializer(), data)
+
+        EventName.INTERCOM_DECLINE ->
+            json.decodeFromJsonElement(IntercomDecline.serializer(), data)
+
+        EventName.INTERCOM_SIGNAL ->
+            json.decodeFromJsonElement(IntercomSignal.serializer(), data)
+
+        EventName.INTERCOM_ENDED ->
+            json.decodeFromJsonElement(IntercomEnded.serializer(), data)
+
+        EventName.INTERCOM_START_REQUEST ->
+            json.decodeFromJsonElement(IntercomStartRequest.serializer(), data)
     }
 
     companion object {
@@ -113,6 +129,51 @@ data class EventFrame(
 
         fun pageChanged(id: Int, path: String) =
             frame(id, EventName.PAGE_CHANGED, buildJsonObject { put("path", path) })
+
+        fun intercomAnswer(id: Int, callId: String) =
+            frame(id, EventName.INTERCOM_ANSWER, buildJsonObject { put("call_id", callId) })
+
+        fun intercomDecline(id: Int, callId: String) =
+            frame(id, EventName.INTERCOM_DECLINE, buildJsonObject { put("call_id", callId) })
+
+        fun intercomSignal(id: Int, callId: String, kind: IntercomSignalKind, payload: String) =
+            frame(
+                id,
+                EventName.INTERCOM_SIGNAL,
+                buildJsonObject {
+                    put("call_id", callId)
+                    put("kind", wireName(kind))
+                    put("payload", payload)
+                },
+            )
+
+        fun intercomEnded(id: Int, callId: String, reason: IntercomEndReason) =
+            frame(
+                id,
+                EventName.INTERCOM_ENDED,
+                buildJsonObject {
+                    put("call_id", callId)
+                    put("reason", wireName(reason))
+                },
+            )
+
+        fun intercomStartRequest(
+            id: Int,
+            callId: String,
+            mode: IntercomMode,
+            targetDeviceId: String? = null,
+            targetAreaId: String? = null,
+        ) =
+            frame(
+                id,
+                EventName.INTERCOM_START_REQUEST,
+                buildJsonObject {
+                    put("call_id", callId)
+                    put("mode", wireName(mode))
+                    targetDeviceId?.let { put("target_device_id", it) }
+                    targetAreaId?.let { put("target_area_id", it) }
+                },
+            )
 
         fun wakeWordDetected(id: Int, phrase: String, probability: Int) =
             frame(
@@ -204,5 +265,76 @@ data class PageChanged(
     init {
         Wire.requireLength("event.path", path, 1, 2048)
         Wire.requirePattern("event.path", path, Wire.pagePath)
+    }
+}
+
+/**
+ * One call ringing and answered on this device (P9.1, PROTOCOL 4.7). The call
+ * id is the one the ring carried; HA relays the answer to the caller.
+ */
+@Serializable
+data class IntercomAnswer(
+    @SerialName("call_id") val callId: String,
+) : EventData {
+    init {
+        Wire.requireCallId(callId)
+    }
+}
+
+@Serializable
+data class IntercomDecline(
+    @SerialName("call_id") val callId: String,
+) : EventData {
+    init {
+        Wire.requireCallId(callId)
+    }
+}
+
+/** The device's own offer, answer or candidate for a call (the other direction of the command). */
+@Serializable
+data class IntercomSignal(
+    @SerialName("call_id") val callId: String,
+    val kind: IntercomSignalKind,
+    val payload: String,
+) : EventData {
+    init {
+        Wire.requireCallId(callId)
+        Wire.requireSignalPayload("event.payload", payload, Constants.INTERCOM_SIGNAL_MAX_BYTES)
+    }
+}
+
+/** A call this device was in has ended, and why (PROTOCOL 4.7). */
+@Serializable
+data class IntercomEnded(
+    @SerialName("call_id") val callId: String,
+    val reason: IntercomEndReason,
+) : EventData {
+    init {
+        Wire.requireCallId(callId)
+    }
+}
+
+/**
+ * A call started on this device's screen (ADR 0025 decision 6): HA resolves the
+ * target and rings it. A `call` needs exactly one target; the two targets
+ * exclude each other; a broadcast may carry neither (every device but this one).
+ */
+@Serializable
+data class IntercomStartRequest(
+    @SerialName("call_id") val callId: String,
+    val mode: IntercomMode,
+    @SerialName("target_device_id") val targetDeviceId: String? = null,
+    @SerialName("target_area_id") val targetAreaId: String? = null,
+) : EventData {
+    init {
+        Wire.requireCallId(callId)
+        require(!(targetDeviceId != null && targetAreaId != null)) {
+            "a call has one target, a device or an area"
+        }
+        if (mode == IntercomMode.CALL) {
+            require(targetDeviceId != null || targetAreaId != null) { "a call needs one target" }
+        }
+        targetDeviceId?.let { Wire.requirePattern("event.target_device_id", it, Wire.haDeviceId) }
+        targetAreaId?.let { Wire.requirePattern("event.target_area_id", it, Wire.haAreaId) }
     }
 }

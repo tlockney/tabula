@@ -10,13 +10,26 @@ import java.time.OffsetDateTime
 internal object Wire {
     val deviceId = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     val commandId = Regex("^[0-9A-Za-z_-]{8,64}$")
-    val capability = Regex("^[a-z][a-z0-9_]{0,31}$")
+    /**
+     * A capability name: one to three dot-separated segments (PROTOCOL 4.0), so
+     * `screen` and `intercom.listen` are both names.
+     */
+    val capability = Regex("^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){0,2}$")
 
     /** Frontend path with no query string or fragment, single leading slash (state, page_changed). */
     val pagePath = Regex("^/(?![/\\\\])[^\\s\\\\?#]*$")
 
     /** Like [pagePath] but without the query/fragment exclusions (navigate). */
     val navigatePath = Regex("^/(?![/\\\\])[^\\s\\\\]*$")
+
+    /** One call's ID, the same form as a command_id (P9.1). */
+    val intercomCallId = Regex("^[0-9A-Za-z_-]{8,64}$")
+
+    /** An HA device registry id, for intercom_start_request's target. */
+    val haDeviceId = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+    /** An HA area id (a slug), for intercom_start_request's target. */
+    val haAreaId = Regex("^[a-z0-9_]{1,64}$")
 
     /** Wake-word identifier: lowercase, digits and underscores (P7.1). */
     val wakeWordPhrase = Regex("^[a-z0-9_]{1,32}$")
@@ -41,6 +54,18 @@ internal object Wire {
         // JSON Schema lengths count code points; String.length counts UTF-16 units.
         val codePoints = value.codePointCount(0, value.length)
         require(codePoints in min..max) { "$path must be $min-$max characters, is $codePoints" }
+    }
+
+    fun requireCallId(value: String) {
+        require(intercomCallId.matches(value)) {
+            "call_id must be 8-64 chars of [0-9A-Za-z_-]: $value"
+        }
+    }
+
+    /** A signal payload's size in UTF-8 bytes (INTERCOM_SIGNAL_MAX_BYTES). */
+    fun requireSignalPayload(path: String, value: String, maxBytes: Int) {
+        val bytes = value.toByteArray(Charsets.UTF_8).size
+        require(bytes in 1..maxBytes) { "$path must be 1-$maxBytes bytes, is $bytes" }
     }
 
     fun requireRange(path: String, value: Int, min: Int, max: Int) {

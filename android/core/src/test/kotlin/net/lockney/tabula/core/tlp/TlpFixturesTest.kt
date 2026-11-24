@@ -11,6 +11,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import java.io.File
 import java.math.BigDecimal
+import net.lockney.tabula.core.Constants
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -80,6 +81,14 @@ class TlpFixturesTest {
                 typed(command.event.logSubscriptionArgs(Tlp.strict), LogSubscriptionArgs.serializer())
 
             "command_screenshot" -> typed(command.event.screenshotArgs(Tlp.strict), ScreenshotArgs.serializer())
+            "command_intercom_ring" ->
+                typed(command.event.intercomRingArgs(Tlp.strict), IntercomRingArgs.serializer())
+
+            "command_intercom_signal" ->
+                typed(command.event.intercomSignalArgs(Tlp.strict), IntercomSignalArgs.serializer())
+
+            "command_intercom_end" ->
+                typed(command.event.intercomEndArgs(Tlp.strict), IntercomEndArgs.serializer())
             else -> error("unexpected command frame $frame")
         }
         assertTrue(args.canonical() == command.event.args.canonical(), "$frame args must round-trip typed")
@@ -103,6 +112,11 @@ class TlpFixturesTest {
                 is MediaFinished -> typed(data, MediaFinished.serializer())
                 is PageChanged -> typed(data, PageChanged.serializer())
                 is WakeWordDetected -> typed(data, WakeWordDetected.serializer())
+                is IntercomAnswer -> typed(data, IntercomAnswer.serializer())
+                is IntercomDecline -> typed(data, IntercomDecline.serializer())
+                is IntercomSignal -> typed(data, IntercomSignal.serializer())
+                is IntercomEnded -> typed(data, IntercomEnded.serializer())
+                is IntercomStartRequest -> typed(data, IntercomStartRequest.serializer())
             }
             assertTrue(
                 encoded.canonical() == frame.data.canonical(),
@@ -158,4 +172,66 @@ internal fun JsonElement.canonical(): JsonElement = when (this) {
         }
 
     else -> this
+}
+/** P9.1: the intercom fixtures carry what the state machine reads, typed. */
+class IntercomFixturesTest {
+    private val fixtures = File(net.lockney.tabula.core.TestRepo.root(), "schema/fixtures/tlp/v1")
+
+    @Test
+    fun `ring fixtures carry the caller and the mode`() {
+        val ring = fixtures / "command_intercom_ring.json"
+        val args = (Tlp.decodeFrame("command_intercom_ring", ring.readText()) as CommandFrame)
+            .event
+            .intercomRingArgs(Tlp.strict)
+        assertTrue(args.mode == IntercomMode.CALL)
+        assertTrue(args.callerName == "Office Kiosk")
+        assertTrue(args.callerDeviceId == "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b")
+
+        val broadcast = fixtures / "command_intercom_ring.broadcast.json"
+        val mode = (Tlp.decodeFrame("command_intercom_ring", broadcast.readText()) as CommandFrame)
+            .event
+            .intercomRingArgs(Tlp.strict)
+            .mode
+        assertTrue(mode == IntercomMode.BROADCAST)
+    }
+
+    @Test
+    fun `signal fixtures carry the payload unchanged`() {
+        val offerFile = fixtures / "command_intercom_signal.offer.json"
+        val offer = (Tlp.decodeFrame("command_intercom_signal", offerFile.readText()) as CommandFrame)
+            .event
+            .intercomSignalArgs(Tlp.strict)
+        assertTrue(offer.kind == IntercomSignalKind.OFFER)
+        assertTrue(offer.payload.contains("m=audio 9 UDP/TLS/RTP/SAVPF 111"))
+        assertTrue(offer.payload.toByteArray().size <= Constants.INTERCOM_SIGNAL_MAX_BYTES)
+
+        val candidateFile = fixtures / "command_intercom_signal.candidate.json"
+        val candidate = (Tlp.decodeFrame("command_intercom_signal", candidateFile.readText()) as CommandFrame)
+            .event
+            .intercomSignalArgs(Tlp.strict)
+        assertTrue(candidate.kind == IntercomSignalKind.CANDIDATE)
+    }
+
+    @Test
+    fun `the state fixture carries intercom_state`() {
+        val file = fixtures / "state_delta.intercom.json"
+        val state = (Tlp.decodeFrame("state_delta", file.readText()) as StateFrame).state
+        assertTrue(state.intercomState == IntercomState.RINGING)
+    }
+
+    @Test
+    fun `the start request fixture carries one target`() {
+        val file = fixtures / "event.intercom_start_request.json"
+        val data = (Tlp.decodeFrame("event", file.readText()) as EventFrame)
+            .eventData(Tlp.strict) as IntercomStartRequest
+        assertTrue(data.mode == IntercomMode.CALL)
+        assertTrue(data.targetDeviceId == "9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50")
+        assertTrue(data.targetAreaId == null)
+
+        val areaFile = fixtures / "event.intercom_start_request.area.json"
+        val area = (Tlp.decodeFrame("event", areaFile.readText()) as EventFrame)
+            .eventData(Tlp.strict) as IntercomStartRequest
+        assertTrue(area.mode == IntercomMode.BROADCAST)
+        assertTrue(area.targetAreaId == "kitchen")
+    }
 }

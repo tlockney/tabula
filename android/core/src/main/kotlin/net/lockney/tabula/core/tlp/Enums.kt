@@ -66,6 +66,10 @@ enum class Capability {
     // P7.1: declared only while voice.wake_word_enabled is on and RECORD_AUDIO
     // is granted (ADR 0030 item 2).
     @SerialName("wake_word") WAKE_WORD,
+    // P9.1: intercom (ADR 0025 decision 7). listen can receive audio, talk can
+    // capture; a device with neither is left out of call targets.
+    @SerialName("intercom.listen") INTERCOM_LISTEN,
+    @SerialName("intercom.talk") INTERCOM_TALK,
 }
 
 /** Tabula error codes (command_result.error.code, docs/PROTOCOL.md 6). */
@@ -129,6 +133,44 @@ enum class ScreensaverStopTrigger {
     @SerialName("schedule") SCHEDULE,
 }
 
+/** intercom_state (docs/PROTOCOL.md 4.4, P9.1). */
+@Serializable
+enum class IntercomState {
+    @SerialName("idle") IDLE,
+    @SerialName("ringing") RINGING,
+    @SerialName("in_call") IN_CALL,
+
+    /** This device is sending a broadcast; a device playing one is [IN_CALL]. */
+    @SerialName("broadcasting") BROADCASTING,
+}
+
+/** intercom_ring mode and intercom_start_request mode (ADR 0025 decisions 1, 2). */
+@Serializable
+enum class IntercomMode {
+    @SerialName("call") CALL,
+    @SerialName("broadcast") BROADCAST,
+}
+
+/** Which WebRTC signal an intercom_signal frame carries. */
+@Serializable
+enum class IntercomSignalKind {
+    @SerialName("offer") OFFER,
+    @SerialName("answer") ANSWER,
+    @SerialName("candidate") CANDIDATE,
+}
+
+/** Why a call ended (intercom_end argument and intercom_ended data). */
+@Serializable
+enum class IntercomEndReason {
+    @SerialName("hangup") HANGUP,
+    @SerialName("decline") DECLINE,
+    @SerialName("timeout") TIMEOUT,
+    @SerialName("limit") LIMIT,
+    @SerialName("error") ERROR,
+    @SerialName("disconnect") DISCONNECT,
+    @SerialName("command") COMMAND,
+}
+
 /** media_finished reason. */
 @Serializable
 enum class MediaFinishedReason {
@@ -148,6 +190,11 @@ enum class EventName {
     @SerialName("media_finished") MEDIA_FINISHED,
     @SerialName("page_changed") PAGE_CHANGED,
     @SerialName("wake_word_detected") WAKE_WORD_DETECTED,
+    @SerialName("intercom_answer") INTERCOM_ANSWER,
+    @SerialName("intercom_decline") INTERCOM_DECLINE,
+    @SerialName("intercom_signal") INTERCOM_SIGNAL,
+    @SerialName("intercom_ended") INTERCOM_ENDED,
+    @SerialName("intercom_start_request") INTERCOM_START_REQUEST,
 }
 
 /** http_error error names (docs/PROTOCOL.md 2, 5). */

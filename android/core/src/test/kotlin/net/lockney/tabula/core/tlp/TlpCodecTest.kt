@@ -139,6 +139,26 @@ class TlpCodecTest {
             EventFrame.screensaverStopped(9, ScreensaverMode.BLACK, ScreensaverStopTrigger.TOUCH),
             EventFrame.mediaFinished(9, MediaFinishedReason.ENDED),
             EventFrame.pageChanged(9, "/lovelace/0"),
+            EventFrame.intercomAnswer(9, "01JC9Z6Q2H3W7K5N8T4V0BXDRA"),
+            EventFrame.intercomDecline(9, "01JC9Z6Q2H3W7K5N8T4V0BXDRA"),
+            EventFrame.intercomSignal(
+                9,
+                "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+                IntercomSignalKind.CANDIDATE,
+                "candidate:344558182 1 udp 2122194687 192.168.1.129 60043 typ host",
+            ),
+            EventFrame.intercomEnded(9, "01JC9Z6Q2H3W7K5N8T4V0BXDRA", IntercomEndReason.LIMIT),
+            EventFrame.intercomStartRequest(
+                9,
+                "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+                IntercomMode.CALL,
+                targetDeviceId = "9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50",
+            ),
+            EventFrame.intercomStartRequest(
+                9,
+                "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+                IntercomMode.BROADCAST,
+            ),
         )
         for (frame in frames) {
             val encoded = Tlp.encodeFrame("event", frame)
@@ -166,5 +186,71 @@ class TlpCodecTest {
         assertFailsWith<IllegalArgumentException> { register().copy(capabilities = listOf("Screen")) }
         assertFailsWith<IllegalArgumentException> { register().copy(capabilities = (1..65).map { "cap_$it" }) }
         assertFailsWith<IllegalArgumentException> { register().copy(state = StateDelta()) }
+    }
+
+    @Test
+    fun `intercom start requests need exactly one target`() {
+        val id = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+        // A call needs a target; the two targets exclude each other; a
+        // broadcast may carry neither (ADR 0025 decisions 1, 2, 6).
+        assertFailsWith<IllegalArgumentException> {
+            IntercomStartRequest(callId = id, mode = IntercomMode.CALL)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            IntercomStartRequest(
+                callId = id,
+                mode = IntercomMode.CALL,
+                targetDeviceId = "9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50",
+                targetAreaId = "kitchen",
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            IntercomStartRequest(callId = "short", mode = IntercomMode.BROADCAST)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            IntercomStartRequest(callId = id, mode = IntercomMode.BROADCAST, targetAreaId = "Kitchen")
+        }
+    }
+
+    @Test
+    fun `intercom signal payloads are bounded in bytes`() {
+        val id = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+        // INTERCOM_SIGNAL_MAX_BYTES is 4096: far above a measured 38-line
+        // offer (~1.3 KiB) and far below FRAME_MAX_BYTES.
+        val offer = "v=0".padEnd(Constants.INTERCOM_SIGNAL_MAX_BYTES, 'x')
+        IntercomSignalArgs(callId = id, kind = IntercomSignalKind.OFFER, payload = offer)
+        assertFailsWith<IllegalArgumentException> {
+            IntercomSignalArgs(callId = id, kind = IntercomSignalKind.OFFER, payload = offer + "x")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            IntercomSignalArgs(callId = id, kind = IntercomSignalKind.OFFER, payload = "")
+        }
+    }
+
+    @Test
+    fun `a dotted capability name is a capability`() {
+        // PROTOCOL 4.0: names are one to three dot-separated segments, so a
+        // device declaring intercom.listen keeps registering.
+        register().copy(capabilities = listOf("screen", "intercom.listen", "intercom.talk"))
+        assertFailsWith<IllegalArgumentException> {
+            register().copy(capabilities = listOf("intercom:listen"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            register().copy(capabilities = listOf("intercom.listen.extra.more"))
+        }
+    }
+
+    @Test
+    fun `intercom commands decode with their args`() {
+        val text = """
+            {"id":4,"type":"event","event":{"command_id":"c-0009-ring","command":"intercom_ring",
+              "args":{"call_id":"01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+                      "caller_device_id":"3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b",
+                      "caller_name":"Office Kiosk","mode":"broadcast"}}}
+        """.trimIndent()
+        val frame = Tlp.decodeFrame("command_intercom_ring", text) as CommandFrame
+        val args = frame.event.intercomRingArgs(Tlp.strict)
+        assertEquals(IntercomMode.BROADCAST, args.mode)
+        assertEquals("Office Kiosk", args.callerName)
     }
 }
