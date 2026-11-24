@@ -53,6 +53,14 @@ COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
     "screenshot": frozenset({"screenshot"}),
 }
 
+# Intercom (P9.2; values chosen in ADR 0002, "Intercom"). The integration owns
+# these timers: a ring that nobody answers is a missed call, an answered call
+# that never exchanges a signal gives up, and every call ends at the hard limit
+# (ADR 0028 guards 2 and 3).
+INTERCOM_RING_LIMIT_S = 45.0
+INTERCOM_CONNECT_TIMEOUT_S = 10.0
+INTERCOM_CALL_LIMIT_S = 300.0
+
 # Per-device system users (ADR 0001 items 2-4): local_only=True by default,
 # group user via homeassistant.auth.const.GROUP_ID_USER, names "Tabula <id8>".
 USER_NAME_PREFIX = "Tabula"

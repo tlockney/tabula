@@ -20,8 +20,21 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from . import DeviceRecord
+    from .intercom import IntercomCall
 
 _LOGGER = logging.getLogger(__name__)
+
+# Intercom call lifecycle (P9.2, ADR 0025 decision 5). These are HA's own
+# events about a call as a whole, not the device events `BUS_EVENT_TYPES`
+# forwards: one fires when a call starts, one when it is answered, one when it
+# is missed (nobody answered within the ring limit) and one when it ends for
+# any other reason. An automation follows a call through them.
+INTERCOM_STARTED = "tabula_intercom_started"
+INTERCOM_ANSWERED = "tabula_intercom_answered"
+INTERCOM_MISSED = "tabula_intercom_missed"
+INTERCOM_ENDED = "tabula_intercom_ended"
+
+INTERCOM_EVENTS = (INTERCOM_STARTED, INTERCOM_ANSWERED, INTERCOM_MISSED, INTERCOM_ENDED)
 
 # TLP event name -> HA bus event type (plan 5.7). tabula_alarm and tabula_timer
 # arrive with the events that introduce them; v1 has no such TLP events.
@@ -60,3 +73,37 @@ def relay_event(
     }
     hass.bus.async_fire(bus_type, payload)
     _LOGGER.debug("relayed %s from %s as %s", event, record.device_id[:8], bus_type)
+
+
+@callback
+def fire_intercom_event(
+    hass: HomeAssistant,
+    event_type: str,
+    call: IntercomCall,
+    *,
+    reason: str | None = None,
+    answered_by: str | None = None,
+) -> None:
+    """Fire one call-lifecycle event for a whole call (P9.2).
+
+    The payload names both id spaces, the way the relayed device events do:
+    ``caller`` and ``callees`` are HA device registry ids (what an automation
+    targets with a device trigger), ``tabula_caller`` and ``tabula_callees`` are
+    the tablets' own TLP ids. ``reason`` rides on missed and ended, and
+    ``answered_by`` on answered; nothing else is added.
+    """
+    assert event_type in INTERCOM_EVENTS, event_type
+    payload: dict[str, Any] = {
+        "call_id": call.call_id,
+        "mode": call.mode,
+        "caller": call.caller_ha_id,
+        "callees": list(call.callee_ha_ids),
+        "tabula_caller": call.caller,
+        "tabula_callees": list(call.callees),
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    if answered_by is not None:
+        payload["answered_by"] = answered_by
+    hass.bus.async_fire(event_type, payload)
+    _LOGGER.debug("intercom %s for call %s", event_type, call.call_id)

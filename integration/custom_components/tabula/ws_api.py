@@ -118,6 +118,9 @@ def ws_subscribe(hass: HomeAssistant, connection: ActiveConnection, msg: dict[st
     # the revisions the two ends hold differ (settings.py, plan 5.6).
     assert session.device is not None
     schedule_settings_push(hub, session.device)
+    # The first moment a command can reach the device: clear a call state it
+    # registered with that HA has already ended (P9.2, ADR 0028 guard 4).
+    hass.async_create_task(hub.intercom.async_after_subscribe(session.device))
 
 
 @callback
@@ -156,6 +159,9 @@ def ws_event(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, A
     assert session.device is not None
     session.device.events.append(frame)
     relay_event(hass, session.device, frame["event"], frame["data"])
+    # Intercom call state and relay (P9.2): the same event that reaches the bus
+    # as tabula_intercom also drives the call, when it is an intercom one.
+    hub.intercom.handle_event(session.device, frame["event"], frame["data"])
     connection.send_result(msg["id"])
 
 
