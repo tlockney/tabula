@@ -54,7 +54,7 @@ def test_decode_frame_round_trips_and_enforces_the_sender_rules():
     with pytest.raises(ValueError, match="expected"):
         decode_frame(b"\x07" + pcm[:-2])
     for bad in (0, 256, -1):
-        with pytest.raises(ValueError, match="1..255"):
+        with pytest.raises(ValueError, match=r"1\.\.255"):
             encode_frame(bad, pcm)
 
 

@@ -12,7 +12,7 @@ import asyncio
 import pytest
 from custom_components.tabula import TabulaHub
 from helpers import Paired, frame_fixture, ws_connect
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Event, callback
 from homeassistant.exceptions import HomeAssistantError
 
 TURN = "01JCVTURN00000000000000AA"
