@@ -1,0 +1,14 @@
+{
+  "id": 21,
+  "type": "event",
+  "event": {
+    "command_id": "c-0009-ring",
+    "command": "intercom_ring",
+    "args": {
+      "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+      "caller_device_id": "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b",
+      "caller_name": "Office Kiosk",
+      "mode": "call"
+    }
+  }
+}

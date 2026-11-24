@@ -114,6 +114,22 @@ object Constants {
      * sends none; inside the schema's 10-95 range (P3.13, 0002-constants.md). */
     const val SCREENSHOT_JPEG_QUALITY = 80
 
+    // --- Intercom (docs/decisions/0002-constants.md, "Intercom") ------------------
+
+    /** INTERCOM_RING_LIMIT_S: s an unanswered call rings before it ends (P9.1). */
+    const val INTERCOM_RING_LIMIT_S = 45
+
+    /** INTERCOM_CONNECT_TIMEOUT_S: s from the offer to connected audio (P9.1). */
+    const val INTERCOM_CONNECT_TIMEOUT_S = 10
+
+    /** INTERCOM_CALL_LIMIT_S: the hard call limit, from the moment a call is up
+     * (P9.1). Provisional: the owner confirms or changes it. */
+    const val INTERCOM_CALL_LIMIT_S = 300
+
+    /** INTERCOM_SIGNAL_MAX_BYTES: the largest one offer, answer or candidate
+     * payload, in UTF-8 bytes (P9.1). */
+    const val INTERCOM_SIGNAL_MAX_BYTES = 4096
+
     /**
      * CARD_BACKGROUND: a notification card's near-opaque dark body, ARGB
      * (P2.5). Not const: the literal needs the Long-to-Int narrowing.

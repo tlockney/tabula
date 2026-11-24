@@ -1,0 +1,10 @@
+{
+  "id": 22,
+  "type": "tabula/event",
+  "event": "intercom_signal",
+  "data": {
+    "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+    "kind": "answer",
+    "payload": "v=0\r\no=- 3445581820000000000 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS 9c8f6b5a-1f0e-4c7b-9a3d-2b6c1e0f4a51\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 63 9 0 8 13 110 126\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\na=ice-ufrag:Tsda\r\na=ice-pwd:7hGk2Fq0pXvB1sN4rT6yU8wZ9aC3dE5g\r\na=ice-options:trickle\r\na=fingerprint:sha-256 8F:1A:2B:3C:4D:5E:6F:70:81:92:A3:B4:C5:D6:E7:F8:09:1A:2B:3C:4D:5E:6F:70:81:92:A3:B4:C5:D6:E7:F8\r\na=setup:actpass\r\na=mid:0\r\na=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level\r\na=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time\r\na=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\r\na=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid\r\na=sendrecv\r\na=msid:9c8f6b5a-1f0e-4c7b-9a3d-2b6c1e0f4a51 0f2e4d6c-8b1a-4f3e-9d7c-5b4a3f2e1d0c\r\na=rtcp-mux\r\na=rtcp-rsize\r\na=rtpmap:111 opus/48000/2\r\na=rtcp-fb:111 transport-cc\r\na=fmtp:111 minptime=10;useinbandfec=1\r\na=rtpmap:63 red/48000/2\r\na=fmtp:63 111/111\r\na=rtpmap:9 G722/8000\r\na=rtpmap:0 PCMU/8000\r\na=rtpmap:8 PCMA/8000\r\na=rtpmap:13 CN/8000\r\na=rtpmap:110 telephone-event/48000\r\na=rtpmap:126 telephone-event/8000\r\na=ssrc:1234567890 cname:0f2e4d6c8b1a4f3e\r\na=ssrc:1234567890 msid:9c8f6b5a-1f0e-4c7b-9a3d-2b6c1e0f4a51 0f2e4d6c-8b1a-4f3e-9d7c-5b4a3f2e1d0c\r\na=end-of-candidates"
+  }
+}

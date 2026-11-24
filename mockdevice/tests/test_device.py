@@ -4,6 +4,11 @@ import random
 
 import pytest
 from mockdevice.client import Backoff
+from mockdevice.constants import (
+    INTERCOM_CALL_LIMIT_S,
+    INTERCOM_RING_LIMIT_S,
+    INTERCOM_SIGNAL_MAX_BYTES,
+)
 from mockdevice.device import (
     Behavior,
     CommandError,
@@ -294,6 +299,212 @@ def test_detection_is_impossible_while_the_setting_is_off():
     with pytest.raises(CommandError) as err:
         device.detect_wake_word()
     assert err.value.code == "unsupported_command"
+
+
+# --- intercom (P9.1, ADR 0025) -------------------------------------------------
+
+CALL = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+CALLER = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
+
+
+def ring(mode: str = "call", call_id: str = CALL) -> dict:
+    return {
+        "call_id": call_id,
+        "caller_device_id": CALLER,
+        "caller_name": "Office Kiosk",
+        "mode": mode,
+    }
+
+
+class Clock:
+    """An injectable monotonic clock for the intercom deadlines."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def intercom_device(**kw) -> tuple[MockDevice, Clock, list[tuple[str, dict]]]:
+    clock = Clock()
+    device = MockDevice(clock=clock, **kw)
+    events: list[tuple[str, dict]] = []
+    device.on_event = lambda name, data: events.append((name, data))
+    return device, clock, events
+
+
+async def test_ring_answer_and_the_hard_call_limit():
+    """A call rings, is answered, and ends by itself at INTERCOM_CALL_LIMIT_S (guard 2)."""
+    device, clock, events = intercom_device()
+    await device.handle("intercom_ring", ring())
+    assert device.state["intercom_state"] == "ringing"
+    assert device.intercom_call["caller_name"] == "Office Kiosk"
+
+    device.answer_intercom_call()
+    assert device.state["intercom_state"] == "in_call"
+    assert events == [("intercom_answer", {"call_id": CALL})]
+
+    clock.now += INTERCOM_CALL_LIMIT_S - 1
+    assert device.check_intercom_timers() is None
+    clock.now += 1
+    assert device.check_intercom_timers() == "limit"
+    assert device.state["intercom_state"] == "idle"
+    assert events[-1] == ("intercom_ended", {"call_id": CALL, "reason": "limit"})
+
+
+async def test_ring_limit_ends_an_unanswered_call():
+    """45 s of ringing and the call is over, so a call into an empty room ends (guard 2)."""
+    device, clock, events = intercom_device()
+    await device.handle("intercom_ring", ring())
+    clock.now += INTERCOM_RING_LIMIT_S - 1
+    assert device.check_intercom_timers() is None
+    clock.now += 1
+    assert device.check_intercom_timers() == "timeout"
+    assert device.state["intercom_state"] == "idle"
+    assert events == [("intercom_ended", {"call_id": CALL, "reason": "timeout"})]
+
+
+async def test_decline_returns_to_idle_without_ending():
+    device, _, events = intercom_device()
+    await device.handle("intercom_ring", ring())
+    device.decline_intercom_call()
+    assert device.state["intercom_state"] == "idle"
+    assert device.intercom_call is None
+    assert events == [("intercom_decline", {"call_id": CALL})]
+
+
+async def test_answering_needs_a_ringing_call():
+    device, _, _ = intercom_device()
+    with pytest.raises(CommandError) as err:
+        device.answer_intercom_call()
+    assert err.value.code == "invalid_args"
+
+
+async def test_a_second_ring_is_busy():
+    device, _, _ = intercom_device()
+    await device.handle("intercom_ring", ring())
+    with pytest.raises(CommandError) as err:
+        await device.handle("intercom_ring", ring(call_id="01JC9Z6Q2H3W7K5N8T4V0BXDRA2"))
+    assert err.value.code == "busy"
+
+
+async def test_broadcast_plays_at_once_and_is_not_answered():
+    """One-way and live (ADR 0025 decision 2): the receiver is in the call, mic closed."""
+    device, _, events = intercom_device()
+    await device.handle("intercom_ring", ring(mode="broadcast"))
+    assert device.state["intercom_state"] == "in_call"
+    assert events == []
+    with pytest.raises(CommandError):
+        device.answer_intercom_call()
+
+
+async def test_intercom_end_only_acts_on_that_call():
+    device, _, events = intercom_device()
+    await device.handle("intercom_ring", ring())
+    await device.handle("intercom_end", {"call_id": "another-call-0001", "reason": "command"})
+    assert device.state["intercom_state"] == "ringing"
+
+    await device.handle("intercom_end", {"call_id": CALL, "reason": "command"})
+    assert device.state["intercom_state"] == "idle"
+    assert events == [("intercom_ended", {"call_id": CALL, "reason": "command"})]
+
+
+async def test_a_reconnect_drops_the_call_and_says_so():
+    """No auto-resume after a reconnect or restart (ADR 0028 guard 4)."""
+    device, _, events = intercom_device()
+    await device.handle("intercom_ring", ring())
+    device.begin_connection()
+    assert device.state["intercom_state"] == "idle"
+    assert events == [("intercom_ended", {"call_id": CALL, "reason": "disconnect"})]
+    # A device that had no call says nothing on its next registration.
+    device.begin_connection()
+    assert len(events) == 1
+
+
+async def test_signals_are_relayed_for_the_current_call_only():
+    device, _, events = intercom_device()
+    await device.handle("intercom_ring", ring())
+    offer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+    await device.handle("intercom_signal", {"call_id": CALL, "kind": "offer", "payload": offer})
+    assert device.intercom_signals == [{"kind": "offer", "payload": offer}]
+
+    with pytest.raises(CommandError) as err:
+        await device.handle(
+            "intercom_signal", {"call_id": "another-call-0001", "kind": "offer", "payload": offer}
+        )
+    assert err.value.code == "invalid_args"
+
+    device.send_intercom_signal("answer", offer)
+    assert events[-1] == (
+        "intercom_signal",
+        {"call_id": CALL, "kind": "answer", "payload": offer},
+    )
+
+
+async def test_an_oversized_signal_is_refused():
+    device, _, _ = intercom_device()
+    await device.handle("intercom_ring", ring())
+    big = "x" * (INTERCOM_SIGNAL_MAX_BYTES + 1)
+    with pytest.raises(CommandError) as err:
+        await device.handle("intercom_signal", {"call_id": CALL, "kind": "offer", "payload": big})
+    assert err.value.code == "invalid_args"
+
+
+def test_start_request_needs_intercom_talk():
+    """Starting a call means capturing one: no talk, no intercom_start_request."""
+    for capabilities in (["screen"], ["intercom_listen"]):
+        device, _, events = intercom_device(capabilities=capabilities)
+        with pytest.raises(CommandError) as err:
+            device.start_intercom_call("broadcast")
+        assert err.value.code == "unsupported_command"
+        assert events == []
+
+
+async def test_start_request_carries_one_target_and_a_call_id():
+    device, _, events = intercom_device()
+    device.start_intercom_call("call", target_device_id="9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50")
+    event, data = events[-1]
+    assert event == "intercom_start_request"
+    assert data["mode"] == "call"
+    assert data["target_device_id"] == "9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50"
+    assert 8 <= len(data["call_id"]) <= 64
+
+    device.start_intercom_call("broadcast")
+    assert set(events[-1][1]) == {"call_id", "mode"}
+
+    twice = {"mode": "broadcast", "target_area_id": "k", "target_device_id": "d"}
+    for kwargs in ({"mode": "call"}, twice):
+        with pytest.raises(CommandError) as err:
+            device.start_intercom_call(**kwargs)
+        assert err.value.code == "invalid_args"
+
+
+async def test_intercom_commands_need_the_capability():
+    device, _, _ = intercom_device(capabilities=["screen", "brightness"])
+    for command, args in (
+        ("intercom_ring", ring()),
+        ("intercom_signal", {"call_id": CALL, "kind": "offer", "payload": "x"}),
+        ("intercom_end", {"call_id": CALL, "reason": "command"}),
+    ):
+        with pytest.raises(CommandError) as err:
+            await device.handle(command, args)
+        assert err.value.code == "unsupported_command"
+
+
+def test_intercom_state_is_only_sent_by_a_device_that_declares_it():
+    """PROTOCOL 4.4: a gated key is not announced by a device without the capability."""
+    assert MockDevice().state["intercom_state"] == "idle"
+    assert "intercom_state" not in MockDevice(capabilities=["screen", "brightness"]).state
+    assert "intercom_state" not in MockDevice(capabilities=["intercom_talk"]).state
+
+
+async def test_intercom_state_is_idle_until_a_call():
+    device, _, deltas = intercom_device()
+    deltas.clear()
+    device.on_change = deltas.append
+    await device.handle("intercom_ring", ring())
+    assert deltas == [{"intercom_state": "ringing"}]
 
 
 def test_backoff_equal_jitter_and_reset():
