@@ -84,6 +84,19 @@ android {
 
     sourceSets.getByName("main").assets.srcDir(wakeWordAssets)
 
+    // One APK per ABI (P9.3, ADR 0028): the WebRTC native library is the bulk
+    // of an intercom build, and a universal APK would carry it four times. v1
+    // device types are 64-bit and 32-bit ARM, so those are the splits; there is
+    // no universal APK on purpose.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = false
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -113,6 +126,9 @@ dependencies {
     // the wake-word interpreter (P7.1, ADR 0030): the model runs in the app's
     // foreground service, so the runtime is a production dependency now
     implementation(libs.tensorflow.lite)
+    // the intercom call engine's audio (P9.3, ADR 0028): the same artifact the
+    // P9.0 spike measured, from Maven Central
+    implementation(libs.webrtc.android)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
