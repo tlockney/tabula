@@ -201,7 +201,9 @@ async def test_log_subscription_streams_filters_and_stops(server, store, start):
     await server.send_command(
         store.device_id, "log_subscription", {"enabled": True, "level": "warning"}
     )
-    await wait_for(lambda: any("subscription on" in line["message"] for line in record.logs), timeout=4)
+    await wait_for(
+        lambda: any("subscription on" in line["message"] for line in record.logs), timeout=4
+    )
     mark = len(record.logs)
 
     # A level below the floor never reaches the wire; one at the floor does.

@@ -867,3 +867,38 @@ night flag is the never-night default until P3.4 lands - so hiding and
 recoloring are checked in P3.4's run. Paste the whole output into the packet
 Result.
 
+
+## Hardware check (P5.4, log viewer and live log stream)
+
+Install a P5.4 build (or later), provision and pair, leave Tabula in front
+with the panel on, then:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<admin token> \
+TABULA_DEVICE=<tabula device id> tools/device/check_p54.sh
+```
+
+Run it once with `TABULA_DEVICE` unset to be shown the paired devices: the
+first column is the Tabula device id the panel commands take, and the
+second is the HA device id the `tabula.navigate` service takes. The token
+must belong to an admin user, because every panel command is admin-only.
+
+The script drives HA only - it never touches the tablet - and reads the
+integration's own log view through `tools/device/ha_logs.py`, which speaks
+the same `tabula/panel_logs` and `tabula/panel_logs_subscribe` commands the
+Tabularium uses. In order it: prints the buffer the idle device holds;
+follows the stream for twenty seconds while navigating the dashboard to a
+normal path (an app line), to a path the frontend cannot render (a
+console-tagged line, F-MGT-06's JavaScript console) and to a path carrying
+`access_token=p54-secret-marker` (**the marker must never appear** - the
+query string is stripped before the line is logged, PROTOCOL.md 4.8); then
+stops the subscription, navigates again and shows that the buffer takes no
+new line; and last reports the buffer's bound, which the snapshot prints as
+`lines=<n>/<capacity>`.
+
+The script fails, with the reason, if no app line or no console line
+arrives, or if the marker is seen. If the console line never arrives, make
+the dashboard log an error yourself (open a path that does not exist in the
+HA UI) and run it again: some frontend builds report a failed route to the
+network panel rather than the console, and the packet Result should record
+which happened. Paste the whole output into the packet Result.
