@@ -11,7 +11,6 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,7 +70,7 @@ class TabulaService : Service() {
             channels = haChannel,
             scope = scope,
             language = { java.util.Locale.getDefault().language },
-            log = { Log.i(TAG, it) },
+            log = { TabulaLog.i(TAG, it) },
         )
     }
     private lateinit var notifications: NotificationsManager
@@ -272,7 +271,7 @@ class TabulaService : Service() {
                     )
                 }
             },
-            log = { Log.i(TAG, it) },
+            log = { TabulaLog.i(TAG, it) },
         )
         voice = monitor
         val gate = net.lockney.tabula.core.voice.WakeWordGate(
@@ -344,7 +343,7 @@ class TabulaService : Service() {
     private fun onWakeWord(detection: WakeWordDetector.Detection) {
         val at = wakeWordTimestamp()
         lastWakeWord = at
-        Log.i(TAG, "wake word: ${detection.phrase} at ${detection.probability}/255")
+        TabulaLog.i(TAG, "wake word: ${detection.phrase} at ${detection.probability}/255")
         publishState?.invoke(
             net.lockney.tabula.core.tlp.StateDelta(
                 wakeWordActive = wakeWordListening,
@@ -463,7 +462,7 @@ class TabulaService : Service() {
                 // a session with a credential that will be gone next boot - the
                 // user pairs again and deletes the HA entry this claim created.
                 if (!store.savePairing(paired.credential.refreshToken, paired.haDeviceId)) {
-                    Log.e(TAG, "could not persist the pairing credential; pair again")
+                    TabulaLog.e(TAG, "could not persist the pairing credential; pair again")
                     PairingScreen.failed("Pairing failed: the credential could not be saved on this device. Pair again.")
                     return@launch
                 }
@@ -484,7 +483,7 @@ class TabulaService : Service() {
                 // Anything else escaping pair() is an environment failure or a bug;
                 // it must surface as a pairing error, never an uncaught exception
                 // in a coroutine that kills the app process.
-                Log.e(TAG, "pairing failed", e)
+                TabulaLog.e(TAG, "pairing failed", e)
                 PairingScreen.failed("Pairing failed: ${e.message ?: e.javaClass.simpleName}. Pair again.")
             }
         }
@@ -517,6 +516,8 @@ class TabulaService : Service() {
             updatePlaying()
             illuminanceListener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
+            // P5.4: one ring for the whole app, one subscription for the session.
+            val logStream = LogStream()
             val client = TlpClient(
                 TlpClient.Config(
                     haUrl = haUrl,
@@ -549,34 +550,36 @@ class TabulaService : Service() {
                         ),
                         startPage = startPage,
                         voice = ::applyVoiceSettings,
+                        logs = logStream,
                     ),
                     events = deviceEvents.events,
+                    logs = logStream.frames,
                 ),
                 (application as TabulaApp).tokens,
                 OkHttpWsTransportFactory(),
-                logger = { line -> Log.i(TAG, line) },
+                logger = { line -> TabulaLog.i(TAG, line) },
             )
             val events = object : TlpClient.Events {
                 override fun onRegistered(result: net.lockney.tabula.core.tlp.RegisterResultData) {
-                    Log.i(TAG, "registered with HA device ${result.haDeviceId}")
+                    TabulaLog.i(TAG, "registered with HA device ${result.haDeviceId}")
                     TabulaStatus.phase.value = Phase.CONNECTED
                 }
 
                 override fun onDisconnected() {
-                    Log.i(TAG, "connection lost; reconnecting with backoff")
+                    TabulaLog.i(TAG, "connection lost; reconnecting with backoff")
                     if (TabulaStatus.phase.value == Phase.CONNECTED) {
                         TabulaStatus.phase.value = Phase.CONNECTING
                     }
                 }
 
                 override fun onRevoked() {
-                    Log.w(TAG, "credential revoked in HA; back to pairing")
+                    TabulaLog.w(TAG, "credential revoked in HA; back to pairing")
                     store.clearCredential()
                     TabulaStatus.phase.value = Phase.REVOKED
                 }
 
                 override fun onRejected(code: String, message: String) {
-                    Log.w(TAG, "registration refused: $code: $message")
+                    TabulaLog.w(TAG, "registration refused: $code: $message")
                     TabulaStatus.rejection.value = code to message
                     TabulaStatus.phase.value = Phase.REJECTED
                 }
@@ -586,6 +589,7 @@ class TabulaService : Service() {
                 client.run(events)
             } finally {
                 channelJob.cancel()
+                logStream.close()
                 haChannel.value = null
                 screen.listener = null
                 screensaver.listener = null
@@ -671,6 +675,8 @@ class TabulaService : Service() {
         add("notifications")
         add("audio")
         add("screenshot")
+        // P5.4: the app log and the dashboard console stream to the Tabularium.
+        add("logs")
         // Declared unconditionally: every build ships the detector, and the
         // capability list is read once per session, so a value that tracked the
         // switch would only reach HA on the next register - and turning the
@@ -693,7 +699,7 @@ class TabulaService : Service() {
         observing = true
         scope.launch {
             TabulaStatus.phase.collect { phase ->
-                Log.i(TAG, "phase: $phase")
+                TabulaLog.i(TAG, "phase: $phase")
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 manager.notify(NOTIFICATION_ID, notification(phaseText(phase)))
             }

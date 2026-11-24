@@ -167,7 +167,7 @@ def ws_event(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, A
 
 @callback
 def ws_log(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
-    """tabula/log: accepted and kept for diagnostics; the log viewer is Phase 5."""
+    """tabula/log: keep the lines in the device's ring and relay them (P5.4)."""
     hub = TabulaHub.get(hass)
     if hub is None or (session := _session(hub, connection, msg)) is None:
         return
@@ -175,6 +175,9 @@ def ws_log(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any
         return
     assert session.device is not None
     session.device.logs.extend(frame["lines"])
+    # The panel's open streams get the lines as they arrive (P5.4). Nothing here
+    # writes them to HA's log or diagnostics: the ring and the panel are it.
+    hub.logs.push(session.device, frame["lines"])
     connection.send_result(msg["id"])
 
 

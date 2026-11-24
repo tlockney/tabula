@@ -76,6 +76,11 @@ _SECRET = re.compile(
 _URL_QUERY = re.compile(r"(https?://[^\s?#]+|(?<![\w/])/[^\s?#]*)[?#][^\s]*")
 
 
+def level_rank(level: str | None) -> int:
+    """Order the four levels for a minimum-level filter; unknown sorts lowest."""
+    return {"debug": 0, "info": 1, "warning": 2, "error": 3}.get(level or "debug", 0)
+
+
 def redact(message: str) -> str:
     """Remove credentials and URL query strings from a log line (docs/PROTOCOL.md 4.8)."""
     message = _SECRET.sub(lambda m: m.group(0).split("=")[0].split(":")[0] + "=<redacted>", message)
@@ -150,6 +155,8 @@ class MockDevice:
         self.notifications: list[dict[str, Any]] = []
         self.played: list[dict[str, Any]] = []
         self.log_streaming = False
+        # The subscription's minimum level (P5.4, PROTOCOL.md 4.8), or None.
+        self.log_level: str | None = None
         self.log_lines: list[dict[str, Any]] = []
         # The latest capture (P3.13): bytes when the screen was on, None when it
         # was off (F-MGT-07). The client reads it after the command runs.
@@ -222,6 +229,7 @@ class MockDevice:
             self._end_intercom("disconnect")
         self._connection_revision = None
         self.log_streaming = False
+        self.log_level = None
         # A turn belongs to the connection that opened it (PROTOCOL.md 4.10).
         if self.voice_turn is not None:
             self.end_voice_turn(self.voice_turn.turn_id, "error", notify=False)
@@ -290,7 +298,13 @@ class MockDevice:
         return True
 
     def log(self, level: str, tag: str, message: str) -> None:
-        if self.log_streaming:
+        """Record a line while a subscription is on, at or above its level.
+
+        The level filter is the device's, not the viewer's (PROTOCOL.md 4.8):
+        a line below the floor is never queued, so it cannot arrive later when
+        the viewer widens the filter.
+        """
+        if self.log_streaming and level_rank(level) >= level_rank(self.log_level):
             self.log_lines.append(
                 {"ts": now_iso(), "level": level, "tag": tag, "message": redact(message)[:4000]}
             )
@@ -631,7 +645,23 @@ class MockDevice:
         return None
 
     def _cmd_log_subscription(self, args: dict[str, Any]) -> None:
-        self.log_streaming = args["enabled"]
+        """Enable, refresh or stop the log stream (P5.4, PROTOCOL.md 4.5, 4.8).
+
+        A repeat `enabled: true` is the integration's TTL refresh: it keeps the
+        level it is given and the lines already queued. Stopping drops what was
+        queued, because nothing should flush after a stop.
+        """
+        enabled = args["enabled"]
+        if not enabled:
+            self.log_streaming = False
+            self.log_level = None
+            self.log_lines.clear()
+            return
+        self.log_streaming = True
+        self.log_level = args.get("level")
+        # A line on enable: a subscriber sees the stream alive before the next
+        # command arrives (the interval would otherwise look like silence).
+        self.log("info", "logs", f"subscription on (level {self.log_level or 'all'})")
 
     def _cmd_screenshot(self, args: dict[str, Any]) -> None:
         """Capture the screen (P3.13, PROTOCOL.md 4.5).

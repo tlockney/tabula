@@ -7,7 +7,7 @@ import asyncio
 import pytest
 from mockdevice.client import Backoff, TLPClient
 from mockdevice.codec import Codec
-from mockdevice.constants import SCREENSHOT_JPEG
+from mockdevice.constants import LOG_MIN_INTERVAL, SCREENSHOT_JPEG
 from mockdevice.device import Behavior, MockDevice
 from mockdevice.pairing import CredentialRevoked, PairingError, claim, request_pairing
 from mockdevice.store import DeviceStore
@@ -183,6 +183,46 @@ async def test_events_and_logs(server, store, start):
     await wait_for(lambda: record.events and record.logs, timeout=4)
     assert record.events[0]["event"] == "notification_shown"
     assert any("notify" in line["message"] for line in record.logs)
+
+
+async def test_log_subscription_streams_filters_and_stops(server, store, start):
+    """A subscription streams, filters at its level and stops (P5.4, PROTOCOL.md 4.8)."""
+    device = MockDevice(base_url=server.url)
+    await start(store, device)
+    record = await server.wait_registered(store.device_id)
+
+    # Nothing streams before a subscription: the ring belongs to it.
+    device.log("info", "app", "before the subscription")
+    assert record.logs == []
+
+    await server.send_command(store.device_id, "log_subscription", {"enabled": True})
+    await wait_for(lambda: record.logs, timeout=4)
+
+    await server.send_command(
+        store.device_id, "log_subscription", {"enabled": True, "level": "warning"}
+    )
+    await wait_for(
+        lambda: any("subscription on" in line["message"] for line in record.logs), timeout=4
+    )
+    mark = len(record.logs)
+
+    # A level below the floor never reaches the wire; one at the floor does.
+    device.log("debug", "console", "chatty debug")
+    device.log("info", "app", "chatty info")
+    device.log("error", "app", "broken at the floor")
+    await wait_for(
+        lambda: any(line["message"] == "broken at the floor" for line in record.logs[mark:]),
+        timeout=4,
+    )
+    assert not any("chatty" in line["message"] for line in record.logs[mark:])
+
+    # A stop ends it: a line written afterwards is never sent.
+    await server.send_command(store.device_id, "log_subscription", {"enabled": False})
+    stopped_at = len(record.logs)
+    device.log("error", "app", "after the stop")
+    await asyncio.sleep(2 * LOG_MIN_INTERVAL)
+    assert len(record.logs) == stopped_at
+    assert not any(line["message"] == "after the stop" for line in record.logs)
 
 
 async def test_reconnects_after_server_drops(server, store, start):

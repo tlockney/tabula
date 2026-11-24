@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -198,7 +197,7 @@ class ScreensaverView(
             glancePlacement = null
             glance.visibility = View.GONE
             if (fadingOut) {
-                Log.i(TAG, "fade out")
+                TabulaLog.i(TAG, "fade out")
                 animate()
                     .alpha(0f)
                     .setDuration(Constants.SCREENSAVER_FADE_MS)
@@ -237,7 +236,7 @@ class ScreensaverView(
             else -> showFace(clock ?: ScreensaverClock(), freshStart = true)
         }
         if (fadingIn) {
-            Log.i(TAG, "fade in")
+            TabulaLog.i(TAG, "fade in")
             animate().alpha(1f).setDuration(Constants.SCREENSAVER_FADE_MS)
         }
         startShift(mode)
@@ -298,17 +297,17 @@ class ScreensaverView(
         glance.render(row, settings)
         placeGlance()
         if (!row.visible) {
-            Log.i(GLANCE_TAG, "row: hidden (mode=$mode, night=${nightState.isNight}, values=${glanceValues.size})")
+            TabulaLog.i(GLANCE_TAG, "row: hidden (mode=$mode, night=${nightState.isNight}, values=${glanceValues.size})")
             return
         }
         val percent = (row.textScale * 100).roundToInt()
-        Log.i(
+        TabulaLog.i(
             GLANCE_TAG,
             "row: ${row.chips.size} chips on ${row.lines.size} line(s), placement=${row.placement}, " +
                 "night=${row.night}, scale=$percent%, truncated=${row.truncateNames}, omitted=${row.omitted}",
         )
         for (chip in row.chips) {
-            Log.i(GLANCE_TAG, "chip ${chip.entityId}: ${chip.value} (${if (chip.active) "active" else "inactive"})")
+            TabulaLog.i(GLANCE_TAG, "chip ${chip.entityId}: ${chip.value} (${if (chip.active) "active" else "inactive"})")
         }
     }
 
@@ -359,7 +358,7 @@ class ScreensaverView(
         removeNightListener = nightState.addListener { isNight ->
             // the listener fires on the thread that made the change; the row draws on this one
             post {
-                Log.i(GLANCE_TAG, "night: $isNight")
+                TabulaLog.i(GLANCE_TAG, "night: $isNight")
                 renderGlance()
             }
         }
@@ -583,7 +582,7 @@ class ScreensaverView(
         glanceShiftX = offset.x.toFloat()
         glanceShiftY = offset.y.toFloat()
         applyGlanceOffset()
-        Log.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
+        TabulaLog.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
         postDelayed(shiftTick, shift.intervalMs)
     }
 
@@ -605,7 +604,7 @@ class ScreensaverView(
             return
         }
         // the hardware check counts these lines as background evidence (check_p33.sh)
-        android.util.Log.i(CLOCK_TAG, "background: shown")
+        TabulaLog.i(CLOCK_TAG, "background: shown")
         background.setImageBitmap(bitmap)
         background.visibility = View.VISIBLE
         darken.visibility = View.VISIBLE

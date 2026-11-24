@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -98,10 +97,10 @@ class DashboardView(
         val target = startTargetUrl()?.let { DashboardLinks.withParam(it, "external_auth=1") }
         main.post {
             if (target == null) {
-                Log.i(TAG, "dashboard: loading $url")
+                TabulaLog.i(TAG, "dashboard: loading $url")
                 view.loadUrl("$url/?external_auth=1")
             } else {
-                Log.i(TAG, "dashboard: loading start target $target")
+                TabulaLog.i(TAG, "dashboard: loading start target $target")
                 view.loadUrl(target)
             }
         }
@@ -119,7 +118,7 @@ class DashboardView(
         val origin = haUri ?: return null
         val resolved = DashboardLinks.resolveNavigatePath(path, origin)
         if (resolved == null) {
-            Log.w(TAG, "dashboard: start path '$path' is not a valid HA frontend path; falling back to HA's default page")
+            TabulaLog.w(TAG, "dashboard: start path '$path' is not a valid HA frontend path; falling back to HA's default page")
         }
         return resolved
     }
@@ -245,10 +244,10 @@ class DashboardView(
             // answer built for one page must not be evaluated on another that
             // navigated in while the answer was being built.
             if (!answer.deliverTo(view.url)) {
-                Log.i(TAG, "bridge $what: dropped; the page left the origin while the answer was built")
+                TabulaLog.i(TAG, "bridge $what: dropped; the page left the origin while the answer was built")
                 return@post
             }
-            Log.i(TAG, "bridge $what: answered")
+            TabulaLog.i(TAG, "bridge $what: answered")
             runCatching { view.evaluateJavascript(answer.script, null) }
         }
     }
@@ -270,7 +269,7 @@ class DashboardView(
                     true
                 }
                 is LinkDecision.Blocked -> {
-                    Log.i(TAG, "dashboard: blocked ${request.url} - ${decision.reason}")
+                    TabulaLog.i(TAG, "dashboard: blocked ${request.url} - ${decision.reason}")
                     toast(decision.reason)
                     true
                 }
@@ -286,7 +285,7 @@ class DashboardView(
             // item 3). The bridge also refuses such a page any answer.
             val origin = haUri ?: return
             if (DashboardLinks.offOriginLoad(url, origin)) {
-                Log.w(TAG, "dashboard: navigation to $url left the origin; returning to the dashboard")
+                TabulaLog.w(TAG, "dashboard: navigation to $url left the origin; returning to the dashboard")
                 webView.stopLoading()
                 load()
             }
@@ -295,7 +294,7 @@ class DashboardView(
         override fun onPageFinished(webView: WebView, url: String) {
             currentUrl = url
             val path = DashboardLinks.pagePath(url) ?: url
-            Log.i(TAG, "dashboard: loaded $path")
+            TabulaLog.i(TAG, "dashboard: loaded $path")
             bus.pageChanged(DashboardLinks.pagePath(url))
         }
 
@@ -313,7 +312,7 @@ class DashboardView(
             if (url == currentUrl) return
             currentUrl = url
             val path = DashboardLinks.pagePath(url)
-            Log.i(TAG, "dashboard: routed to ${path ?: url}")
+            TabulaLog.i(TAG, "dashboard: routed to ${path ?: url}")
             bus.pageChanged(path)
         }
 
@@ -323,14 +322,20 @@ class DashboardView(
             error: android.webkit.WebResourceError,
         ) {
             if (request.isForMainFrame) {
-                Log.w(TAG, "dashboard: ${request.url} failed: ${error.description}")
+                TabulaLog.w(TAG, "dashboard: ${request.url} failed: ${error.description}")
             }
         }
     }
 
+    /**
+     * The dashboard's JavaScript console (P5.4, F-MGT-06): each message joins the
+     * device's log ring with the tag `console`, so the Tabularium shows a page
+     * error next to the app's own lines. Chromium's level maps to a [LogLevel]
+     * in [TabulaLog.console], and the source line travels with the message.
+     */
     private inner class Console : WebChromeClient() {
         override fun onConsoleMessage(message: ConsoleMessage): Boolean {
-            Log.d(TAG, "console: ${message.message()} (${message.sourceId()}:${message.lineNumber()})")
+            TabulaLog.console(message.messageLevel(), message.message(), message.sourceId(), message.lineNumber())
             return true
         }
     }
@@ -338,7 +343,7 @@ class DashboardView(
     // --- tabula:// actions ------------------------------------------------------
 
     private fun runAction(action: String) {
-        Log.i(TAG, "dashboard: tabula action $action")
+        TabulaLog.i(TAG, "dashboard: tabula action $action")
         when (action) {
             "reload" -> view.reload()
             "clear-cache" -> view.clearCache(true)
@@ -347,7 +352,7 @@ class DashboardView(
     }
 
     private fun openApp(packageName: String) {
-        Log.i(TAG, "dashboard: opening app $packageName")
+        TabulaLog.i(TAG, "dashboard: opening app $packageName")
         val intent = activity.packageManager.getLaunchIntentForPackage(packageName)
         if (intent == null) {
             toast("$packageName is not installed")
@@ -355,7 +360,7 @@ class DashboardView(
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { activity.startActivity(intent) }
-            .onFailure { Log.w(TAG, "dashboard: could not open $packageName: $it"); toast("could not open $packageName") }
+            .onFailure { TabulaLog.w(TAG, "dashboard: could not open $packageName: $it"); toast("could not open $packageName") }
     }
 
     private fun toast(message: String) {

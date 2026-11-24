@@ -64,6 +64,8 @@ Jitter: uniform in [d/2, d] ("equal jitter"), so many tablets do not reconnect i
 | `LOG_MAX_LINES` | 200 per frame | Bounded frame size (see `FRAME_MAX_BYTES`); also the schema's `maxItems`. |
 | `LOG_MIN_INTERVAL` | 1 s | A live tail that does not load HA's event loop. |
 | `LOG_SUBSCRIPTION_TTL` | 600 s | A forgotten log viewer stops streaming by itself; the panel re-sends to extend. |
+| `LOG_BUFFER_LINES` | 2000 per device | The ring that feeds a log view, on the device and in HA. A line is at most 4000 chars plus a tag, timestamp and level, so a full ring stays under 9 MiB of text per device at the schema's worst case and a few hundred KiB in practice; 2000 lines is about half an hour of a dashboard's console at the protocol's one-frame-per-second rate, enough to see what led up to a problem. Both ends use the same number, so an offline device's snapshot and a live tail look alike. |
+| `LOG_VIEW_MAX_LINES` | 500 rows in the panel's DOM | Long enough to read a burst, short enough that a tail left open for hours cannot slow the browser down: the view drops its oldest row as each new one arrives, and the download always carries the whole HA buffer. |
 | `SCREENSHOT_MAX_BYTES` | 5 MiB | A 1920×1200 JPEG at quality 95 is about 1–2 MiB; 5 MiB leaves headroom for larger panels. |
 | `SCREENSHOT_JPEG_QUALITY` | 80 | The quality the Android app encodes at when the command sends no hint. 80 is visually clean on a dashboard-sized image at roughly half the bytes of 95, and it sits inside the schema's 10–95 range so a hinted capture can be compared against the default. |
 

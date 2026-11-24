@@ -72,6 +72,13 @@ INTERCOM_RING_LIMIT_S = 45.0
 INTERCOM_CONNECT_TIMEOUT_S = 10.0
 INTERCOM_CALL_LIMIT_S = 300.0
 
+# Logs (P5.4, ADR 0002). The device and HA hold the same bounded ring; the panel
+# renders at most LOG_VIEW_MAX_LINES rows, which is the panel's constant.
+LOG_BUFFER_LINES = 2000
+LOG_SUBSCRIPTION_TTL = 600.0  # s; the device's own subscription limit
+# The levels a subscription may filter at (PROTOCOL 4.8), weakest first.
+LOG_LEVELS = ("debug", "info", "warning", "error")
+
 # Per-device system users (ADR 0001 items 2-4): local_only=True by default,
 # group user via homeassistant.auth.const.GROUP_ID_USER, names "Tabula <id8>".
 USER_NAME_PREFIX = "Tabula"
