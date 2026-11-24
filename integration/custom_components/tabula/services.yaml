@@ -78,3 +78,40 @@ screensaver:
             - dim
             - black
           translation_key: screensaver_mode
+
+intercom_call:
+  target:
+    device:
+      integration: tabula
+    entity:
+      integration: tabula
+    area:
+      integration: tabula
+  fields:
+    caller:
+      required: true
+      selector:
+        device:
+          integration: tabula
+          multiple: false
+    mode:
+      selector:
+        select:
+          options:
+            - call
+            - broadcast
+          translation_key: intercom_mode
+
+intercom_end:
+  target:
+    device:
+      integration: tabula
+    entity:
+      integration: tabula
+    area:
+      integration: tabula
+  fields:
+    call_id:
+      example: "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+      selector:
+        text:

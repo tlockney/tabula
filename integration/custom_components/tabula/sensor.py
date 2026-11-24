@@ -120,6 +120,18 @@ SENSORS = (
         state_key="last_wake_word",
         convert=_timestamp,
     ),
+    # Where the tablet is in a call (P9.2, ADR 0025 decision 5). Not
+    # diagnostic: an automation conditions on it ("do not announce while a
+    # call is up"). Created only for a tablet that can hear a call.
+    TabulaSensorDescription(
+        key="intercom_state",
+        translation_key="intercom_state",
+        device_class=SensorDeviceClass.ENUM,
+        options=["idle", "ringing", "in_call", "broadcasting"],
+        capabilities=frozenset({"intercom_listen"}),
+        state_keys=frozenset({"intercom_state"}),
+        state_key="intercom_state",
+    ),
     # The last capture started by the capture button (F-HA-12, P3.13): not a
     # device state key - it lives on the record, persisted, and only the
     # capture flow updates it (untouched by ordinary image fetches).
