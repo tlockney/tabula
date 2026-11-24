@@ -144,7 +144,7 @@ async def test_read_a_device_with_no_document(hass_setup, server, hub, session, 
     assert payload["device_id"] == paired.device_id
     assert payload["ha_device_id"] == paired.ha_device_id
     assert payload["stored"] is False
-    assert payload["revision"] == 0
+    assert payload["ha_revision"] == 0
     assert payload["device_revision"] is None
     assert payload["pending"] is False
     assert payload["schema_version"] == SCHEMA_VERSION
@@ -173,7 +173,7 @@ async def test_read_a_stored_device(hass_setup, server, hub, session, paired):
         await device.close()
 
     assert payload["stored"] is True
-    assert payload["revision"] == 1
+    assert payload["ha_revision"] == 1
     # The device registered with settings_revision 0 and has not been pushed yet.
     assert payload["device_revision"] == 0
     assert payload["pending"] is True

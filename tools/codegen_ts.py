@@ -151,6 +151,40 @@ def ts_value(value: Any) -> str:
     raise ValueError(f"unsupported default value {value!r}")
 
 
+def render_item_property(prop: dict[str, Any]) -> str:
+    """One SettingsItemProperty as TypeScript source."""
+    return (
+        "{ "
+        f"name: {ts_string(prop['name'])}, "
+        f"type: {ts_string(prop['type'])}, "
+        f"enumValues: {ts_value(prop['enum'])}, "
+        f"minimum: {ts_value(prop['minimum'])}, "
+        f"maximum: {ts_value(prop['maximum'])}, "
+        f"maxLength: {ts_value(prop['max_length'])}, "
+        f"pattern: {ts_value(prop['pattern'])}, "
+        f"nullable: {ts_value(prop['nullable'])}, "
+        f"default: {ts_value(prop['default'])}, "
+        f"help: {ts_string(prop['help'])}"
+        " }"
+    )
+
+
+def render_items(items: dict[str, Any] | None) -> str:
+    """A SettingsArrayItems value as TypeScript source (null for scalar leaves)."""
+    if items is None:
+        return "null"
+    properties = ", ".join(render_item_property(prop) for prop in items["properties"])
+    return (
+        "{ "
+        f"type: {ts_string(items['type'])}, "
+        f"pattern: {ts_value(items['pattern'])}, "
+        f"enumValues: {ts_value(items['enum'])}, "
+        f"properties: [{properties}], "
+        f"required: {ts_value(items['required'])}"
+        " }"
+    )
+
+
 class Codegen:
     def __init__(self, schema: dict[str, Any]) -> None:
         self.schema = schema
@@ -184,6 +218,7 @@ class Codegen:
             "pattern": prop.get("pattern"),
             "default": prop.get("default", NO_DEFAULT),
             "array_items": None,
+            "items": None,
             "help": doc_text(prop.get("description", "")),
         }
         entry.update(extra)
@@ -287,11 +322,66 @@ class Codegen:
             item_cls, _ = self.object_interface(
                 f"{path}Item.", items, type_name=f"{path}Item", record=False
             )
-            self.record(path, prop, "array", array_items="object")
+            self.record(
+                path, prop, "array", array_items="object", items=self.item_metadata(path, items)
+            )
             return f"{item_cls}[]", default
         element = self.item_type(path, items)
-        self.record(path, prop, "array", array_items="scalar")
+        self.record(path, prop, "array", array_items="scalar", items=self.item_metadata(path, items))
         return f"{element}[]", default
+
+    def item_metadata(self, path: str, items: dict[str, Any]) -> dict[str, Any]:
+        """The items' own validation data, for the panel's array editors (P5.3).
+
+        A scalar item carries its pattern and enum; an object item carries each
+        property's type, bounds, enum, nullability (the schedule's "inherit"),
+        default and description, so the editor renders the rows from the schema
+        and a schema bump needs no new UI code.
+        """
+        if items.get("type") == "object":
+            properties = [
+                self.item_property(f"{path}.{pname}", pname, prop)
+                for pname, prop in items.get("properties", {}).items()
+            ]
+            return {
+                "type": "object",
+                "pattern": None,
+                "enum": None,
+                "properties": properties,
+                "required": list(items.get("required", [])),
+            }
+        return {
+            "type": items.get("type", "string"),
+            "pattern": items.get("pattern"),
+            "enum": items.get("enum"),
+            "properties": [],
+            "required": [],
+        }
+
+    def item_property(self, path: str, name: str, prop: dict[str, Any]) -> dict[str, Any]:
+        """One property of an array-of-objects item's schema."""
+        ptype = prop.get("type", "string")
+        nullable = isinstance(ptype, list)
+        if nullable:
+            if not nullable_ok(ptype):
+                raise ValueError(f"{path}: unsupported item property type {ptype}")
+            ptype = (set(ptype) - {"null"}).pop()
+        if ptype not in ("string", "integer", "boolean"):
+            raise ValueError(f"{path}: unsupported item property type {ptype!r}")
+        if prop.get("enum") is not None:
+            ptype = "string"
+        return {
+            "name": name,
+            "type": ptype,
+            "enum": prop.get("enum"),
+            "minimum": prop.get("minimum"),
+            "maximum": prop.get("maximum"),
+            "max_length": prop.get("maxLength"),
+            "pattern": prop.get("pattern"),
+            "nullable": nullable,
+            "default": prop.get("default", NO_DEFAULT),
+            "help": doc_text(prop.get("description", "")),
+        }
 
     def object_interface(
         self,
@@ -451,7 +541,60 @@ class Codegen:
             "    | typeof NO_DEFAULT;",
             '  /** "object" for arrays of objects (schedule slots), "scalar" otherwise. */',
             '  readonly arrayItems: "object" | "scalar" | null;',
+            "  /** Array leaves: the items' own schema data; null for other leaves. */",
+            "  readonly items: SettingsArrayItems | null;",
             "  /** The leaf's description, shown as the editor's help text. */",
+            "  readonly help: string;",
+            "}",
+            "",
+            "/**",
+            " * The items of an array leaf, as the schema defines them (P5.3's array",
+            " * editors read this, so a schema bump needs no new UI code).",
+            " */",
+            "export interface SettingsArrayItems {",
+            '  /** The item type: a scalar, or an object with properties below. */',
+            '  readonly type: "string" | "integer" | "boolean" | "object";',
+            "  /** Scalar items: the regex each item must match; null when unrestricted. */",
+            "  readonly pattern: string | null;",
+            "  /** Scalar items: allowed values when the item is an enum; null otherwise. */",
+            "  readonly enumValues: readonly string[] | null;",
+            "  /** Object items: their properties, in schema order; empty for scalars. */",
+            "  readonly properties: readonly SettingsItemProperty[];",
+            "  /** Object items: the properties every item must carry. */",
+            "  readonly required: readonly string[];",
+            "}",
+            "",
+            "/**",
+            " * One property of an array-of-objects leaf's items (the schedule's slots",
+            " * today). `nullable` is the schema's base-or-null union: the editor's",
+            " * explicit \"inherit\" state (F-SSV-18).",
+            " */",
+            "export interface SettingsItemProperty {",
+            "  /** The property's name inside each item, e.g. \"start\". */",
+            "  readonly name: string;",
+            "  /** The property's type; an enum property is a string. */",
+            '  readonly type: "string" | "integer" | "boolean";',
+            "  /** Allowed values, in schema order; null when not an enum. */",
+            "  readonly enumValues: readonly string[] | null;",
+            "  /** Numeric minimum; null when unbounded. */",
+            "  readonly minimum: number | null;",
+            "  /** Numeric maximum; null when unbounded. */",
+            "  readonly maximum: number | null;",
+            "  /** Longest string length in code points; null when unbounded. */",
+            "  readonly maxLength: number | null;",
+            "  /** JSON Schema regex a string must match; null when unrestricted. */",
+            "  readonly pattern: string | null;",
+            "  /** True when the schema also allows null (the \"inherit\" state). */",
+            "  readonly nullable: boolean;",
+            "  /** The property's default, or NO_DEFAULT when the schema sets none. */",
+            "  readonly default:",
+            "    | string",
+            "    | number",
+            "    | boolean",
+            "    | null",
+            "    | readonly unknown[]",
+            "    | typeof NO_DEFAULT;",
+            "  /** The property's description, shown under the control. */",
             "  readonly help: string;",
             "}",
             "",
@@ -484,6 +627,7 @@ class Codegen:
             items = field["array_items"]
             array_items = "null" if items is None else ts_string(items)
             table.append(f"    arrayItems: {array_items},")
+            table.append(f"    items: {render_items(field['items'])},")
             table.append(f"    help: {ts_string(field['help'])},")
             table.append("  },")
         table.append("];")

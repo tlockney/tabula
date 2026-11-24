@@ -62,7 +62,6 @@ def settings_snapshot(hub: TabulaHub, record: DeviceRecord) -> dict[str, Any]:
         "stored": stored is not None,
         "settings": stored.settings if stored is not None else schema.defaults(),
         "defaults": schema.defaults(),
-        "revision": stored.revision if stored is not None else 0,
         "schema_version": SCHEMA_VERSION,
         "device_schema_version": record.schema_version,
         "capabilities": list(record.capabilities),

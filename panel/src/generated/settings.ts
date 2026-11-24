@@ -55,7 +55,60 @@ export interface SettingsField {
     | typeof NO_DEFAULT;
   /** "object" for arrays of objects (schedule slots), "scalar" otherwise. */
   readonly arrayItems: "object" | "scalar" | null;
+  /** Array leaves: the items' own schema data; null for other leaves. */
+  readonly items: SettingsArrayItems | null;
   /** The leaf's description, shown as the editor's help text. */
+  readonly help: string;
+}
+
+/**
+ * The items of an array leaf, as the schema defines them (P5.3's array
+ * editors read this, so a schema bump needs no new UI code).
+ */
+export interface SettingsArrayItems {
+  /** The item type: a scalar, or an object with properties below. */
+  readonly type: "string" | "integer" | "boolean" | "object";
+  /** Scalar items: the regex each item must match; null when unrestricted. */
+  readonly pattern: string | null;
+  /** Scalar items: allowed values when the item is an enum; null otherwise. */
+  readonly enumValues: readonly string[] | null;
+  /** Object items: their properties, in schema order; empty for scalars. */
+  readonly properties: readonly SettingsItemProperty[];
+  /** Object items: the properties every item must carry. */
+  readonly required: readonly string[];
+}
+
+/**
+ * One property of an array-of-objects leaf's items (the schedule's slots
+ * today). `nullable` is the schema's base-or-null union: the editor's
+ * explicit "inherit" state (F-SSV-18).
+ */
+export interface SettingsItemProperty {
+  /** The property's name inside each item, e.g. "start". */
+  readonly name: string;
+  /** The property's type; an enum property is a string. */
+  readonly type: "string" | "integer" | "boolean";
+  /** Allowed values, in schema order; null when not an enum. */
+  readonly enumValues: readonly string[] | null;
+  /** Numeric minimum; null when unbounded. */
+  readonly minimum: number | null;
+  /** Numeric maximum; null when unbounded. */
+  readonly maximum: number | null;
+  /** Longest string length in code points; null when unbounded. */
+  readonly maxLength: number | null;
+  /** JSON Schema regex a string must match; null when unrestricted. */
+  readonly pattern: string | null;
+  /** True when the schema also allows null (the "inherit" state). */
+  readonly nullable: boolean;
+  /** The property's default, or NO_DEFAULT when the schema sets none. */
+  readonly default:
+    | string
+    | number
+    | boolean
+    | null
+    | readonly unknown[]
+    | typeof NO_DEFAULT;
+  /** The property's description, shown under the control. */
   readonly help: string;
 }
 
@@ -448,6 +501,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: NO_DEFAULT,
     arrayItems: null,
+    items: null,
     help: "Display name of the device in HA. Set at pairing or from the settings editor; unique per device. Length bound per ADR 0002 (identifiers and labels). No default: an unset name falls back to the model or device ID.",
   },
   {
@@ -464,6 +518,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^https?://[^/@\\s?#]+(/[^\\s?#]*)?$",
     default: NO_DEFAULT,
     arrayItems: null,
+    items: null,
     help: "Base URL of the HA server: http or https scheme, host, optional port and optional path only — no userinfo, query or fragment. Credentials in the URL would be stored, cached and exported with settings, and a query or fragment breaks resolving relative navigate/play_media paths (PROTOCOL 4.5). No default: the device keeps the address it paired with.",
   },
   {
@@ -480,6 +535,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 60,
     arrayItems: null,
+    items: null,
     help: "Stored base brightness, percent, applied by the screen light entity (F-SCR-04) and the screen command. Default per ADR 0002.",
   },
   {
@@ -496,6 +552,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Brightness follows room light through a curve (F-SCR-05). Off until the curve is tuned on real hardware; default per ADR 0002.",
   },
   {
@@ -512,6 +569,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Stop the OS display timeout from turning the panel off while the app is in the foreground (F-SCR-01); the screensaver handles idling. Default per ADR 0002.",
   },
   {
@@ -528,6 +586,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^(?:$|/(?![/\\\\])[^\\s\\\\?]*$)",
     default: "",
     arrayItems: null,
+    items: null,
     help: "The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0021). Bounds per ADR 0002.",
   },
   {
@@ -544,6 +603,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 0,
     arrayItems: null,
+    items: null,
     help: "Seconds without touch before the dashboard returns to its start target; 0 never returns. The timer keeps running behind a screensaver, so a covered panel resets without lighting. Bounds and the never default per ADR 0002.",
   },
   {
@@ -560,6 +620,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Master switch for the idle screensaver (F-SSV-01). Default per ADR 0002.",
   },
   {
@@ -576,6 +637,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 300,
     arrayItems: null,
+    items: null,
     help: "Seconds without interaction before the screensaver starts (F-SSV-01). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002.",
   },
   {
@@ -592,6 +654,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "clock",
     arrayItems: null,
+    items: null,
     help: "The screensaver mode used next time it starts (F-SSV-05). Values match the screensaver_mode state key (PROTOCOL 4.4). Default per ADR 0002.",
   },
   {
@@ -608,6 +671,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 20,
     arrayItems: null,
+    items: null,
     help: "Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Dim and black have their own levels (dim_brightness; black is always lowest). Default per ADR 0002.",
   },
   {
@@ -624,6 +688,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Whether the separate screensaver backlight level (brightness) applies (F-SSV-17). Off: the screensaver shows at the panel's current level. Dim and black keep their own levels either way. Default per ADR 0002 (settings v2).",
   },
   {
@@ -640,6 +705,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 10,
     arrayItems: null,
+    items: null,
     help: "Dim mode's own backlight level, percent (F-SSV-07): the dashboard stays visible at a low level. Dim no longer borrows screensaver.brightness (ADR 0013 item 4). Default per ADR 0002 (settings v2).",
   },
   {
@@ -656,6 +722,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "digital",
     arrayItems: null,
+    items: null,
     help: "The clock face (F-SSV-08). Default per ADR 0002 (settings v2).",
   },
   {
@@ -672,6 +739,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "sans-serif",
     arrayItems: null,
+    items: null,
     help: "System font family name (F-SSV-08); the device falls back to its default family when the name does not resolve. Default per ADR 0002 (settings v2).",
   },
   {
@@ -688,6 +756,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 400,
     arrayItems: null,
+    items: null,
     help: "Font weight on Android's 100-900 axis (F-SSV-08); 400 is the system's normal. Default per ADR 0002 (settings v2).",
   },
   {
@@ -704,6 +773,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "24-hour time when true, 12-hour with the AM/PM marker when false (F-SSV-08). Default per ADR 0002 (settings v2).",
   },
   {
@@ -720,6 +790,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show a seconds display (F-SSV-08). Default per ADR 0002 (settings v2).",
   },
   {
@@ -736,6 +807,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Show the AM/PM marker in 12-hour time (F-SSV-08). Default per ADR 0002 (settings v2).",
   },
   {
@@ -752,6 +824,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Show a date line under the time, in the app language (F-SSV-08). Default per ADR 0002 (settings v2).",
   },
   {
@@ -768,6 +841,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 100,
     arrayItems: null,
+    items: null,
     help: "Clock size, percent of the mode's base size (F-SSV-08). Default per ADR 0002 (settings v2).",
   },
   {
@@ -784,6 +858,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
     default: "#FFFFFFFF",
     arrayItems: null,
+    items: null,
     help: "Clock text color, #RRGGBB or #AARRGGBB (Android order). Default per ADR 0002 (settings v2).",
   },
   {
@@ -800,6 +875,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
     default: "#FF000000",
     arrayItems: null,
+    items: null,
     help: "Solid background color when no background image is set, #RRGGBB or #AARRGGBB. Default per ADR 0002 (settings v2).",
   },
   {
@@ -816,6 +892,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "",
     arrayItems: null,
+    items: null,
     help: "Background image source (F-SSV-09): empty for none, a local file path on the device, or a URL the tablet downloads directly. Every write triggers a fresh load, identical value or not (F-SSV-09). Default per ADR 0002 (settings v2).",
   },
   {
@@ -832,6 +909,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 0,
     arrayItems: null,
+    items: null,
     help: "Seconds between re-fetches of a URL background (F-SSV-09); 0 never re-fetches. Default per ADR 0002 (settings v2).",
   },
   {
@@ -848,6 +926,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 40,
     arrayItems: null,
+    items: null,
     help: "Darkening strength, percent, of the readability layer over the background image (F-SSV-09). Default per ADR 0002 (settings v2).",
   },
   {
@@ -864,6 +943,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Night mode is off unless the device has a light sensor and the user opts in (F-SSV-10). Default per ADR 0002 (settings v2).",
   },
   {
@@ -880,6 +960,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 10,
     arrayItems: null,
+    items: null,
     help: "Below this ambient light, lux, the clock switches to the night scheme (F-SSV-10). Default per ADR 0002 (settings v2).",
   },
   {
@@ -896,6 +977,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 2,
     arrayItems: null,
+    items: null,
     help: "Lux above the threshold the light must rise before night mode ends (F-SSV-10). Default per ADR 0002 (settings v2).",
   },
   {
@@ -912,6 +994,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Hide the background image at night so the scheme's dark background shows (F-SSV-10). Default per ADR 0002 (settings v2).",
   },
   {
@@ -928,6 +1011,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Hide the corner widgets and the At a Glance row at night (F-SSV-10). Default per ADR 0002 (settings v2).",
   },
   {
@@ -944,6 +1028,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 0,
     arrayItems: null,
+    items: null,
     help: "Minutes of night mode before the panel powers off, 0 = never (F-SSV-10). The countdown is F-SSV-19's, later phase: until it ships the key no-ops. Default per ADR 0002 (settings v2).",
   },
   {
@@ -960,6 +1045,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show a plain black screen instead of powering the panel off, for sensors that stop reporting while the panel is off (F-SSV-10). Default per ADR 0002 (settings v2).",
   },
   {
@@ -976,6 +1062,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
     default: "",
     arrayItems: null,
+    items: null,
     help: "The HA weather entity the scene follows (F-SSV-11); empty shows the mode's pick-an-entity prompt. Default per ADR 0002 (settings v2).",
   },
   {
@@ -992,6 +1079,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "",
     arrayItems: null,
+    items: null,
     help: "Optional place name in the info bar (F-SSV-11). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1008,6 +1096,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Draw a clock over the scene (F-SSV-11). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1024,6 +1113,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Draw the weather information bar: temperature, condition, daily high/low, humidity, wind, visibility, apparent temperature (F-SSV-11). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1040,6 +1130,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Lightning effect for storm conditions (F-SSV-11). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1056,6 +1147,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "folder",
     arrayItems: null,
+    items: null,
     help: "Where photos come from (F-SSV-12): a folder on the device, photos picked with the system picker, a single image URL, or HA's media browser. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1072,6 +1164,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "",
     arrayItems: null,
+    items: null,
     help: "Device folder for the folder source (F-SSV-12). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1088,6 +1181,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^(?:$|https?://\\S+)$",
     default: "",
     arrayItems: null,
+    items: null,
     help: "The single image URL for the URL source (F-SSV-12), fetched fresh for each slide; the previous photo stays until the next loads. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1104,6 +1198,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 300,
     arrayItems: null,
+    items: null,
     help: "Seconds each photo shows (F-SSV-12). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1120,6 +1215,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "crossfade",
     arrayItems: null,
+    items: null,
     help: "Transition between slides (F-SSV-12): none, crossfade, slide, zoom, slow pan-and-zoom (stills only), or random per slide. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1136,6 +1232,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "smart_fill",
     arrayItems: null,
+    items: null,
     help: "How a photo fits the panel (F-SSV-12): letterbox, smart fill (crop a little when shapes nearly match, else fill the bars with a blurred, darkened enlargement), or always fill. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1152,6 +1249,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Shuffle the playlist for folder sources (F-SSV-12). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1168,6 +1266,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Include subfolders for folder sources (F-SSV-12). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1184,6 +1283,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Edge zones: tapping near a side edge steps one slide and restarts the interval; a tap elsewhere dismisses (F-SSV-12). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1200,6 +1300,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Photo details overlay from EXIF: date taken, camera details; no location lookup (F-SSV-12). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1216,6 +1317,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^(?:$|https?://\\S+)$",
     default: "",
     arrayItems: null,
+    items: null,
     help: "The page to show (F-SSV-13); empty leaves the mode without content. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1232,6 +1334,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 100,
     arrayItems: null,
+    items: null,
     help: "Zoom level, percent, of the website view (F-SSV-13). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1248,6 +1351,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Require a double tap to dismiss so single taps reach the page (F-SSV-14). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1264,6 +1368,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Shift screensaver content periodically (F-SSV-22). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1280,6 +1385,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 300,
     arrayItems: null,
+    items: null,
     help: "Seconds between shifts (F-SSV-22). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1296,6 +1402,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 4,
     arrayItems: null,
+    items: null,
     help: "Shift distance, pixels (F-SSV-22). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1312,6 +1419,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Fade the screensaver in and out (F-SSV-23). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1328,6 +1436,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 10,
     arrayItems: null,
+    items: null,
     help: "Card lifetime in seconds when the notify command sends no duration; 0 means until dismissed. Bounds match the notify command's duration (ADR 0002); default per ADR 0002.",
   },
   {
@@ -1344,6 +1453,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "info",
     arrayItems: null,
+    items: null,
     help: "Severity used when a card's level is missing or unknown (F-NTF-02). Values match the notify command's level (PROTOCOL 4.5). Default per ADR 0002.",
   },
   {
@@ -1360,6 +1470,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "",
   },
   {
@@ -1376,6 +1487,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "",
   },
   {
@@ -1392,6 +1504,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "",
   },
   {
@@ -1408,6 +1521,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "",
   },
   {
@@ -1424,6 +1538,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 3,
     arrayItems: null,
+    items: null,
     help: "Cards shown at once; overflow evicts the oldest (F-NTF-07). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002.",
   },
   {
@@ -1440,6 +1555,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 50,
     arrayItems: null,
+    items: null,
     help: "Media channel volume, percent; the level the HA media_player controls (F-TTS-07). Default per ADR 0002.",
   },
   {
@@ -1456,6 +1572,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 100,
     arrayItems: null,
+    items: null,
     help: "Notification chime loudness, percent of the media volume: the chime plays on the media stream, so the OS silent mode does not mute it, and 100 matches the media volume (F-NTF-09, ADR 0027). Default per ADR 0002.",
   },
   {
@@ -1472,6 +1589,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "none",
     arrayItems: null,
+    items: null,
     help: "Announcements play at the current volume; no hidden volume jumps. 'none' is the only v1 value (ADR 0002); a boost level, if ever designed, is added with its own ADR and bumps nothing else.",
   },
   {
@@ -1488,6 +1606,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Run on-device wake-word detection while the foreground service is up and RECORD_AUDIO is granted. Detection is suspended while the device plays (ADR 0029 item 3). Default per ADR 0002.",
   },
   {
@@ -1504,6 +1623,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: [],
     arrayItems: "scalar",
+    items: { type: "string", pattern: "^[a-z_][a-z0-9_]*\\.[a-z0-9_]+$", enumValues: null, properties: [], required: [] },
     help: "The entities in the row, in display order (F-AAG-01); the bound is per ADR 0002 (settings v2). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1520,6 +1640,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "pill",
     arrayItems: null,
+    items: null,
     help: "Contrasting pill per entity, or plain floating text (F-AAG-02). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1536,6 +1657,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Hide entity names for larger values (F-AAG-02). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1552,6 +1674,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Render icons in one color instead of HA's state colors (F-AAG-02). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1568,6 +1691,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 100,
     arrayItems: null,
+    items: null,
     help: "Row scale, percent (F-AAG-02). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1584,6 +1708,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "sans-serif",
     arrayItems: null,
+    items: null,
     help: "System font family for the row (F-AAG-02). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1600,6 +1725,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Global switch: hide or show all widgets (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1616,6 +1742,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 100,
     arrayItems: null,
+    items: null,
     help: "Global widget scale, percent (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1632,6 +1759,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "sans-serif",
     arrayItems: null,
+    items: null,
     help: "Global system font family (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1648,6 +1776,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 0,
     arrayItems: null,
+    items: null,
     help: "Dark vignette strength, percent, behind widgets for legibility (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1664,6 +1793,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1680,6 +1810,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "tl",
     arrayItems: null,
+    items: null,
     help: "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1696,6 +1827,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Show the date under the time (F-WGT-03). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1712,6 +1844,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "24-hour time when true, 12-hour when false (F-WGT-03). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1728,6 +1861,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
     default: "#FFFFFFFF",
     arrayItems: null,
+    items: null,
     help: "Text color, #RRGGBB or #AARRGGBB (F-WGT-03). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1744,6 +1878,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1760,6 +1895,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "tr",
     arrayItems: null,
+    items: null,
     help: "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1776,6 +1912,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
     default: "",
     arrayItems: null,
+    items: null,
     help: "The HA weather entity (F-WGT-04); empty hides the widget. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1792,6 +1929,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "",
     arrayItems: null,
+    items: null,
     help: "Optional place name line (F-WGT-04). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1808,6 +1946,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1824,6 +1963,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "br",
     arrayItems: null,
+    items: null,
     help: "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1840,6 +1980,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
     default: "",
     arrayItems: null,
+    items: null,
     help: "The HA weather entity whose daily forecast is shown (F-WGT-05); the widget shows nothing without a daily forecast. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1856,6 +1997,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: 5,
     arrayItems: null,
+    items: null,
     help: "How many days to show (F-WGT-05). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1872,6 +2014,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Include today's forecast (F-WGT-05). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1888,6 +2031,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1904,6 +2048,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "bl",
     arrayItems: null,
+    items: null,
     help: "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1920,6 +2065,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: true,
     arrayItems: null,
+    items: null,
     help: "Show the battery percentage (F-WGT-06). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1936,6 +2082,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show only when the battery is low; hidden while charging (F-WGT-06). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1952,6 +2099,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2).",
   },
   {
@@ -1968,6 +2116,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "tr",
     arrayItems: null,
+    items: null,
     help: "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2).",
   },
   {
@@ -1984,6 +2133,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
     default: "",
     arrayItems: null,
+    items: null,
     help: "The entity shown (F-WGT-09); empty hides the widget. Default per ADR 0002 (settings v2).",
   },
   {
@@ -2000,6 +2150,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "",
     arrayItems: null,
+    items: null,
     help: "Show this attribute's value instead of the state (F-WGT-09); empty means the state. Default per ADR 0002 (settings v2).",
   },
   {
@@ -2016,6 +2167,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: "",
     arrayItems: null,
+    items: null,
     help: "Custom name for the widget (F-WGT-09); empty uses the entity's name. Default per ADR 0002 (settings v2).",
   },
   {
@@ -2032,6 +2184,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: [],
     arrayItems: "scalar",
+    items: { type: "string", pattern: null, enumValues: null, properties: [], required: [] },
     help: "Show the widget only for these values, case-insensitive, matching the displayed or raw value (F-WGT-09); empty shows always. Default per ADR 0002 (settings v2).",
   },
   {
@@ -2048,6 +2201,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: false,
     arrayItems: null,
+    items: null,
     help: "Turn the schedule on or off (F-SSV-18). Default per ADR 0002 (settings v2).",
   },
   {
@@ -2064,6 +2218,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     pattern: null,
     default: [],
     arrayItems: "object",
+    items: { type: "object", pattern: null, enumValues: null, properties: [{ name: "start", type: "string", enumValues: null, minimum: null, maximum: null, maxLength: null, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$", nullable: false, default: NO_DEFAULT, help: "Local start time, HH:MM 24-hour (F-SSV-18). Required: a slot without a start is meaningless." }, { name: "mode", type: "string", enumValues: ["clock", "weather", "photos", "website", "dashboard", "calendar", "dim", "black"], minimum: null, maximum: null, maxLength: null, pattern: null, nullable: false, default: "clock", help: "The mode this slot starts (F-SSV-18); same values as screensaver.mode. Default per ADR 0002 (settings v2)." }, { name: "brightness", type: "integer", enumValues: null, minimum: 0, maximum: 100, maxLength: null, pattern: null, nullable: true, default: null, help: "Fixed backlight level for this slot, percent; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)." }, { name: "power_off_delay", type: "integer", enumValues: null, minimum: 0, maximum: 1440, maxLength: null, pattern: null, nullable: true, default: null, help: "Panel power-off delay for this slot, minutes, 0 = never; null inherits the global value (F-SSV-18). Carried now; the countdown is F-SSV-19's and the key no-ops until it ships. Default per ADR 0002 (settings v2)." }, { name: "presence_dismiss", type: "boolean", enumValues: null, minimum: null, maximum: null, maxLength: null, pattern: null, nullable: true, default: null, help: "Presence-sensor dismissal for this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)." }, { name: "widgets", type: "boolean", enumValues: null, minimum: null, maximum: null, maxLength: null, pattern: null, nullable: true, default: null, help: "Corner widgets during this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)." }, { name: "at_a_glance", type: "boolean", enumValues: null, minimum: null, maximum: null, maxLength: null, pattern: null, nullable: true, default: null, help: "At a Glance row during this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)." }], required: ["start"] },
     help: "The schedule's slots in start-time order (F-SSV-18); the bound is per ADR 0002 (settings v2). Default per ADR 0002 (settings v2).",
   },
 ];
