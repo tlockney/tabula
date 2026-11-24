@@ -1,0 +1,11 @@
+{
+  "id": 23,
+  "type": "tabula/event",
+  "event": "intercom_signal",
+  "data": {
+    "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+    "kind": "candidate",
+    "payload": "candidate:344558182 1 udp 2122194687 192.168.1.129 60043 typ host generation 0 ufrag Tsda network-id 3 network-cost 10",
+    "peer_device_id": "7d1e2f3a-4b5c-4d6e-8f70-1a2b3c4d5e6f"
+  }
+}

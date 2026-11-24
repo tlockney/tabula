@@ -1,0 +1,18 @@
+{
+  "id": 20,
+  "type": "event",
+  "event": {
+    "command_id": "c-0009-start",
+    "command": "intercom_start",
+    "args": {
+      "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+      "mode": "call",
+      "peers": [
+        {
+          "device_id": "7d1e2f3a-4b5c-4d6e-8f70-1a2b3c4d5e6f",
+          "name": "Kitchen Frame"
+        }
+      ]
+    }
+  }
+}
