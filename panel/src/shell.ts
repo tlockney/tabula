@@ -22,6 +22,7 @@ import {
   tabLabel,
   type DeviceTab,
 } from "./devices";
+import "./logs";
 import { STRINGS, errorLine, statusLine } from "./strings";
 import type { HomeAssistant, PanelDevice, PanelInfo, UnsubscribeFunc } from "./types";
 
@@ -399,7 +400,9 @@ export class TabulaPanel extends LitElement {
         ${
           this.tab === "overview"
             ? this.renderOverview(device)
-            : html`<p class="tab-body">${STRINGS.tabPending}</p>`
+            : this.tab === "logs"
+              ? html`<tabula-logs .hass=${this.hass} .device=${device}></tabula-logs>`
+              : html`<p class="tab-body">${STRINGS.tabPending}</p>`
         }
       </section>
     `;
