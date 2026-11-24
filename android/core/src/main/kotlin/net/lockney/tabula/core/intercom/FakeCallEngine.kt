@@ -84,6 +84,7 @@ class FakeCallEngine : CallEngine {
         val current = info.value ?: return false
         if (state.value != IntercomState.RINGING) return false
         answers += current.callId
+        info.value = current.copy(answered = true)
         state.value = IntercomState.IN_CALL
         channel.trySend(EngineEvent.Answered(current.callId))
         return true

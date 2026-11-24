@@ -68,6 +68,9 @@ def directory(hass: HomeAssistant, hub: TabulaHub, caller: DeviceRecord) -> list
         listed.append(
             {
                 "device_id": record.ha_device_id,
+                # The TLP id is what a ring names its caller by, and it is the
+                # only way a receiver can address the call back (review of #176).
+                "tabula_device_id": record.device_id,
                 "name": record.name or record.device_id[:8],
                 "area_id": area_id,
                 "area_name": area.name if area is not None else None,

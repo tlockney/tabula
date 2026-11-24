@@ -13,6 +13,7 @@ import net.lockney.tabula.core.intercom.StartRequest
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.EventFrame
 import net.lockney.tabula.core.tlp.IntercomEndArgs
+import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
 import net.lockney.tabula.core.tlp.IntercomRingArgs
 import net.lockney.tabula.core.tlp.IntercomSignalArgs
@@ -143,10 +144,15 @@ class IntercomManager(
     /** Declines the ringing call. */
     fun decline(): Boolean = engine.decline()
 
-    /** Hangs up the call this device is in, from the call screen's button. */
-    fun hangUp(): Boolean {
+    /**
+     * Hangs up the call this device is in, from the call screen's button or a
+     * broadcast's reply. One path for every end the screen starts, so it is
+     * logged like the rest (review of #176).
+     */
+    fun hangUp(reason: IntercomEndReason = IntercomEndReason.HANGUP): Boolean {
         val call = engine.info.value ?: return false
-        return engine.end(call.callId, net.lockney.tabula.core.tlp.IntercomEndReason.HANGUP)
+        log("intercom: hanging up ${call.callId} ($reason)")
+        return engine.end(call.callId, reason)
     }
 
     override fun ring(args: IntercomRingArgs): CommandHandler.Reply {

@@ -181,6 +181,8 @@ class CallMachine(
         cancel(ringTimer)
         ringTimer = null
         _state.value = IntercomState.IN_CALL
+        // This side answered: the screen may say who is connected (review of #176)
+        markedAnswered(info)
         // A listen-only device answers with a receive-only connection and the
         // record path closed (ADR 0028, "Listen-only")
         val direction = if (info.usesMicrophone) PeerDirection.SEND_RECEIVE else PeerDirection.RECEIVE_ONLY
@@ -243,6 +245,8 @@ class CallMachine(
                 answerApplied = true
                 cancel(ringTimer)
                 ringTimer = null
+                // The callee's answer is what ends "Calling" on this side
+                markedAnswered(info)
                 peer?.answerReceived(payload)
                 // ADR 0002: the connect timeout runs from the answer
                 armConnectTimer(info)
@@ -280,6 +284,12 @@ class CallMachine(
     }
 
     // --- internals ------------------------------------------------------------
+
+    /** Publish [info] with `answered` set, without starting a second call. */
+    private fun markedAnswered(info: CallInfo) {
+        if (info.answered) return
+        _info.value = info.copy(answered = true)
+    }
 
     private fun begin(info: CallInfo, target: IntercomState) {
         _info.value = info
@@ -340,6 +350,8 @@ class CallMachine(
     private fun onPeerConnected() {
         if (_state.value == IntercomState.IDLE) return
         connected = true
+        // Audio is up: the call is certainly answered, whatever the frames said
+        _info.value?.let { markedAnswered(it) }
         cancel(connectTimer)
         connectTimer = null
     }

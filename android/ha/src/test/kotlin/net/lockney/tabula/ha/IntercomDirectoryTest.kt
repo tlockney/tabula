@@ -48,8 +48,10 @@ class IntercomDirectoryTest {
         areaName: String? = null,
         canTalk: Boolean = true,
         inCall: Boolean = false,
+        tabulaDeviceId: String? = null,
     ): JsonObject = buildJsonObject {
         put("device_id", deviceId)
+        put("tabula_device_id", tabulaDeviceId)
         put("name", name)
         put("area_id", areaId)
         put("area_name", areaName)
@@ -59,7 +61,17 @@ class IntercomDirectoryTest {
 
     @Test
     fun `the directory is asked for on the device's own connection`() = runBlocking {
-        val channel = FakeChannel(answer(entry("ha-kitchen", "Kitchen frame", "kitchen", "Kitchen")))
+        val channel = FakeChannel(
+            answer(
+                entry(
+                    "ha-kitchen",
+                    "Kitchen frame",
+                    areaId = "kitchen",
+                    areaName = "Kitchen",
+                    tabulaDeviceId = "tlp-kitchen",
+                ),
+            ),
+        )
 
         val listed = IntercomDirectory.fetch(channel)
 
@@ -68,6 +80,7 @@ class IntercomDirectoryTest {
             listOf(
                 IntercomPeerEntry(
                     deviceId = "ha-kitchen",
+                    tabulaDeviceId = "tlp-kitchen",
                     name = "Kitchen frame",
                     areaId = "kitchen",
                     areaName = "Kitchen",

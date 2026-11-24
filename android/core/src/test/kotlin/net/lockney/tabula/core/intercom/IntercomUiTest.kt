@@ -30,17 +30,19 @@ class IntercomUiTest {
 
     private val kitchen = IntercomPeer(
         deviceId = "ha-kitchen",
+        tabulaDeviceId = "tlp-kitchen",
         name = "Kitchen frame",
         areaId = "kitchen",
         areaName = "Kitchen",
     )
     private val bedroom = IntercomPeer(
         deviceId = "ha-bedroom",
+        tabulaDeviceId = "tlp-bedroom",
         name = "Bedroom frame",
         areaId = "bedroom",
         areaName = "Bedroom",
     )
-    private val hall = IntercomPeer(deviceId = "ha-hall", name = "Hall frame")
+    private val hall = IntercomPeer(deviceId = "ha-hall", tabulaDeviceId = "tlp-hall", name = "Hall frame")
 
     private fun directoryOpened(vararg peers: IntercomPeer): IntercomScreen.Directory {
         ui.perform(IntercomAction.OpenDirectory)
@@ -118,6 +120,18 @@ class IntercomUiTest {
         assertEquals("3:55", screen.remainingText)
         assertFalse(screen.cannotTalkBack)
         assertFalse(screen.canReply)
+    }
+
+    @Test
+    fun `a call this device started stops saying calling when the other side answers`() {
+        ui.onDirectory(listOf(kitchen))
+        ui.perform(IntercomAction.Call(kitchen))
+        assertEquals(IntercomUi.CALLING, assertIs<IntercomScreen.InCall>(ui.tick()).title)
+
+        // the engine learns it from the relayed answer, or from ICE connecting
+        engine.setState(IntercomState.IN_CALL, engine.info.value!!.copy(answered = true))
+
+        assertEquals(IntercomUi.IN_CALL, assertIs<IntercomScreen.InCall>(ui.tick()).title)
     }
 
     @Test
@@ -297,7 +311,10 @@ class IntercomUiTest {
 
     @Test
     fun `replying to a broadcast ends it and calls the sender back`() {
-        engine.ring(RingRequest(CALL_ID, "ha-kitchen", "Kitchen frame", IntercomMode.BROADCAST))
+        // A ring names the caller by TLP id; the call back needs the HA id, and
+        // the directory is what carries the pair (review of #176)
+        ui.onDirectory(listOf(kitchen, bedroom))
+        engine.ring(RingRequest(CALL_ID, "tlp-kitchen", "Kitchen frame", IntercomMode.BROADCAST))
 
         ui.perform(IntercomAction.Reply)
 
@@ -311,8 +328,59 @@ class IntercomUiTest {
         val request = engine.starts.single()
         assertEquals(IntercomMode.CALL, request.mode)
         assertEquals("ha-kitchen", request.targetDeviceId)
-        assertEquals("Kitchen frame", request.peerName)
+        // the label the list shows for that tablet, which is its room's name
+        assertEquals("Kitchen", request.peerName)
         assertEquals(IntercomUi.CALLING, assertIs<IntercomScreen.InCall>(ui.screen).title)
+    }
+
+    @Test
+    fun `replying to a broadcaster the list does not know says it cannot call back`() {
+        // No directory, so the TLP id has no HA id to call: the reply must say
+        // so rather than start a call HA cannot resolve (review of #176)
+        engine.ring(RingRequest(CALL_ID, "tlp-unknown", "Unknown frame", IntercomMode.BROADCAST))
+
+        ui.perform(IntercomAction.Reply)
+
+        assertTrue(engine.ends.isEmpty())
+        assertTrue(engine.starts.isEmpty())
+        assertEquals(IntercomUi.CANNOT_REPLY, assertIs<IntercomScreen.InCall>(ui.screen).note)
+    }
+
+    @Test
+    fun `a waiting reply does not fire at the end of an unrelated call`() {
+        ui.onDirectory(listOf(kitchen))
+        engine.ring(RingRequest(CALL_ID, "tlp-kitchen", "Kitchen frame", IntercomMode.BROADCAST))
+        ui.perform(IntercomAction.Reply)
+        // The broadcast has not ended yet and a ring for another call arrives:
+        // the pending call back belongs to a call that is gone
+        engine.ring(RingRequest("call-other", "tlp-bedroom", "Bedroom frame", IntercomMode.CALL))
+
+        ui.onStateChanged()
+        // that ring is declined, so the engine is idle again
+        ui.perform(IntercomAction.Decline)
+        ui.onStateChanged()
+
+        assertTrue(engine.starts.isEmpty())
+    }
+
+    @Test
+    fun `hang up goes through the wiring's own end, so it is logged like the rest`() {
+        val ended = mutableListOf<IntercomEndReason>()
+        val wired = IntercomUi(
+            engine = engine,
+            canTalk = { true },
+            clockMs = { now },
+            hangUp = { reason ->
+                ended += reason
+                engine.info.value?.let { engine.end(it.callId, reason) } ?: false
+            },
+        )
+        engine.ring(RingRequest(CALL_ID, "tlp-kitchen", "Kitchen frame", IntercomMode.CALL))
+        wired.perform(IntercomAction.Answer)
+
+        wired.perform(IntercomAction.HangUp)
+
+        assertEquals(listOf(IntercomEndReason.HANGUP), ended)
     }
 
     @Test
@@ -338,6 +406,9 @@ class IntercomUiTest {
         val screen = directoryOpened(kitchen)
 
         assertFalse(screen.canTalk)
+        // the list itself carries the reason, so the screen shows it before a
+        // tap rather than after one is refused (review of #176)
+        assertEquals(IntercomUi.NO_MICROPHONE, screen.note)
         ui.perform(IntercomAction.Call(kitchen))
 
         assertTrue(engine.starts.isEmpty())

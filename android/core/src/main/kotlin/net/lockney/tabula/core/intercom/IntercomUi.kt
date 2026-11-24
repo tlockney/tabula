@@ -12,7 +12,14 @@ import net.lockney.tabula.core.tlp.IntercomState
  * with [name] standing in when the tablet has no area.
  */
 data class IntercomPeer(
+    /** The HA device registry id, which `intercom_start_request` carries. */
     val deviceId: String,
+    /**
+     * The device's TLP id, which is what an `intercom_ring` names as its
+     * caller. A broadcast's Reply needs it to find the HA id to call back
+     * (PROTOCOL 4.5, review of #176).
+     */
+    val tabulaDeviceId: String? = null,
     val name: String,
     val areaId: String? = null,
     val areaName: String? = null,
@@ -124,22 +131,40 @@ class IntercomUi(
     private val clockMs: () -> Long,
     private val callLimitMs: Long = Constants.INTERCOM_CALL_LIMIT_S * 1000L,
     private val ringLimitMs: Long = Constants.INTERCOM_RING_LIMIT_S * 1000L,
+    /**
+     * Ends the call this device is in. The app passes the wiring's own method so
+     * a hang-up is logged like every other end; the tests use the engine.
+     */
+    private val hangUp: (IntercomEndReason) -> Boolean = { reason ->
+        engine.info.value?.let { info -> engine.end(info.callId, reason) } ?: false
+    },
 ) {
     private var directoryOpen = false
     private var peers: List<IntercomPeer> = emptyList()
     private var note: String? = null
 
     /** A broadcast's receiver answered with a call back; started when idle. */
-    private var pendingReply: StartRequest? = null
+    private var pendingReply: PendingReply? = null
+
+    private data class PendingReply(val request: StartRequest, val fromCallId: String)
 
     /** The last render, so a caller that only needs the state is not surprised. */
     var screen: IntercomScreen = IntercomScreen.Closed
         private set
 
-    /** What HA answered for the directory, or why it could not be fetched. */
+    /**
+     * What HA answered for the directory, or why it could not be fetched.
+     * Every entry point is `@Synchronized`: the service reads this from three
+     * coroutines (the engine's flows, the button stream and the one-second
+     * tick), and CallMachine guards its own state the same way (review of #176).
+     */
+    @Synchronized
     fun onDirectory(listed: List<IntercomPeer>, failure: String? = null) {
         peers = listed
         note = failure ?: when {
+            // A tablet with no microphone must not present a list of buttons
+            // that can only fail: it says so before a tap (review of #176)
+            !canTalk() -> NO_MICROPHONE
             listed.isEmpty() -> NO_PEERS
             else -> null
         }
@@ -147,6 +172,7 @@ class IntercomUi(
     }
 
     /** The directory request failed: HA was not reachable on the device's connection. */
+    @Synchronized
     fun onDirectoryFailed(reason: String) {
         peers = emptyList()
         note = reason
@@ -154,24 +180,37 @@ class IntercomUi(
     }
 
     /** The engine's state or info changed: a call may have started or ended. */
+    @Synchronized
     fun onStateChanged() {
         // A broadcast's reply waits for the broadcast to be down: a device is
         // in one call at a time, and the integration ends the old one first.
         val waiting = pendingReply
-        if (waiting != null && engine.state.value == IntercomState.IDLE) {
-            pendingReply = null
-            begin(waiting)
+        if (waiting != null) {
+            val current = engine.info.value
+            when {
+                engine.state.value == IntercomState.IDLE -> {
+                    pendingReply = null
+                    begin(waiting.request)
+                }
+
+                // Something else became the call in between: the reply waited
+                // for a call that is gone, so it does not fire at the end of an
+                // unrelated one (review of #176)
+                current?.callId != waiting.fromCallId -> pendingReply = null
+            }
         }
         screen = render()
     }
 
     /** Re-renders with a fresh clock: the tick that moves the duration on. */
+    @Synchronized
     fun tick(): IntercomScreen {
         screen = render()
         return screen
     }
 
     /** Runs one button press and returns what to draw next. */
+    @Synchronized
     fun perform(action: IntercomAction): IntercomScreen {
         when (action) {
             IntercomAction.OpenDirectory -> {
@@ -224,7 +263,7 @@ class IntercomUi(
                 // The note is not cleared here: a refusal that a person has not
                 // seen yet (a fixed-target call that found a call already up)
                 // still explains itself when the list comes back.
-                call()?.let { engine.end(it.callId, IntercomEndReason.HANGUP) }
+                hangUp(IntercomEndReason.HANGUP)
             }
 
             IntercomAction.Reply -> reply()
@@ -241,17 +280,28 @@ class IntercomUi(
     private fun reply() {
         val current = call() ?: return
         if (current.mode != IntercomMode.BROADCAST) return
-        val target = current.peerDeviceId ?: return
         if (!canTalk()) {
             note = NO_MICROPHONE
             return
         }
-        pendingReply = StartRequest(
-            mode = IntercomMode.CALL,
-            targetDeviceId = target,
-            peerName = current.peerName,
+        // `intercom_ring` names the caller by its TLP id, and a start request
+        // needs the HA device registry id: the directory carries both, so the
+        // reply is only possible for a sender the list knows (review of #176)
+        val tlpId = current.peerDeviceId
+        val peer = peers.firstOrNull { tlpId != null && it.tabulaDeviceId == tlpId }
+        if (peer == null) {
+            note = CANNOT_REPLY
+            return
+        }
+        pendingReply = PendingReply(
+            request = StartRequest(
+                mode = IntercomMode.CALL,
+                targetDeviceId = peer.deviceId,
+                peerName = peer.label,
+            ),
+            fromCallId = current.callId,
         )
-        engine.end(current.callId, IntercomEndReason.HANGUP)
+        hangUp(IntercomEndReason.HANGUP)
     }
 
     private fun begin(request: StartRequest) {
@@ -312,7 +362,9 @@ class IntercomUi(
     private fun titleOf(info: CallInfo): String = when {
         info.mode == IntercomMode.BROADCAST && info.direction == CallDirection.OUTGOING -> BROADCASTING
         info.mode == IntercomMode.BROADCAST -> LISTENING
-        info.direction == CallDirection.OUTGOING -> CALLING
+        // A caller is `in_call` from its own start (P9.3 decision 9), so only
+        // the engine's answer bit can tell "Calling" from a call that is up
+        info.direction == CallDirection.OUTGOING && !info.answered -> CALLING
         else -> IN_CALL
     }
 
@@ -334,6 +386,7 @@ class IntercomUi(
         const val UNAVAILABLE = "The audio connection could not be created."
         const val INVALID_TARGET = "That target cannot be called."
         const val NO_PEERS = "No other intercom devices."
+        const val CANNOT_REPLY = "That tablet is not on the list, so it cannot be called back."
         const val CANNOT_TALK_BACK = "This tablet cannot talk back."
         const val UNREACHABLE = "Home Assistant is not reachable, so there is no device list."
     }

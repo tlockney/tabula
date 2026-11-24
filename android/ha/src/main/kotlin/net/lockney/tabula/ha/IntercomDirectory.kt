@@ -21,6 +21,8 @@ import kotlinx.serialization.json.put
  */
 data class IntercomPeerEntry(
     val deviceId: String,
+    /** The tablet's TLP id, which is how a ring names its caller (review of #176). */
+    val tabulaDeviceId: String?,
     val name: String,
     val areaId: String?,
     val areaName: String?,
@@ -52,6 +54,7 @@ object IntercomDirectory {
             val deviceId = entry.string("device_id") ?: return@mapNotNull null
             IntercomPeerEntry(
                 deviceId = deviceId,
+                tabulaDeviceId = entry.string("tabula_device_id"),
                 name = entry.string("name") ?: deviceId,
                 areaId = entry.string("area_id"),
                 areaName = entry.string("area_name"),

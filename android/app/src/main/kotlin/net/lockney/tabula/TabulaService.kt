@@ -181,6 +181,7 @@ class TabulaService : Service() {
             start = intercom::startRequest,
             canTalk = ::canTalk,
             clockMs = android.os.SystemClock::elapsedRealtime,
+            hangUp = intercom::hangUp,
         )
         observeIntercom()
     }
@@ -201,25 +202,10 @@ class TabulaService : Service() {
         }
         scope.launch {
             TabulaStatus.intercomAction.collect { action ->
-                when (action) {
-                    // the list is HA's answer; a fixed target resolves its
-                    // label from the same list before the call starts
-                    net.lockney.tabula.core.intercom.IntercomAction.OpenDirectory -> {
-                        publishIntercom()
-                        fetchIntercomDirectory()
-                    }
-
-                    is net.lockney.tabula.core.intercom.IntercomAction.CallTarget -> {
-                        fetchIntercomDirectory()
-                        intercomUi.perform(action)
-                        publishIntercom()
-                    }
-
-                    else -> {
-                        intercomUi.perform(action)
-                        publishIntercom()
-                    }
-                }
+                // Each press runs in its own coroutine: a fetch that waits on
+                // HA must never hold up the next press, Hang up included
+                // (review of #176)
+                scope.launch { handleIntercomAction(action) }
             }
         }
         scope.launch {
@@ -234,6 +220,36 @@ class TabulaService : Service() {
         }
     }
 
+    /** One press from the screen or a dashboard link (P9.4). */
+    private suspend fun handleIntercomAction(
+        action: net.lockney.tabula.core.intercom.IntercomAction,
+    ) {
+        when (action) {
+            // Opening the list performs the action first, so the sheet is up
+            // at once with no peers and the answer fills it; a failed fetch
+            // leaves "HA is not reachable" on screen instead of nothing
+            // (review of #176, blocking 1)
+            net.lockney.tabula.core.intercom.IntercomAction.OpenDirectory -> {
+                intercomUi.perform(action)
+                publishIntercom()
+                fetchIntercomDirectory()
+            }
+
+            // A fixed target resolves its label from the list, so the call
+            // screen shows the same name the list would
+            is net.lockney.tabula.core.intercom.IntercomAction.CallTarget -> {
+                fetchIntercomDirectory()
+                intercomUi.perform(action)
+                publishIntercom()
+            }
+
+            else -> {
+                intercomUi.perform(action)
+                publishIntercom()
+            }
+        }
+    }
+
     /** Ask HA for the tablets this device may call, over the device's own connection. */
     private suspend fun fetchIntercomDirectory() {
         val listed = net.lockney.tabula.ha.IntercomDirectory.fetch(haChannel.value)
@@ -244,6 +260,7 @@ class TabulaService : Service() {
                 listed.map { entry ->
                     net.lockney.tabula.core.intercom.IntercomPeer(
                         deviceId = entry.deviceId,
+                        tabulaDeviceId = entry.tabulaDeviceId,
                         name = entry.name,
                         areaId = entry.areaId,
                         areaName = entry.areaName,
@@ -270,6 +287,9 @@ class TabulaService : Service() {
     private fun wakeForIntercom() {
         TabulaLog.i(TAG, "intercom: a call arrived; waking the panel")
         screen.command(true, null)
+        // The ring names its caller by TLP id, and a broadcast's Reply needs
+        // that caller's HA id to call back: the list is what holds the pair
+        scope.launch { fetchIntercomDirectory() }
     }
 
     /** True while the app holds the microphone `intercom_talk` promises. */
@@ -935,7 +955,6 @@ class TabulaService : Service() {
         private const val TAG = "TabulaService"
         private const val CHANNEL_ID = "tabula_connection"
         private const val NOTIFICATION_ID = 1
-
         /** The call screen's clock: one refresh a second (P9.4 item 3). */
         private const val INTERCOM_TICK_MS = 1_000L
 

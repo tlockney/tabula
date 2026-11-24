@@ -1416,6 +1416,9 @@ async def test_the_directory_lists_the_other_tablets_by_area(hass_setup, make_ta
     assert [entry["name"] for entry in listed] == ["Bedroom frame", "Hall frame"]
     assert listed[0] == {
         "device_id": bedroom.paired.ha_device_id,
+        # The TLP id is what a ring names its caller by; a broadcast's reply
+        # needs both halves of the pair (review of #176)
+        "tabula_device_id": bedroom.paired.device_id,
         "name": "Bedroom frame",
         "area_id": bedroom_area,
         "area_name": "Bedroom",

@@ -128,6 +128,44 @@ class CallMachineTest {
     }
 
     @Test
+    fun `a caller knows when the callee answered, so the screen can stop saying calling`() {
+        // Review of #176: `direction` is fixed for the call's life, so the
+        // engine has to carry whether the other side answered at all
+        machine.start(StartRequest(mode = IntercomMode.CALL, targetDeviceId = "ha-1", peerName = "Hall"))
+        assertFalse(machine.info.value!!.answered)
+
+        // The callee's relayed answer is what ends "Calling"
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0\r\n"))
+        assertTrue(machine.info.value!!.answered)
+        // and a second answer changes nothing
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0\r\n"))
+        assertTrue(machine.info.value!!.answered)
+    }
+
+    @Test
+    fun `a caller that is never answered still reports unanswered`() {
+        machine.start(StartRequest(mode = IntercomMode.CALL, targetDeviceId = "ha-1", peerName = "Hall"))
+        assertFalse(machine.info.value!!.answered)
+        scheduler.advance(Constants.INTERCOM_RING_LIMIT_S * 1000L)
+        assertEquals(IntercomState.IDLE, machine.state.value)
+    }
+
+    @Test
+    fun `the tablet that answers knows the call is up`() {
+        ring()
+        machine.answer()
+        assertTrue(machine.info.value!!.answered)
+    }
+
+    @Test
+    fun `a connected broadcast sender counts as answered`() {
+        machine.start(StartRequest(mode = IntercomMode.BROADCAST))
+        assertFalse(machine.info.value!!.answered)
+        peers.last?.connect()
+        assertTrue(machine.info.value!!.answered)
+    }
+
+    @Test
     fun `declining ends the ring and reports only a decline`() {
         ring()
         assertTrue(machine.decline())

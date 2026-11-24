@@ -159,7 +159,7 @@ class MainActivity : Activity() {
         if (touch != null && cards.cardAt(touch.x, touch.y)) return
         // a tap on the ring or the call banner is not idling the kiosk: the
         // screensaver stays behind the call (P9.4 item 2, like a card's tap)
-        if (intercom.isShowing) return
+        if (intercom.isShowing && !intercom.isBanner) return
         // an edge tap on a photo slideshow steps a slide and restarts the
         // interval instead of dismissing (F-SSV-04's exception, F-SSV-12)
         if (touch != null && gallery.edgeTap(touch.x)) return
