@@ -76,7 +76,9 @@ class CallMachine(
      * Candidates that arrived while there was no connection to give them to:
      * the caller trickles its host candidates within milliseconds of its offer,
      * which is long before the callee's ring is answered. They are handed over
-     * when the connection is created (review of #171, finding 1).
+     * when the connection is created (review of #171, finding 1). Guarded by
+     * this object's monitor, like every field here: the machine's public methods
+     * are synchronized, so do not "simplify" that away.
      */
     private val pendingCandidates = mutableListOf<String>()
     private var answeredOffer = false
@@ -108,12 +110,9 @@ class CallMachine(
         )
         val target = if (request.mode == IntercomMode.BROADCAST) IntercomState.BROADCASTING else IntercomState.IN_CALL
         begin(info, target)
-        // The caller opens its side at once and HA rings the callee; the
-        // callee's answer comes back as a relayed signal.
-        val direction = if (request.mode == IntercomMode.BROADCAST) PeerDirection.SEND_ONLY else PeerDirection.SEND_RECEIVE
-        if (!openPeer(info, direction)) return StartOutcome.Unavailable
-        peer?.offer()
-        armCallLimit(info)
+        // The start request goes out before the offer: HA drops a signal whose
+        // call id it has no record for, and the record is created when it
+        // processes this event (review of #171, finding 2)
         emit(
             EngineEvent.StartRequested(
                 callId = callId,
@@ -122,6 +121,17 @@ class CallMachine(
                 targetAreaId = request.targetAreaId,
             ),
         )
+        // HA can refuse the start without ever telling this device - it has no
+        // call to send an intercom_end for - so a caller that gets no answer
+        // ends itself at the ring limit rather than holding the microphone and
+        // both locks until the hard limit (review of #171, finding 1)
+        armNoAnswerTimer(info)
+        // The caller opens its side at once and HA rings the callee; the
+        // callee's answer comes back as a relayed signal.
+        val direction = if (request.mode == IntercomMode.BROADCAST) PeerDirection.SEND_ONLY else PeerDirection.SEND_RECEIVE
+        if (!openPeer(info, direction)) return StartOutcome.Unavailable
+        peer?.offer()
+        armCallLimit(info)
         return StartOutcome.Started(callId)
     }
 
@@ -145,7 +155,7 @@ class CallMachine(
             armCallLimit(info)
         } else {
             begin(info, IntercomState.RINGING)
-            ringTimer = scheduler.schedule(timings.ringLimitMs) { onRingLimit() }
+            armNoAnswerTimer(info)
         }
         return true
     }
@@ -200,8 +210,9 @@ class CallMachine(
         if (info.callId != callId) return false
         when (kind) {
             IntercomSignalKind.OFFER -> {
-                // Only the answerer takes an offer; the caller made it
-                if (info.direction != CallDirection.INCOMING) return false
+                // Only the answerer takes an offer; the caller made it and
+                // ignores a second one (review of #171, finding 4)
+                if (info.direction != CallDirection.INCOMING) return true
                 when {
                     peer == null -> pendingOffer = payload
                     answeredOffer -> Unit
@@ -210,7 +221,12 @@ class CallMachine(
             }
 
             IntercomSignalKind.ANSWER -> {
-                if (info.direction != CallDirection.OUTGOING) return false
+                // An answer at a callee is this call's signal, just not one this
+                // side takes: acknowledge it rather than NACK a live call
+                // (review of #171, finding 4)
+                if (info.direction != CallDirection.OUTGOING) return true
+                cancel(ringTimer)
+                ringTimer = null
                 peer?.answerReceived(payload)
                 // ADR 0002: the connect timeout runs from the answer
                 armConnectTimer(info)
@@ -319,6 +335,17 @@ class CallMachine(
         armConnectTimer(info)
     }
 
+    /**
+     * How long this side waits for the other: a callee for someone to answer,
+     * a caller for the answer to arrive. `INTERCOM_RING_LIMIT_S` is the same
+     * window HA gives the callee, and HA ends a call it created first, so the
+     * two cannot fight.
+     */
+    private fun armNoAnswerTimer(info: CallInfo) {
+        cancel(ringTimer)
+        ringTimer = scheduler.schedule(timings.ringLimitMs) { onRingLimit(info.callId) }
+    }
+
     /** A two-way call's connect deadline; a broadcast has no single peer to reach. */
     private fun armConnectTimer(info: CallInfo) {
         if (info.mode != IntercomMode.CALL || connected || connectTimer != null) return
@@ -331,10 +358,11 @@ class CallMachine(
     }
 
     @Synchronized
-    private fun onRingLimit() {
+    private fun onRingLimit(callId: String) {
         ringTimer = null
         val info = _info.value ?: return
-        if (_state.value != IntercomState.RINGING) return
+        if (info.callId != callId) return
+        // no answer, from either end: a callee's ring, a caller's wait
         finish(info, IntercomEndReason.TIMEOUT, report = true)
     }
 

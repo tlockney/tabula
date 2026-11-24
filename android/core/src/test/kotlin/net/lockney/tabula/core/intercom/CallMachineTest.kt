@@ -155,8 +155,13 @@ class CallMachineTest {
         assertEquals(IntercomState.BROADCASTING, machine.state.value)
         assertEquals(PeerDirection.SEND_ONLY, peers.last?.direction)
         assertTrue(peers.last!!.offered)
+        // the start request goes out before the offer, so HA has the call id
+        // before the first signal named after it (review of #171, finding 2)
         assertEquals(
-            listOf<EngineEvent>(EngineEvent.StartRequested(CALL_TEST, IntercomMode.BROADCAST, null, null)),
+            listOf(
+                EngineEvent.StartRequested(CALL_TEST, IntercomMode.BROADCAST, null, null),
+                EngineEvent.Signal(CALL_TEST, IntercomSignalKind.OFFER, "v=0 offer"),
+            ),
             events(),
         )
     }
@@ -176,6 +181,46 @@ class CallMachineTest {
         peers.last!!.connect()
         assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.CANDIDATE, "candidate:1"))
         assertEquals(listOf("candidate:1"), peers.last?.candidates?.toList())
+    }
+
+    @Test
+    fun `a call this device starts that is never answered times out at the ring limit`() {
+        // HA can refuse a start without telling the device, so the caller ends
+        // itself rather than holding the microphone until the hard limit
+        // (review of #171, finding 1)
+        assertTrue(machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d2")) is StartOutcome.Started)
+        scheduler.advance(Constants.INTERCOM_RING_LIMIT_S * 1000L - 1)
+        assertEquals(IntercomState.IN_CALL, machine.state.value)
+        scheduler.advance(1)
+        assertEquals(IntercomState.IDLE, machine.state.value)
+        assertEquals(
+            listOf<EngineEvent>(EngineEvent.Ended(CALL_TEST, IntercomEndReason.TIMEOUT)),
+            events().filterIsInstance<EngineEvent.Ended>(),
+        )
+        assertEquals(1, locks.released)
+        assertTrue(peers.last!!.closed)
+    }
+
+    @Test
+    fun `an answer cancels the caller's no-answer deadline`() {
+        machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d2"))
+        machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 answer")
+        peers.last!!.connect()
+        scheduler.advance(Constants.INTERCOM_RING_LIMIT_S * 1000L + 1)
+        assertEquals(IntercomState.IN_CALL, machine.state.value)
+    }
+
+    @Test
+    fun `a signal of a kind this side does not take is acknowledged, not refused`() {
+        // a caller ignores an offer, a callee ignores an answer: both are this
+        // call's signals (review of #171, finding 4)
+        machine.start(StartRequest(IntercomMode.CALL, targetDeviceId = "d2"))
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.OFFER, "v=0 offer"))
+        machine.end(CALL_TEST, IntercomEndReason.HANGUP)
+
+        ring()
+        assertTrue(machine.signal(CALL, IntercomSignalKind.ANSWER, "v=0 answer"))
+        assertEquals(IntercomState.RINGING, machine.state.value)
     }
 
     @Test
@@ -478,6 +523,7 @@ class FakePeer(
 
     override fun offer() {
         offered = true
+        listener.onLocalSignal(IntercomSignalKind.OFFER, "v=0 offer")
     }
 
     override fun answer(offerSdp: String) {

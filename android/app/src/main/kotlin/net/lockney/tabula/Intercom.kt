@@ -147,9 +147,14 @@ private class WebRtcPeer(
     private var source: AudioSource? = null
     private var track: AudioTrack? = null
 
+    /**
+     * Candidates that arrived before the remote description did. `candidate()`
+     * runs on the TLP coroutine and the flush runs on WebRTC's signaling
+     * thread, so the list and the flags are guarded (review of #171, finding 3).
+     */
     private val earlyCandidates = ArrayList<IceCandidate>()
-    private var remoteSet = false
-    private var closed = false
+    @Volatile private var remoteSet = false
+    @Volatile private var closed = false
 
     init {
         audio = JavaAudioDeviceModule.builder(context)
@@ -190,7 +195,14 @@ private class WebRtcPeer(
         }
     }
 
-    /** A mono audio track whose source has the canceller, suppressor and gain on. */
+    /**
+     * A mono audio track. Echo cancellation, noise suppression and gain are the
+     * audio device module's software defaults, which is the path ADR 0028
+     * measured; `setUseHardwareAcousticEchoCanceler`/`NoiseSuppressor` above
+     * only *prefer* hardware where it exists, and the Fire HD 10 Plus has none.
+     * The `goog*` constraints are kept for parity with the spike's constraints
+     * object, not because they switch the software path on (review of #171, 5).
+     */
     private fun addLocalAudio() {
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
@@ -304,12 +316,23 @@ private class WebRtcPeer(
                 json.getString("sdp"),
             )
         }.getOrNull() ?: return
-        if (remoteSet) connection.addIceCandidate(candidate) else earlyCandidates.add(candidate)
+        val buffered = synchronized(this) {
+            if (remoteSet) {
+                false
+            } else {
+                earlyCandidates += candidate
+                true
+            }
+        }
+        if (!buffered) connection.addIceCandidate(candidate)
     }
 
     private fun flushCandidates() {
-        val pending = ArrayList(earlyCandidates)
-        earlyCandidates.clear()
+        val pending = synchronized(this) {
+            val copy = ArrayList(earlyCandidates)
+            earlyCandidates.clear()
+            copy
+        }
         pending.forEach { connection.addIceCandidate(it) }
     }
 
