@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import struct
 import wave
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -20,6 +21,40 @@ SAMPLE_WIDTH = 2  # bytes, 16-bit signed little-endian
 CHANNELS = 1
 
 _SAMPLES_PER_CHUNK = VOICE_CHUNK_BYTES // SAMPLE_WIDTH
+
+
+class Pacer:
+    """One frame per `interval` of wall time, kept on absolute deadlines.
+
+    Sleeping `interval` *after* each send makes the cadence `send + interval`,
+    so any send cost leaves the stream behind the audio clock and the shortfall
+    compounds over a turn: at 1 ms per send a 300 s turn delivers 270 s of audio
+    (PROTOCOL.md 4.10, `VOICE_FRAME_INTERVAL` in ADR 0002). Deadlines are read
+    from the caller's clock, so a test can drive a whole turn without waiting.
+    """
+
+    def __init__(self, interval: float, clock: Callable[[], float]) -> None:
+        if interval <= 0:
+            raise ValueError("interval must be positive")
+        self.interval = interval
+        self._clock = clock
+        self._next_at: float | None = None
+
+    def start(self) -> None:
+        """Put frame 0 at now; later frames land on `start + k * interval`."""
+        self._next_at = self._clock()
+
+    def wait(self) -> float:
+        """Advance one slot and return the sleep before the next send.
+
+        A send that overran its slot returns 0 and the next frame goes out at
+        once. Nothing is skipped, so the stream catches its audio clock back
+        instead of losing audio.
+        """
+        if self._next_at is None:
+            raise RuntimeError("start() before wait()")
+        self._next_at += self.interval
+        return max(0.0, self._next_at - self._clock())
 
 
 class PcmSource(Protocol):

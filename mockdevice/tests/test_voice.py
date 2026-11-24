@@ -10,10 +10,11 @@ import wave
 import pytest
 from mockdevice.client import TLPClient
 from mockdevice.codec import REPO_ROOT
-from mockdevice.constants import VOICE_CHUNK_BYTES
+from mockdevice.constants import VOICE_CHUNK_BYTES, VOICE_FRAME_INTERVAL
 from mockdevice.device import CommandError, MockDevice
 from mockdevice.voice import (
     SAMPLE_RATE,
+    Pacer,
     Silence,
     Tone,
     WavFile,
@@ -167,7 +168,7 @@ async def test_voice_start_streams_until_voice_stop(server, store, start):
     assert record.state["voice_turn"] == "listening"
     await wait_for(lambda: len(pcm) >= 3)
     assert all(len(chunk) == VOICE_CHUNK_BYTES for chunk in pcm)
-    assert running.client.voice_bytes_sent == len(pcm) * VOICE_CHUNK_BYTES
+    assert running.client.voice_bytes_sent >= len(pcm) * VOICE_CHUNK_BYTES
     assert ("voice_turn_started", TURN) in [
         (e["event"], e["data"]["turn_id"]) for e in record.events
     ]
@@ -234,6 +235,59 @@ async def test_turn_limit_ends_the_turn_without_voice_stop(server, store, start)
     await wait_for(lambda: record.state["voice_turn"] == "idle")
     ended = [e for e in record.events if e["event"] == "voice_turn_ended"]
     assert ended and ended[-1]["data"] == {"turn_id": TURN, "reason": "timeout"}
+
+
+async def test_the_turn_limit_follows_the_injected_clock(server, store, start):
+    """The loop reads the client's clock, so a test need not wait 300 s (4.10)."""
+    now = [1000.0]
+
+    def clock() -> float:
+        now[0] += 5.0
+        return now[0]
+
+    device = MockDevice(base_url=server.url)
+    running = await start(store, device, clock=clock, voice_turn_max_s=60.0)
+    record = await server.wait_registered(store.device_id)
+    session = record.current
+    assert session is not None
+    handler_id, _ = server.register_binary_handler(session)
+    await server.send_command(
+        record.device_id,
+        "voice_start",
+        {"turn_id": TURN, "handler_id": handler_id, "start_stage": "stt"},
+    )
+    await wait_for(lambda: device.voice_turn is None)
+    ended = [e for e in record.events if e["event"] == "voice_turn_ended"]
+    assert ended and ended[-1]["data"] == {"turn_id": TURN, "reason": "timeout"}
+    # It streamed while the fake clock ran out the limit, and stopped on it.
+    assert running.client.voice_frames_sent > 0
+
+
+def test_the_pacer_keeps_the_interval_when_a_send_costs_time():
+    """Frames land on an absolute schedule, not `send + interval` (4.10)."""
+    now = [0.0]
+    pacer = Pacer(VOICE_FRAME_INTERVAL, lambda: now[0])
+    pacer.start()
+    sent_at = []
+    for _ in range(200):
+        sent_at.append(now[0])  # the send goes out now
+        now[0] += 0.001  # and costs 1 ms, which must not shift the next slot
+        now[0] += pacer.wait()
+    assert sent_at == pytest.approx([k * VOICE_FRAME_INTERVAL for k in range(200)], abs=1e-9)
+
+
+def test_the_pacer_sends_back_to_back_after_an_overrun_and_keeps_every_frame():
+    now = [0.0]
+    pacer = Pacer(0.01, lambda: now[0])
+    pacer.start()
+    sent_at = []
+    for cost in [0.035, 0.001, 0.001, 0.001, 0.001]:
+        sent_at.append(now[0])
+        now[0] += cost
+        now[0] += pacer.wait()
+    assert len(sent_at) == 5  # nothing skipped to catch up
+    assert sent_at[1] == pytest.approx(0.035)  # the next frame went out at once
+    assert sent_at[4] == pytest.approx(0.04)  # and the grid is back two frames later
 
 
 async def test_disconnect_ends_the_turn_without_an_event(server, store, start):

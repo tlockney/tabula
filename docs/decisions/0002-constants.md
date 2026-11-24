@@ -298,7 +298,7 @@ The device→HA PCM channel of ADR 0024 item 2, as defined in PROTOCOL.md 4.10. 
 | Name | Value | Reasoning |
 | --- | --- | --- |
 | `VOICE_CHUNK_BYTES` | 320 (160 samples, 10 ms) | Exactly `BYTES_PER_CHUNK` from `assist_pipeline/const.py`: one TLP binary frame carries one HA chunk, so the integration's stream sees the same granularity as `assist_pipeline/run` and framing adds no buffering of its own. 320 + 1 bytes is far under any WebSocket message limit, so `FRAME_MAX_BYTES` stays a JSON-frame rule (PROTOCOL 4.10). |
-| `VOICE_FRAME_INTERVAL` | 10 ms | One chunk per `VOICE_CHUNK_BYTES` = 10 ms of audio: send pacing must match the audio clock or the stream drifts against HA's real-time consumer. |
+| `VOICE_FRAME_INTERVAL` | 10 ms | One chunk per `VOICE_CHUNK_BYTES` = 10 ms of audio: send pacing must match the audio clock or the stream drifts against HA's real-time consumer. Frames are scheduled against absolute deadlines (`turn start + k × interval`), never `send + interval`, so the cost of a send cannot leave the stream behind its audio clock. |
 | `VOICE_TURN_MAX_S` | 300 s | `DEFAULT_PIPELINE_TIMEOUT` in `assist_pipeline/const.py`. The device stops on its own at the same second HA abandons the run, so a lost `voice_stop` cannot stream forever and both ends agree on when the turn is over. It is also far longer than any utterance and shorter than a forgotten open microphone. |
 
 ### Phase 1–2 behavior defaults

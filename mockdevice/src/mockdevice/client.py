@@ -34,7 +34,7 @@ from mockdevice.constants import (
 from mockdevice.device import CommandError, MockDevice, VoiceTurn
 from mockdevice.pairing import AccessToken, CredentialRevoked, refresh_access_token
 from mockdevice.store import DeviceStore
-from mockdevice.voice import PcmSource, Tone, encode_frame
+from mockdevice.voice import Pacer, PcmSource, Tone, encode_frame
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,6 +159,7 @@ class TLPClient:
         voice_source: PcmSource | None = None,
         voice_turn_max_s: float = VOICE_TURN_MAX_S,
         voice_frame_interval: float = VOICE_FRAME_INTERVAL,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self.ha_url = ha_url.rstrip("/")
         # The settings schema version it registers with: the mock stays on 1 by
@@ -189,12 +190,16 @@ class TLPClient:
         device.on_event = self._queue_event
         self._events: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
         # Voice turns (P7.2, PROTOCOL.md 4.10): the PCM comes from memory, never
-        # from an audio device, and pacing is a sleep on the event loop.
+        # from an audio device, and pacing is a sleep to an absolute deadline
+        # on the event loop.
         self.voice_source = voice_source or Tone()
         self.voice_turn_max_s = voice_turn_max_s
         self.voice_frame_interval = voice_frame_interval
         self.voice_frames_sent = 0
         self.voice_bytes_sent = 0
+        # Monotonic seconds for the send schedule and the turn limit; a test can
+        # pass its own so neither needs a real wait (PROTOCOL.md 4.10).
+        self.clock = clock or time.monotonic
         self._voice_task: asyncio.Task[None] | None = None
 
     # --- public API -------------------------------------------------------
@@ -436,15 +441,20 @@ class TLPClient:
             task.cancel()
 
     async def _voice_loop(self, conn: Connection, turn: VoiceTurn) -> None:
-        """Send one chunk per 10 ms of audio until the turn closes (4.10).
+        """Send one chunk per `VOICE_FRAME_INTERVAL` of wall time (4.10).
+
+        Frames go out on an absolute schedule, not `send + interval`, so a send
+        that costs time cannot push the stream behind its audio clock.
 
         The device stops itself at `VOICE_TURN_MAX_S` so a lost `voice_stop`
         cannot stream forever (ADR 0033 item 4).
         """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self.voice_turn_max_s
+        clock = self.clock
+        deadline = clock() + self.voice_turn_max_s
+        pacer = Pacer(self.voice_frame_interval, clock)
+        pacer.start()
         while self.device.voice_turn is turn:
-            if loop.time() >= deadline:
+            if clock() >= deadline:
                 self._end_voice("timeout")
                 return
             try:
@@ -458,7 +468,7 @@ class TLPClient:
                 return
             self.voice_frames_sent += 1
             self.voice_bytes_sent += len(pcm)
-            await asyncio.sleep(self.voice_frame_interval)
+            await asyncio.sleep(pacer.wait())
 
     def _end_voice(self, reason: str = "error", notify: bool = True) -> None:
         """Close the open turn and its task; safe when no turn is open."""

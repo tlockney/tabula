@@ -37,7 +37,7 @@ The mock device has to speak the channel without a microphone, so the protocol c
 
 - P7.3 gets a defined channel and a mock that speaks it: a test can open a turn, see interleaved JSON and binary frames, and assert the pipeline received the audio.
 - Audio costs 1 byte of framing per 10 ms; base64 in JSON would have cost a third more bytes and a copy.
-- The device must keep a 10 ms send cadence. On a loaded device frames bunch and then catch up; HA's stream consumer buffers, and the turn limit bounds the worst case.
+- The device must keep a 10 ms send cadence, scheduled against absolute deadlines (`turn start + k × interval`) rather than `send + interval`, so the cost of a send cannot push the stream behind its audio clock. On a loaded device frames bunch and then catch up; HA's stream consumer buffers, and the turn limit bounds the worst case.
 - Android keeps a `VoiceFrame` codec in core (no capture): P7.3 wires the microphone to it. The app side stays out of scope here.
 - `voice_stop` being idempotent means the integration never has to reason about whether the device already timed out.
 
