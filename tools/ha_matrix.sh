@@ -70,16 +70,14 @@ for package in hassil home-assistant-intents pymicro-vad pyspeex-noise; do
   uv pip install --python "$leg/venv" --prerelease=allow "${package}==${version}"
   echo "ha_matrix: $package $version"
 done
-# Newer releases reach more of HA's conversation code. These exist only on the
-# legs whose package_constraints.txt lists them, so they are installed when the
-# leg has a pin and skipped when it does not.
-for package in gazetteer-matcher; do
-  version=$(sed -n "s/^${package}==\(.*\)$/\1/p" "$constraints")
-  if [ -n "$version" ]; then
-    uv pip install --python "$leg/venv" --prerelease=allow "${package}==${version}"
-    echo "ha_matrix: $package $version"
-  fi
-done
+# Newer releases reach more of HA's conversation code. An optional dependency
+# exists only on the legs whose package_constraints.txt lists it, so it is
+# installed when the leg has a pin and skipped when it does not.
+version=$(sed -n 's/^gazetteer-matcher==\(.*\)$/\1/p' "$constraints")
+if [ -n "$version" ]; then
+  uv pip install --python "$leg/venv" --prerelease=allow "gazetteer-matcher==$version"
+  echo "ha_matrix: gazetteer-matcher $version"
+fi
 
 ha=$("$leg/venv/bin/python" -c 'import homeassistant.const; print(homeassistant.const.__version__)')
 echo "== integration tests: pytest-homeassistant-custom-component $phacc, HA $ha, Python $python =="
