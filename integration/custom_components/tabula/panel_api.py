@@ -104,17 +104,18 @@ def _settings_state(hub: TabulaHub, record: DeviceRecord) -> dict[str, Any]:
 
     The device's revision is what it reported at registration or in its last
     `set_settings` ACK (PROTOCOL.md 4.2, 4.6); `pending` is the integration's own
-    rule for a push (settings.schedule_settings_push): a difference in either
-    direction means HA's copy has not been applied. An offline device reports no
-    revision, so pending is unknown and stays false.
+    rule for a push (settings.schedule_settings_push): a stored document exists
+    and the device's revision differs from it in either direction. An offline
+    device reports no revision, and a device that never received a document owes
+    no push, so both stay not pending.
     """
-    ha_revision = hub.settings.revision(record.device_id)
     session = record.current
-    device_revision = session.reported_settings_revision if session is not None else None
+    reported = session.reported_settings_revision if session is not None else None
+    stored = hub.settings.get(record.device_id)
     return {
-        "ha_revision": ha_revision,
-        "device_revision": device_revision,
-        "pending": device_revision is not None and device_revision != ha_revision,
+        "ha_revision": stored.revision if stored is not None else 0,
+        "device_revision": reported,
+        "pending": stored is not None and reported is not None and reported != stored.revision,
     }
 
 

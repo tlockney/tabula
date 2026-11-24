@@ -197,6 +197,27 @@ async def test_pending_settings_are_reported(hass_setup, server, hub, session, p
     assert entry["settings"]["pending"] is True
 
 
+async def test_no_stored_document_owes_no_push(hass_setup, server, hub, session, paired):
+    """A device ahead of a store that holds nothing is not pending: no push is due."""
+    device = await online_device(hass_setup, session, server, paired)
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    record = hub_runtime.devices[paired.device_id]
+    assert record.current is not None
+    record.current.reported_settings_revision = 3
+
+    admin = await admin_client(hass_setup, server, session)
+    try:
+        entry = (await devices_of(admin))[0]
+    finally:
+        await admin.close()
+        await device.close()
+
+    assert entry["settings"]["ha_revision"] == 0
+    assert entry["settings"]["device_revision"] == 3
+    assert entry["settings"]["pending"] is False
+
+
 # --- last seen ---------------------------------------------------------------
 
 
