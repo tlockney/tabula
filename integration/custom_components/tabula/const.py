@@ -72,6 +72,15 @@ INTERCOM_RING_LIMIT_S = 45.0
 INTERCOM_CONNECT_TIMEOUT_S = 10.0
 INTERCOM_CALL_LIMIT_S = 300.0
 
+# Voice-started calls (P9.6, ADR 0036). A name, not a tunable: the hub entry
+# option that maps a person's name onto an area or a tablet. Empty by default,
+# so "call Thomas" says nothing Thomas has not set up.
+INTERCOM_PERSONS = "intercom_persons"
+# The capability pair that decides whether the intents exist at all: a tablet
+# that can hear a request and capture a call (PROTOCOL.md 4.5, ADR 0025
+# decisions 7 and 8).
+INTERCOM_VOICE_CAPABILITIES = frozenset({"voice", "intercom_talk"})
+
 # Logs (P5.4, ADR 0002). The device and HA hold the same bounded ring; the panel
 # renders at most LOG_VIEW_MAX_LINES rows, which is the panel's constant.
 LOG_BUFFER_LINES = 2000
