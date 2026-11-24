@@ -1,6 +1,27 @@
+/** One entry of HA's frontend state machine (`hass.states`). */
+export interface HassEntity {
+  entity_id: string;
+  state: string;
+  attributes: Record<string, unknown>;
+}
+
 /** The part of Home Assistant's frontend contract the panel depends on. */
 export interface HomeAssistant {
   callWS<T>(msg: { type: string; [key: string]: unknown }): Promise<T>;
+  /**
+   * `hass.callService`; awaited for the entity's outcome, so a refused or failed
+   * command rejects with HA's own message (P5.5).
+   */
+  callService?(
+    domain: string,
+    service: string,
+    serviceData?: Record<string, unknown>,
+  ): Promise<unknown>;
+  /**
+   * The live entity states the Activity tab follows (P5.5). HA replaces the
+   * `hass` object on every change, so the tab re-renders without polling.
+   */
+  states?: Record<string, HassEntity>;
   /** The frontend's event bus; absent in a test's fake unless the test needs it. */
   connection?: HassConnection;
 }

@@ -22,6 +22,7 @@ import {
   tabLabel,
   type DeviceTab,
 } from "./devices";
+import "./activity";
 import { STRINGS, errorLine, statusLine } from "./strings";
 import type { HomeAssistant, PanelDevice, PanelInfo, UnsubscribeFunc } from "./types";
 
@@ -396,13 +397,21 @@ export class TabulaPanel extends LitElement {
             `,
           )}
         </div>
-        ${
-          this.tab === "overview"
-            ? this.renderOverview(device)
-            : html`<p class="tab-body">${STRINGS.tabPending}</p>`
-        }
+        ${this.renderTab(device)}
       </section>
     `;
+  }
+
+  /** The tab body: Overview and Activity are filled, the rest are later work. */
+  private renderTab(device: PanelDevice): TemplateResult {
+    switch (this.tab) {
+      case "overview":
+        return this.renderOverview(device);
+      case "activity":
+        return html`<tabula-activity .hass=${this.hass} .device=${device}></tabula-activity>`;
+      default:
+        return html`<p class="tab-body">${STRINGS.tabPending}</p>`;
+    }
   }
 
   private renderOverview(device: PanelDevice): TemplateResult {
