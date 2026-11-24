@@ -190,7 +190,7 @@ export function captureView(
   if (imageState === "unavailable") {
     return {
       kind: "unavailable",
-      picture,
+      picture: null,
       lastCapture,
       imageState: null,
       note: device.connected
@@ -408,12 +408,17 @@ export class TabulaActivity extends LitElement {
           view.kind === "unsupported"
             ? html`<p class="note">${view.note}</p>`
             : html`
-                <figure>
-                  <img class="capture" src=${view.picture ?? ""} alt=${activity.alt} />
-                  <figcaption class="caption">
-                    <span class="caption-label">${activity.caption}</span> ${captionFor(device)}
-                  </figcaption>
-                </figure>
+                ${
+                  view.picture === null
+                    ? nothing
+                    : html`<figure>
+                        <img class="capture" src=${view.picture} alt=${activity.alt} />
+                        <figcaption class="caption">
+                          <span class="caption-label">${activity.caption}</span>
+                          ${captionFor(device)}
+                        </figcaption>
+                      </figure>`
+                }
                 ${view.kind === "image" ? nothing : html`<p class="note">${view.note}</p>`}
                 <p class="last-capture">
                   ${activity.lastCapture}:
