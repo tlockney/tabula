@@ -15,8 +15,11 @@ Show 8 (2nd gen) flash (ADR 0026), done before Tabula work begins.
 - `adb` on PATH, USB debugging enabled on the tablet (Settings → Device
   Options → Developer Options; tap the serial number seven times).
 - The Android toolchain: `make setup-android` (JDK 17-21, SDK platform 34 —
-  ADR 0008). `make android-apk` builds
-  `android/app/build/outputs/apk/debug/app-debug.apk`.
+  ADR 0008). `make android-apk` builds one debug APK per ABI, because the
+  intercom's WebRTC library is carried once per file (P9.3, ADR 0028):
+  `android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk` for the v1
+  tablets, and `app-armeabi-v7a-debug.apk` for a 32-bit device.
+  `tools/device/provision.sh` picks the arm64 file when given no argument.
 - For HA queries: the repo's uv environment (`make setup`) and a long-lived
   access token from an **admin user** (HA's owner, typically) — HA's
   `config/device_registry/list` WebSocket command is admin-only, so a

@@ -31,6 +31,9 @@ kotlin {
 
 dependencies {
     api(libs.kotlinx.serialization.json)
+    // The intercom engine's state flow and event channel (P9.3): plain Kotlin
+    // concurrency, no Android, so the call machine is unit-tested on a JVM.
+    api(libs.kotlinx.coroutines.core)
     testImplementation(kotlin("test"))
 }
 

@@ -2,7 +2,8 @@
 # ADB provisioning for a Tabula device (docs/DEVICE.md, packet P2.1).
 #
 # Usage: ANDROID_SERIAL=<serial> tools/device/provision.sh [APK]
-# APK defaults to the debug build (make android-apk).
+# APK defaults to the debug build (make android-apk), which is one file per ABI
+# since P9.3: arm64-v8a is the v1 shape, armeabi-v7a the fallback.
 #
 # Every step prints its own evidence; paste the whole output into the packet
 # Result section.
@@ -14,11 +15,21 @@ adb() {
     if [[ -n "$serial" ]]; then command adb -s "$serial" "$@"; else command adb "$@"; fi
 }
 pkg=net.lockney.tabula
-apk="${1:-android/app/build/outputs/apk/debug/app-debug.apk}"
+apk_dir=android/app/build/outputs/apk/debug
+apk="${1:-}"
+if [[ -z "$apk" ]]; then
+    for candidate in "$apk_dir/app-arm64-v8a-debug.apk" "$apk_dir/app-armeabi-v7a-debug.apk"; do
+        if [[ -f "$candidate" ]]; then
+            apk="$candidate"
+            break
+        fi
+    done
+fi
+apk="${apk:-$apk_dir/app-arm64-v8a-debug.apk}"
 
 step() { echo; echo "== $*"; }
 
-[[ -f "$apk" ]] || { echo "APK not found: $apk (run make android-apk)" >&2; exit 2; }
+[[ -f "$apk" ]] || { echo "APK not found: $apk (run make android-apk; it writes one APK per ABI)" >&2; exit 2; }
 
 step "connected device"
 adb devices -l

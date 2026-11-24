@@ -1,6 +1,7 @@
 package net.lockney.tabula
 
 import android.app.AlarmManager
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,6 +9,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -78,6 +80,9 @@ class TabulaService : Service() {
     private lateinit var audio: MediaManager
     private lateinit var startPage: StartPageManager
     private lateinit var deviceEvents: EventFanIn
+    // The intercom (P9.3, ADR 0028): one engine for the app's lifetime, idle
+    // until an explicit action or an HA ring, held by its wiring.
+    private lateinit var intercom: IntercomManager
     // Wake word (P7.1, ADR 0030): null until startVoice, off until the setting
     // says otherwise. The channel is the monitor's event source in the fan-in.
     private var voice: WakeWordMonitor? = null
@@ -91,6 +96,13 @@ class TabulaService : Service() {
      * the sound stops.
      */
     private var voiceGate: net.lockney.tabula.core.voice.WakeWordGate? = null
+
+    /**
+     * The microphone's single owner (P9.3 item 8): the wake-word gate asks it
+     * for capture, a call that captures takes it, and the detector re-acquires
+     * it when that call ends.
+     */
+    private var micArbiter: net.lockney.tabula.core.intercom.MicArbiter? = null
 
     /** The media channel's own state, from its deltas. */
     @Volatile private var mediaPlaying = false
@@ -122,7 +134,46 @@ class TabulaService : Service() {
         startNotifications()
         startAudio()
         startVoice()
+        startIntercom()
+        startEvents()
     }
+
+    /**
+     * One event stream for the TLP session from every source (P2.4, P2.5, P7.1,
+     * P9.3). Built after the managers, because the intercom's stream is one of
+     * them.
+     */
+    private fun startEvents() {
+        deviceEvents = EventFanIn(
+            scope,
+            listOf(screensaver.events, notifications.events, audio.events, voiceEvents, intercom.events),
+        )
+    }
+
+    /**
+     * The intercom engine and its TLP wiring (packet P9.3, ADR 0028). The engine
+     * is constructed idle and opens no microphone and no connection until a
+     * call begins, so a device that never makes a call pays only for the class.
+     * The microphone it may take from the wake-word detector is declared the
+     * same way the detector's is: the grant at the moment of use.
+     */
+    private fun startIntercom() {
+        val engine = WebRtcCallEngine(
+            context = applicationContext,
+            canTalk = ::canTalk,
+        )
+        intercom = IntercomManager(
+            engine = engine,
+            scope = scope,
+            publishState = { delta -> publishState?.invoke(delta) },
+            onMicrophoneHold = { held -> micArbiter?.onCallHoldsMic(held) },
+            log = { TabulaLog.i(TAG, it) },
+        )
+    }
+
+    /** True while the app holds the microphone `intercom_talk` promises. */
+    private fun canTalk(): Boolean =
+        checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     /**
      * Screen control (packet P2.3) runs for the service's lifetime, not the
@@ -243,11 +294,6 @@ class TabulaService : Service() {
             scope = scope,
         )
         audio.applySettings(store.settings)
-        // one event stream for the TLP session from every source (P2.4, P2.5, P7.1)
-        deviceEvents = EventFanIn(
-            scope,
-            listOf(screensaver.events, notifications.events, audio.events, voiceEvents),
-        )
     }
 
     /**
@@ -274,12 +320,22 @@ class TabulaService : Service() {
             log = { TabulaLog.i(TAG, it) },
         )
         voice = monitor
-        val gate = net.lockney.tabula.core.voice.WakeWordGate(
-            object : net.lockney.tabula.core.voice.WakeWordGate.Listener {
+        val mic = net.lockney.tabula.core.intercom.MicArbiter(
+            object : net.lockney.tabula.core.intercom.MicArbiter.Listener {
                 override fun startListening(): Boolean = monitor.start()
 
                 override fun stopListening() {
                     monitor.pause()
+                }
+            },
+        )
+        micArbiter = mic
+        val gate = net.lockney.tabula.core.voice.WakeWordGate(
+            object : net.lockney.tabula.core.voice.WakeWordGate.Listener {
+                override fun startListening(): Boolean = mic.onWakeWordWanted(true)
+
+                override fun stopListening() {
+                    mic.onWakeWordWanted(false)
                 }
             },
         )
@@ -408,6 +464,9 @@ class TabulaService : Service() {
         notifications.stop()
         chime.release()
         audio.close()
+        // a call cannot outlive the service: nothing is resumed on restart
+        // (ADR 0028 guard 4)
+        intercom.close()
         screen.setOverride(null)
         TabulaStatus.screensaver.value = null
         TabulaStatus.notifications.value = emptyList()
@@ -551,6 +610,7 @@ class TabulaService : Service() {
                         startPage = startPage,
                         voice = ::applyVoiceSettings,
                         logs = logStream,
+                        intercom = intercom,
                     ),
                     events = deviceEvents.events,
                     logs = logStream.frames,
@@ -563,6 +623,9 @@ class TabulaService : Service() {
                 override fun onRegistered(result: net.lockney.tabula.core.tlp.RegisterResultData) {
                     TabulaLog.i(TAG, "registered with HA device ${result.haDeviceId}")
                     TabulaStatus.phase.value = Phase.CONNECTED
+                    // a call that was up when the link went down stays up if
+                    // HA came back inside the grace (P9.3 guard 3)
+                    intercom.onTransportUp()
                 }
 
                 override fun onDisconnected() {
@@ -570,6 +633,7 @@ class TabulaService : Service() {
                     if (TabulaStatus.phase.value == Phase.CONNECTED) {
                         TabulaStatus.phase.value = Phase.CONNECTING
                     }
+                    intercom.onTransportDown()
                 }
 
                 override fun onRevoked() {
@@ -649,6 +713,9 @@ class TabulaService : Service() {
                 // items 3 and 7, PROTOCOL 4.4)
                 wakeWordActive = wakeWordListening,
                 lastWakeWord = lastWakeWord,
+                // `intercom_state` always exists because the device always
+                // declares `intercom_listen` (PROTOCOL 4.4's gate)
+                intercomState = intercom.state(),
             )
     }
 
@@ -677,6 +744,11 @@ class TabulaService : Service() {
         add("screenshot")
         // P5.4: the app log and the dashboard console stream to the Tabularium.
         add("logs")
+        // P9.3: every Tabula device can hear a call; only one holding
+        // RECORD_AUDIO at registration can capture one, and the list is read
+        // once per session, so a withdrawn grant shows up at the next register
+        // (PROTOCOL 4.5, ADR 0025 decision 7, F-KSK-21)
+        addAll(intercomCapabilities(canTalk()))
         // Declared unconditionally: every build ships the detector, and the
         // capability list is read once per session, so a value that tracked the
         // switch would only reach HA on the next register - and turning the

@@ -45,6 +45,7 @@ class TabulaCommands(
     private val startPage: StartPageControl? = null,
     private val voice: VoiceControl? = null,
     private val logs: LogControl? = null,
+    private val intercom: IntercomControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
@@ -88,6 +89,15 @@ class TabulaCommands(
         Commands.LOG_SUBSCRIPTION -> logs?.let { control ->
             val parsed = Tlp.json.decodeFromJsonElement(LogSubscriptionArgs.serializer(), event.args)
             control.subscribe(parsed.enabled, parsed.level)
+        } ?: undeclared(event.command)
+        Commands.INTERCOM_RING -> intercom?.let { control ->
+            control.ring(event.intercomRingArgs(Tlp.json))
+        } ?: undeclared(event.command)
+        Commands.INTERCOM_SIGNAL -> intercom?.let { control ->
+            control.signal(event.intercomSignalArgs(Tlp.json))
+        } ?: undeclared(event.command)
+        Commands.INTERCOM_END -> intercom?.let { control ->
+            control.end(event.intercomEndArgs(Tlp.json))
         } ?: undeclared(event.command)
         Commands.RELOAD -> dashboardAction("reload the dashboard") { dashboard.reload() }
         Commands.CLEAR_CACHE -> dashboardAction("clear the cache") { dashboard.clearCache() }
