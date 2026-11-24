@@ -79,7 +79,7 @@ export const STRINGS = {
     capture: "Capture screenshot",
     capturing: "Capturing…",
     stillRunning: "Still running…",
-    captured: "Capture finished: the image and its timestamp are updated.",
+    captured: "Capture finished: Home Assistant reports the capture complete.",
     running: "Running…",
     done: "Done.",
     alt: "Latest screenshot of the tablet's screen",
@@ -93,7 +93,7 @@ export const STRINGS = {
     screensaver: "Screensaver",
     page: "Page",
     placeholderNote:
-      "No image is stored, so the tablet's placeholder is shown: the screen was off, or nothing has been captured yet.",
+      "No image is stored, so the tablet's placeholder is shown: the screen was off when the capture ran.",
     noneNote: "Nothing has been captured yet, so the tablet's placeholder is shown.",
     unavailableNote: "The image entity is unavailable in Home Assistant.",
     fromLastConnection: "From the last connection.",
