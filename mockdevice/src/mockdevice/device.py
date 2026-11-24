@@ -161,8 +161,10 @@ class MockDevice:
             # the capability is always declared, so the flag is always sent;
             # off until a settings push switches it on (P7.1, ADR 0030)
             "wake_word_active": False,
-            # idle, or listening while a turn streams (P7.2, ADR 0033 item 5)
-            "voice_turn": "idle",
+            # idle, or listening while a turn streams (P7.2, ADR 0033 item 5).
+            # Declared only with the voice capability (4.4), like every other
+            # capability-gated state key.
+            **({"voice_turn": "idle"} if "voice" in self.capabilities else {}),
             "app_version": __version__,
         }
 

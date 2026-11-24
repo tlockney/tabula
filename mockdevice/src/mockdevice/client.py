@@ -7,7 +7,6 @@ import contextlib
 import json
 import logging
 import random
-import secrets
 import time
 from collections.abc import Callable
 from typing import Any
@@ -203,23 +202,17 @@ class TLPClient:
     def stop(self) -> None:
         self._stop.set()
 
-    def start_wake_word_turn(
-        self, handler_id: int, phrase: str = "okay_nabu", turn_id: str | None = None
-    ) -> VoiceTurn:
-        """Test hook: open a turn and stream as if the device's own wake word fired.
+    def announce_wake_word(self, phrase: str = "okay_nabu", probability: int = 231) -> None:
+        """Test hook: behave as if the device's own wake word just fired.
 
-        On a device that detects the phrase itself there is no `voice_start`
-        from HA: the app opens the turn and tells HA (ADR 0024 item 3). This
-        reaches that state without a microphone, so tests can drive it.
+        The device only reports the detection (`wake_word_detected`, P7.1); a
+        turn then opens the ordinary way, with `voice_start` from HA, which is
+        the only frame that carries a handler id (PROTOCOL.md 4.10), so nothing
+        binary is sent before it arrives.
         """
-        conn = self._conn
-        if conn is None or not self.registered.is_set():
+        if not self.registered.is_set():
             raise RuntimeError("not connected")
-        turn = self.device.begin_voice_turn(
-            turn_id or f"wake-{secrets.token_hex(6)}", handler_id, "stt", phrase
-        )
-        self._stream_voice(conn, turn)
-        return turn
+        self.device.detect_wake_word(phrase, probability)
 
     async def run(self, session: aiohttp.ClientSession) -> None:
         """Connect, and reconnect with backoff, until stop() or a fatal error."""

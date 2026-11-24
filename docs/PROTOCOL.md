@@ -169,7 +169,7 @@ The integration never sends a command whose capability the device did not declar
 | `page_changed` | `path` (no query string or fragment) | `tabula_page` |
 | `wake_word_detected` | `phrase` (`[a-z0-9_]{1,32}`), `probability` (0–255, the model's own scale) | `tabula_wake_word` |
 | `voice_turn_started` | `turn_id`, optional `phrase` (the wake word the turn began with) | `tabula_voice` |
-| `voice_turn_ended` | `turn_id`, `reason`: `command` (a `voice_stop`), `timeout` (the device's own limit), `error` (microphone or codec failed) | `tabula_voice` |
+| `voice_turn_ended` | `turn_id`, `reason`: `command` (a `voice_stop`), `timeout` (the device's own limit), `error` (microphone or codec failed). The device's account of why the turn ended, not an echo of `voice_stop`'s `reason` (4.10) | `tabula_voice` |
 
 ### 4.8 `log`
 
@@ -188,6 +188,7 @@ A device has one current connection. When a newer `tabula/register` succeeds for
 
 While a voice turn is open the device sends HA WebSocket **binary** messages on the same connection. The first byte is the `handler_id` from `voice_start`; the rest is exactly `VOICE_CHUNK_BYTES` (320) bytes of PCM: 16 kHz, 16-bit signed little-endian, mono. 320 bytes is 160 samples, 10 ms of audio, which is HA's own assist chunk (`SAMPLE_RATE` 16000, `SAMPLES_PER_CHUNK` 160 in `assist_pipeline/const.py` at the 2025.1 floor).
 
+- A turn always opens with `voice_start`, which is the only frame carrying a `handler_id`. A device that detects the wake word itself has no handler id: it reports `wake_word_detected` (4.7) and waits, and the integration answers with `voice_start` (`start_stage` `stt`, `wake_word_phrase`) like any other turn. Nothing in the protocol lets a device open a turn on its own (ADR 0024 item 3).
 - A binary frame has no `id`, no `type` and no device ID. The connection binds it to the device and the handler byte binds it to the turn.
 - The device sends one frame per 10 ms of real time while the turn is open, starting after `voice_start` is acknowledged. It may interleave `tabula/*` JSON frames freely; the two are separate message types.
 - The turn ends on `voice_stop` (device emits `voice_turn_ended` with `command`), after `VOICE_TURN_MAX_S` seconds (reason `timeout`), on a capture error (reason `error`), or when the connection closes (no event: there is nowhere left to send it). Nothing binary is sent outside an open turn.

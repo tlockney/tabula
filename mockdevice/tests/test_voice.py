@@ -261,7 +261,8 @@ async def test_disconnect_ends_the_turn_without_an_event(server, store, start):
     assert record.state["voice_turn"] == "idle"
 
 
-async def test_wake_word_turn_hook_streams_without_a_command(server, store, start):
+async def test_a_wake_word_detection_sends_no_audio_until_voice_start(server, store, start):
+    """The device reports the detection; the turn still opens with voice_start (4.10)."""
     device = MockDevice(base_url=server.url)
     running = await start(store, device, voice_frame_interval=0.005)
     record = await server.wait_registered(store.device_id)
@@ -269,23 +270,52 @@ async def test_wake_word_turn_hook_streams_without_a_command(server, store, star
     assert session is not None
     handler_id, pcm = server.register_binary_handler(session)
 
-    await wait_for(running.client.registered.is_set)
-    turn = running.client.start_wake_word_turn(handler_id, "okay_nabu")
-    await wait_for(lambda: len(pcm) >= 2)
-    assert device.voice_turn is turn
-    started = [e for e in record.events if e["event"] == "voice_turn_started"]
-    assert started[-1]["data"] == {"turn_id": turn.turn_id, "phrase": "okay_nabu"}
-    assert record.state["voice_turn"] == "listening"
-    await server.send_command(
-        record.device_id, "voice_stop", {"turn_id": turn.turn_id, "reason": "ended"}
+    await device.handle(
+        "set_settings",
+        {
+            "revision": 1,
+            "schema_version": 3,
+            "settings": {"voice": {"wake_word_enabled": True}},
+        },
     )
+    await wait_for(running.client.registered.is_set)
+    running.client.announce_wake_word("okay_nabu")
+    await wait_for(lambda: any(e["event"] == "wake_word_detected" for e in record.events))
+
+    # A detection is not a turn: no turn id, no handler id, no PCM.
     assert device.voice_turn is None
+    assert record.state["voice_turn"] == "idle"
+    await asyncio.sleep(0.05)
+    assert pcm == []
+    assert not [e for e in record.events if e["event"] == "voice_turn_started"]
+
+    # HA answers the detection with voice_start; that is what starts the stream.
+    result = await server.send_command(
+        record.device_id,
+        "voice_start",
+        {
+            "turn_id": TURN,
+            "handler_id": handler_id,
+            "start_stage": "stt",
+            "wake_word_phrase": "okay_nabu",
+        },
+    )
+    assert result["ok"], result
+    await wait_for(lambda: len(pcm) >= 2)
+    started = [e for e in record.events if e["event"] == "voice_turn_started"]
+    assert started[-1]["data"] == {"turn_id": TURN, "phrase": "okay_nabu"}
+    assert (
+        await server.send_command(
+            record.device_id, "voice_stop", {"turn_id": TURN, "reason": "ended"}
+        )
+    )["ok"]
+    await wait_for(lambda: device.voice_turn is None)
 
 
-async def test_wake_word_hook_needs_a_connection(store, server, http):
+async def test_the_wake_word_hook_needs_a_connection(store, server):
     client = TLPClient(server.url, store, MockDevice(base_url=server.url))
     with pytest.raises(RuntimeError, match="not connected"):
-        client.start_wake_word_turn(1)
+        client.announce_wake_word()
 
 
 async def test_voice_fixtures_drive_turns(server, store, start):
@@ -334,4 +364,4 @@ async def test_voice_start_without_the_capability_is_refused(server, store, star
     assert not result["ok"]
     assert result["error"]["code"] == "unsupported_command"
     assert pcm == []
-    assert "voice_turn" in record.state  # the state key is still declared
+    assert "voice_turn" not in record.state  # declared only with the capability
