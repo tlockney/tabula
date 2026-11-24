@@ -1,4 +1,4 @@
-# 0032: Voice audio as binary frames on the TLP WebSocket
+# 0033: Voice audio as binary frames on the TLP WebSocket
 
 Status: accepted
 Date: 2026-11-24

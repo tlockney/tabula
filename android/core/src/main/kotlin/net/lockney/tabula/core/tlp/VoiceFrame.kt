@@ -1,7 +1,7 @@
 package net.lockney.tabula.core.tlp
 
 /**
- * A binary voice frame (docs/PROTOCOL.md 4.10, ADR 0032): the first byte is the
+ * A binary voice frame (docs/PROTOCOL.md 4.10, ADR 0033): the first byte is the
  * HA binary handler id that `voice_start` named, the rest is exactly
  * [CHUNK_BYTES] of 16 kHz, 16-bit signed little-endian, mono PCM (10 ms).
  *
