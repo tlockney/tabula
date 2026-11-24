@@ -1,0 +1,967 @@
+"""Intercom calls in the integration (P9.2, ADR 0025 decisions 4-5, ADR 0028).
+
+The device side is a raw WebSocket client per tablet, driven with the golden
+TLP fixtures: every command the integration sends is recorded and answered, so
+the tests see the wire the way a tablet does. No audio is played or captured
+anywhere here; the payloads are the peers' own signaling text, which HA copies
+without reading.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass, field
+from datetime import timedelta
+from functools import partial
+from typing import Any
+
+import pytest
+from custom_components.tabula import TabulaHub, intercom
+from custom_components.tabula.const import DOMAIN
+from custom_components.tabula.events import (
+    INTERCOM_ANSWERED,
+    INTERCOM_ENDED,
+    INTERCOM_EVENTS,
+    INTERCOM_MISSED,
+    INTERCOM_STARTED,
+)
+from helpers import WS, Paired, frame_fixture, pair_device, uid, ws_connect
+from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
+from homeassistant.util.async_ import run_callback_threadsafe
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+try:
+    # phacc's own wrapper: it hands the fire to HA's loop with
+    # `run_callback_threadsafe` and waits. It refuses to be called from inside
+    # any event loop, which is why `advance` stands in an executor thread.
+    from pytest_homeassistant_custom_component.common import fire_time_changed
+except ImportError:  # pragma: no cover - only the oldest supported harness
+
+    def fire_time_changed(hass: HomeAssistant, when) -> None:  # type: ignore[misc]
+        """The same wrapper, for a harness that does not export it."""
+        run_callback_threadsafe(hass.loop, partial(async_fire_time_changed, hass, when)).result()
+
+
+# The fixtures' capability list, with the intercom capabilities on top. A
+# tablet that can hear has `intercom_listen`; one that can capture as well has
+# `intercom_talk` (PROTOCOL.md 4.5, ADR 0025 decision 7).
+BASE_CAPS: list[str] = frame_fixture("register")["capabilities"]
+INTERCOM_CAPS: list[str] = [*BASE_CAPS, "intercom_listen", "intercom_talk"]
+LISTEN_ONLY_CAPS: list[str] = [*BASE_CAPS, "intercom_listen"]
+NO_INTERCOM_CAPS: list[str] = list(BASE_CAPS)
+
+CALL_ID = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+OFFER = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+ANSWER = "v=0\r\no=- 2 2 IN IP4 127.0.0.1\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+
+
+def register_frame(
+    paired: Paired, caps: list[str], *, msg_id: int = 2, kind: str = "idle"
+) -> dict[str, Any]:
+    """A register frame for the capabilities given, with the matching state."""
+    state = dict(frame_fixture("register")["state"])
+    if "intercom_listen" in caps:
+        # PROTOCOL 4.4: a capability-gated key is only sent by a device that
+        # declares the capability that covers it.
+        state["intercom_state"] = kind
+    return frame_fixture(
+        "register",
+        id=msg_id,
+        device_id=paired.device_id,
+        capabilities=caps,
+        state=state,
+    )
+
+
+class Tablet:
+    """A paired tablet on its own WebSocket, answering commands on the wire."""
+
+    def __init__(self, client: WS, paired: Paired, name: str) -> None:
+        self.client = client
+        self.paired = paired
+        self.name = name
+        self.commands: list[dict[str, Any]] = []
+        # command name -> (code, message) for a NACK instead of ok.
+        self.nack: dict[str, tuple[str, str]] = {}
+        self._msg_id = 100
+        self._reader: asyncio.Task[None] | None = None
+        self._send_lock = asyncio.Lock()
+
+    async def start(self) -> None:
+        self._reader = asyncio.create_task(self._read())
+
+    async def _read(self) -> None:
+        while True:
+            try:
+                frame = await self.client.recv(timeout=60)
+            except (AssertionError, TimeoutError, ConnectionError):
+                return
+            if frame.get("type") != "event":
+                continue
+            command = frame["event"]
+            self.commands.append(command)
+            self._msg_id += 1
+            if (refusal := self.nack.get(command["command"])) is not None:
+                reply = frame_fixture(
+                    "command_result",
+                    id=self._msg_id,
+                    command_id=command["command_id"],
+                    ok=False,
+                    error={"code": refusal[0], "message": refusal[1]},
+                )
+            else:
+                reply = frame_fixture(
+                    "command_result", id=self._msg_id, command_id=command["command_id"], ok=True
+                )
+            await self.send(reply)
+
+    async def send(self, frame: dict[str, Any]) -> None:
+        async with self._send_lock:
+            await self.client.send(frame)
+
+    async def event(self, fixture: str, data: dict[str, Any]) -> None:
+        """Send a device event (PROTOCOL.md 4.7) without waiting for its ack."""
+        self._msg_id += 1
+        await self.send(frame_fixture(fixture, id=self._msg_id, data=data))
+
+    async def state(self, state: dict[str, Any]) -> None:
+        self._msg_id += 1
+        await self.send(frame_fixture("state_delta", id=self._msg_id, state=state))
+
+    async def reregister(self, caps: list[str], kind: str = "idle") -> None:
+        """Register again on the same socket, as a relaunched app does."""
+        self._msg_id += 1
+        await self.send(register_frame(self.paired, caps, msg_id=self._msg_id, kind=kind))
+
+    async def next_command(self, name: str, timeout: float = 5.0) -> dict[str, Any]:
+        """The next command of that name, consumed from the record."""
+        async with asyncio.timeout(timeout):
+            while True:
+                for index, command in enumerate(self.commands):
+                    if command["command"] == name:
+                        return self.commands.pop(index)
+                await asyncio.sleep(0.01)
+
+    async def no_command(self, name: str, wait: float = 0.3) -> None:
+        """Nothing of that name arrived within `wait`."""
+        await asyncio.sleep(wait)
+        assert not [c for c in self.commands if c["command"] == name], self.commands
+
+    async def close(self) -> None:
+        if self._reader is not None:
+            self._reader.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._reader
+        await self.client.close()
+
+
+@dataclass
+class Bus:
+    """The four call-lifecycle events, collected as they fire."""
+
+    hass: HomeAssistant
+    events: dict[str, list[Event]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in INTERCOM_EVENTS:
+            self.events[name] = []
+            self.hass.bus.async_listen(name, self._capture(name))
+
+    def _capture(self, name: str) -> Callable[[Event], None]:
+        @callback
+        def handler(event: Event) -> None:
+            self.events[name].append(event)
+
+        return handler
+
+    async def wait(self, name: str, count: int = 1, timeout: float = 5.0) -> Event:
+        async with asyncio.timeout(timeout):
+            while len(self.events[name]) < count:
+                await asyncio.sleep(0.01)
+        return self.events[name][count - 1]
+
+    def silent(self, name: str) -> bool:
+        return not self.events[name]
+
+
+@pytest.fixture(autouse=True)
+async def clean_calls(hass_setup) -> AsyncGenerator[None]:
+    """Drop every call and timer the test left behind."""
+    yield
+    hub = TabulaHub.get(hass_setup)
+    if hub is not None:
+        hub.intercom.shutdown()
+
+
+@pytest.fixture(name="bus")
+def bus_fixture(hass_setup) -> Bus:
+    return Bus(hass_setup)
+
+
+@pytest.fixture(name="make_tablet")
+async def make_tablet_fixture(
+    hass_setup, server, hub, session
+) -> AsyncGenerator[Callable[..., Any]]:
+    """Pair a tablet and put it on a subscribed WebSocket."""
+    made: list[Tablet] = []
+
+    async def make(
+        name: str = "Tablet", caps: list[str] | None = None, kind: str = "idle"
+    ) -> Tablet:
+        paired = await pair_device(hass_setup, server, uid(), name=name)
+        client = await ws_connect(session, server, paired.refresh_token)
+        tablet = Tablet(client, paired, name)
+        reply = await client.reply(register_frame(paired, caps or INTERCOM_CAPS, kind=kind))
+        assert reply["success"], reply
+        reply = await client.reply(frame_fixture("subscribe", id=3))
+        assert reply["success"], reply
+        await tablet.start()
+        await hass_setup.async_block_till_done()
+        made.append(tablet)
+        return tablet
+
+    yield make
+    for tablet in made:
+        await tablet.close()
+
+
+def active_calls(hass: HomeAssistant) -> int:
+    hub_runtime = TabulaHub.get(hass)
+    assert hub_runtime is not None
+    return len(hub_runtime.intercom.calls)
+
+
+async def advance(hass: HomeAssistant, seconds: float = 1.0) -> None:
+    """Move HA's clock, which is what fires its call-later timers in tests.
+
+    The fire happens on HA's loop (the thread-safe helper), because the timer
+    callbacks schedule work with `hass.async_create_task`, which is only legal
+    there — the same contract the integration's own timers rely on.
+    """
+    when = dt_util.utcnow() + timedelta(seconds=seconds)
+    await hass.async_add_executor_job(fire_time_changed, hass, when)
+    await hass.async_block_till_done()
+
+
+async def until(predicate: Callable[[], bool], timeout: float = 5.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0.02)
+
+
+async def start_call(
+    hass: HomeAssistant,
+    caller: Tablet,
+    callee: Tablet | None,
+    *,
+    mode: str = "call",
+) -> None:
+    data: dict[str, Any] = {"caller": caller.paired.ha_device_id, "mode": mode}
+    if callee is not None:
+        data["device_id"] = callee.paired.ha_device_id
+    await hass.services.async_call(DOMAIN, "intercom_call", data, blocking=True)
+
+
+async def end_call(hass: HomeAssistant, call_id: str) -> None:
+    await hass.services.async_call(DOMAIN, "intercom_end", {"call_id": call_id}, blocking=True)
+
+
+async def answered_call(
+    hass: HomeAssistant, caller: Tablet, callee: Tablet, *, signal: bool = True
+) -> str:
+    """A call that has been answered (and, by default, has exchanged a signal)."""
+    await start_call(hass, caller, callee)
+    call_id = (await callee.next_command("intercom_ring"))["args"]["call_id"]
+    await callee.event("event.intercom_answer", {"call_id": call_id})
+    if signal:
+        await caller.event(
+            "event.intercom_signal",
+            {"call_id": call_id, "kind": "offer", "payload": OFFER},
+        )
+        await callee.next_command("intercom_signal")
+    return call_id
+
+
+def entity_id(hass: HomeAssistant, platform: str, paired: Paired, key: str) -> str | None:
+    return er.async_get(hass).async_get_entity_id(platform, DOMAIN, f"{paired.device_id}_{key}")
+
+
+def disable_entities(hass: HomeAssistant, tablet: Tablet) -> None:
+    """Hide every entity of a tablet, as a household that disabled them has."""
+    registry = er.async_get(hass)
+    for entry in er.async_entries_for_device(registry, tablet.paired.ha_device_id):
+        registry.async_update_entity(entry.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+
+def put_in_area(hass: HomeAssistant, tablet: Tablet, area_name: str) -> str:
+    """Assign a tablet's HA device to an area, creating the area once."""
+    registry = ar.async_get(hass)
+    area = registry.async_get_area_by_name(area_name) or registry.async_create(area_name)
+    dr.async_get(hass).async_update_device(tablet.paired.ha_device_id, area_id=area.id)
+    return area.id
+
+
+# --- a call, end to end ------------------------------------------------------
+
+
+async def test_call_rings_answers_relays_and_ends(hass_setup, make_tablet, bus):
+    """The whole path: ring, answer, both signal directions, hang up from HA."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+
+    await start_call(hass_setup, office, kitchen)
+
+    ring = await kitchen.next_command("intercom_ring")
+    call_id = ring["args"]["call_id"]
+    assert ring["args"] == {
+        "call_id": call_id,
+        "caller_device_id": office.paired.device_id,
+        "caller_name": "Office Kiosk",
+        "mode": "call",
+    }
+    # The caller is not rung for its own call.
+    await office.no_command("intercom_ring", wait=0.1)
+
+    started = await bus.wait(INTERCOM_STARTED)
+    assert started.data == {
+        "call_id": call_id,
+        "mode": "call",
+        "caller": office.paired.ha_device_id,
+        "callees": [kitchen.paired.ha_device_id],
+        "tabula_caller": office.paired.device_id,
+        "tabula_callees": [kitchen.paired.device_id],
+    }
+
+    await kitchen.event("event.intercom_answer", {"call_id": call_id})
+    answered = await bus.wait(INTERCOM_ANSWERED)
+    assert answered.data["call_id"] == call_id
+    assert answered.data["answered_by"] == kitchen.paired.ha_device_id
+
+    # The offer goes caller -> callee, unchanged.
+    await office.event(
+        "event.intercom_signal", {"call_id": call_id, "kind": "offer", "payload": OFFER}
+    )
+    relayed = await kitchen.next_command("intercom_signal")
+    assert relayed["args"] == {"call_id": call_id, "kind": "offer", "payload": OFFER}
+
+    # And the answer comes back the other way, unchanged.
+    await kitchen.event(
+        "event.intercom_signal", {"call_id": call_id, "kind": "answer", "payload": ANSWER}
+    )
+    relayed = await office.next_command("intercom_signal")
+    assert relayed["args"] == {"call_id": call_id, "kind": "answer", "payload": ANSWER}
+
+    await end_call(hass_setup, call_id)
+    for tablet in (office, kitchen):
+        end = await tablet.next_command("intercom_end")
+        assert end["args"] == {"call_id": call_id, "reason": "command"}
+    ended = await bus.wait(INTERCOM_ENDED)
+    assert ended.data["call_id"] == call_id
+    assert ended.data["reason"] == "command"
+
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.intercom.calls == {}
+
+
+async def test_decline_ends_the_call_for_both_sides(hass_setup, make_tablet, bus):
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+
+    await kitchen.event("event.intercom_decline", {"call_id": call_id})
+
+    for tablet in (office, kitchen):
+        end = await tablet.next_command("intercom_end")
+        assert end["args"] == {"call_id": call_id, "reason": "decline"}
+    ended = await bus.wait(INTERCOM_ENDED)
+    assert ended.data["reason"] == "decline"
+    assert bus.silent(INTERCOM_MISSED)
+
+
+# --- timers ------------------------------------------------------------------
+
+
+async def test_unanswered_call_is_missed_at_the_ring_limit(
+    hass_setup, make_tablet, bus, monkeypatch
+):
+    """The ring limit ends an unanswered call as missed (ADR 0028 guard 2)."""
+    monkeypatch.setattr(intercom, "INTERCOM_RING_LIMIT_S", 0.2)
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+
+    await advance(hass_setup)
+    missed = await bus.wait(INTERCOM_MISSED)
+    assert missed.data["call_id"] == call_id
+    assert missed.data["reason"] == "timeout"
+    for tablet in (office, kitchen):
+        end = await tablet.next_command("intercom_end")
+        assert end["args"] == {"call_id": call_id, "reason": "timeout"}
+    # A missed call fires the missed event instead of ended, once.
+    assert bus.silent(INTERCOM_ENDED)
+
+
+async def test_answered_call_that_never_connects_times_out(
+    hass_setup, make_tablet, bus, monkeypatch
+):
+    """Answered, but no signal in time: the connect timeout ends it."""
+    monkeypatch.setattr(intercom, "INTERCOM_CONNECT_TIMEOUT_S", 0.2)
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+    await kitchen.event("event.intercom_answer", {"call_id": call_id})
+    await bus.wait(INTERCOM_ANSWERED)
+
+    await advance(hass_setup)
+    ended = await bus.wait(INTERCOM_ENDED)
+    assert ended.data["reason"] == "timeout"
+    for tablet in (office, kitchen):
+        end = await tablet.next_command("intercom_end")
+        assert end["args"] == {"call_id": call_id, "reason": "timeout"}
+    assert bus.silent(INTERCOM_MISSED)
+
+
+async def test_hard_limit_ends_a_connected_call(hass_setup, make_tablet, bus, monkeypatch):
+    """Every call ends at the hard limit, however it is going (guard 2)."""
+    monkeypatch.setattr(intercom, "INTERCOM_RING_LIMIT_S", 5.0)
+    monkeypatch.setattr(intercom, "INTERCOM_CONNECT_TIMEOUT_S", 5.0)
+    monkeypatch.setattr(intercom, "INTERCOM_CALL_LIMIT_S", 0.3)
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    call_id = await answered_call(hass_setup, office, kitchen)
+
+    await advance(hass_setup)
+    ended = await bus.wait(INTERCOM_ENDED)
+    assert ended.data["call_id"] == call_id
+    assert ended.data["reason"] == "limit"
+    for tablet in (office, kitchen):
+        end = await tablet.next_command("intercom_end")
+        assert end["args"] == {"call_id": call_id, "reason": "limit"}
+
+
+async def test_end_from_ha_reaches_every_device_in_every_state(hass_setup, make_tablet, bus):
+    """Guard 3, state by state: ringing, connecting, in a call, broadcasting."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+
+    # ringing
+    await start_call(hass_setup, office, kitchen)
+    ringing = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+    await end_call(hass_setup, ringing)
+    for tablet in (office, kitchen):
+        assert (await tablet.next_command("intercom_end"))["args"] == {
+            "call_id": ringing,
+            "reason": "command",
+        }
+
+    # connecting: answered, no signal yet
+    await start_call(hass_setup, office, kitchen)
+    connecting = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+    await kitchen.event("event.intercom_answer", {"call_id": connecting})
+    await bus.wait(INTERCOM_ANSWERED)
+    await end_call(hass_setup, connecting)
+    for tablet in (office, kitchen):
+        assert (await tablet.next_command("intercom_end"))["args"] == {
+            "call_id": connecting,
+            "reason": "command",
+        }
+
+    # in a call: answered and signaling
+    in_call = await answered_call(hass_setup, office, kitchen)
+    await end_call(hass_setup, in_call)
+    for tablet in (office, kitchen):
+        assert (await tablet.next_command("intercom_end"))["args"] == {
+            "call_id": in_call,
+            "reason": "command",
+        }
+
+    # broadcasting
+    await start_call(hass_setup, office, kitchen, mode="broadcast")
+    broadcasting = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+    await end_call(hass_setup, broadcasting)
+    for tablet in (office, kitchen):
+        assert (await tablet.next_command("intercom_end"))["args"] == {
+            "call_id": broadcasting,
+            "reason": "command",
+        }
+
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.intercom.calls == {}
+    assert len(bus.events[INTERCOM_ENDED]) == 4
+
+
+async def test_end_by_device_target(hass_setup, make_tablet):
+    """`intercom_end` can name a tablet instead of a call id."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+
+    await hass_setup.services.async_call(
+        DOMAIN,
+        "intercom_end",
+        {"device_id": kitchen.paired.ha_device_id},
+        blocking=True,
+    )
+    for tablet in (office, kitchen):
+        assert (await tablet.next_command("intercom_end"))["args"] == {
+            "call_id": call_id,
+            "reason": "command",
+        }
+
+
+async def test_end_with_nothing_to_end_is_an_error(hass_setup, make_tablet):
+    office = await make_tablet("Office Kiosk")
+    with pytest.raises(ServiceValidationError):
+        await end_call(hass_setup, "01JC9Z6Q2H3W7K5N8T4V0BXDRA")
+    with pytest.raises(ServiceValidationError):
+        await hass_setup.services.async_call(DOMAIN, "intercom_end", {}, blocking=True)
+    with pytest.raises(ServiceValidationError):
+        await hass_setup.services.async_call(
+            DOMAIN,
+            "intercom_end",
+            {"call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA", "device_id": office.paired.ha_device_id},
+            blocking=True,
+        )
+    with pytest.raises(ServiceValidationError):
+        await hass_setup.services.async_call(
+            DOMAIN,
+            "intercom_end",
+            {"device_id": office.paired.ha_device_id},
+            blocking=True,
+        )
+
+
+# --- disconnects and restarts (guard 4) ---------------------------------------
+
+
+async def test_device_disconnect_mid_call_ends_it_for_the_other_side(hass_setup, make_tablet, bus):
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    call_id = await answered_call(hass_setup, office, kitchen)
+
+    await kitchen.close()
+
+    end = await office.next_command("intercom_end")
+    assert end["args"] == {"call_id": call_id, "reason": "disconnect"}
+    ended = await bus.wait(INTERCOM_ENDED)
+    assert ended.data["reason"] == "disconnect"
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.intercom.calls == {}
+
+
+async def test_re_register_mid_call_never_resumes(hass_setup, make_tablet, bus, session, server):
+    """A restart ends the call and is told to hang up, not rung again."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    call_id = await answered_call(hass_setup, office, kitchen)
+
+    # The tablet comes back on a new socket, still reporting the old call.
+    client = await ws_connect(session, server, kitchen.paired.refresh_token)
+    restarted = Tablet(client, kitchen.paired, "Kitchen Kiosk")
+    reply = await client.reply(register_frame(kitchen.paired, INTERCOM_CAPS, kind="in_call"))
+    assert reply["success"], reply
+    reply = await client.reply(frame_fixture("subscribe", id=3))
+    assert reply["success"], reply
+    await restarted.start()
+
+    assert (await office.next_command("intercom_end"))["args"] == {
+        "call_id": call_id,
+        "reason": "disconnect",
+    }
+    # The stale state is answered with intercom_end, not a new ring.
+    assert (await restarted.next_command("intercom_end"))["args"] == {
+        "call_id": call_id,
+        "reason": "disconnect",
+    }
+    await restarted.no_command("intercom_ring")
+    ended = await bus.wait(INTERCOM_ENDED)
+    assert ended.data["reason"] == "disconnect"
+    await restarted.close()
+
+
+async def test_stale_call_state_ha_never_had_is_logged_not_guessed(hass_setup, make_tablet, caplog):
+    """A non-idle state from a call HA does not know cannot be ended by id."""
+    caplog.set_level("WARNING")
+    tablet = await make_tablet("Kitchen Kiosk", kind="in_call")
+    await hass_setup.async_block_till_done()
+    await tablet.no_command("intercom_end")
+    assert "HA has no call to end" in caplog.text
+
+
+# --- who may be called -------------------------------------------------------
+
+
+async def test_two_tablets_in_one_area_are_refused_a_call(hass_setup, make_tablet):
+    """Same-area calls feed back (ADR 0025 consequences): refuse and say why."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, office, "Office")
+    put_in_area(hass_setup, kitchen, "Office")
+
+    with pytest.raises(ServiceValidationError) as err:
+        await start_call(hass_setup, office, kitchen)
+    assert err.value.translation_key == "intercom_same_area"
+    await kitchen.no_command("intercom_ring")
+    await office.no_command("intercom_end")
+
+
+async def test_broadcast_skips_a_tablet_in_the_callers_area(hass_setup, make_tablet):
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    bedroom = await make_tablet("Bedroom Kiosk")
+    put_in_area(hass_setup, office, "Office")
+    put_in_area(hass_setup, kitchen, "Office")
+
+    await start_call(hass_setup, office, None, mode="broadcast")
+
+    ring = await bedroom.next_command("intercom_ring")
+    assert ring["args"]["mode"] == "broadcast"
+    await kitchen.no_command("intercom_ring")
+    await office.no_command("intercom_ring")
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    call = hub_runtime.intercom.calls[ring["args"]["call_id"]]
+    assert call.callees == [bedroom.paired.device_id]
+    assert call.state == intercom.STATE_BROADCASTING
+
+
+async def test_broadcast_without_a_target_rings_every_listening_tablet(hass_setup, make_tablet):
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    bedroom = await make_tablet("Bedroom Kiosk")
+
+    await start_call(hass_setup, office, None, mode="broadcast")
+
+    for tablet in (kitchen, bedroom):
+        ring = await tablet.next_command("intercom_ring")
+        assert ring["args"]["mode"] == "broadcast"
+        assert ring["args"]["caller_device_id"] == office.paired.device_id
+    await office.no_command("intercom_ring")
+    # A broadcast is never answered: it is live from the start.
+    assert active_calls(hass_setup) == 1
+
+
+async def test_a_tablet_that_cannot_hear_is_never_rung(hass_setup, make_tablet):
+    """Capability gating: only a device that declared `intercom_listen` is rung."""
+    office = await make_tablet("Office Kiosk")
+    plain = await make_tablet("Plain Tablet", caps=NO_INTERCOM_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk", caps=LISTEN_ONLY_CAPS)
+
+    await hass_setup.services.async_call(
+        DOMAIN,
+        "intercom_call",
+        {
+            "caller": office.paired.ha_device_id,
+            "device_id": [plain.paired.ha_device_id, kitchen.paired.ha_device_id],
+        },
+        blocking=True,
+    )
+    await kitchen.next_command("intercom_ring")
+    assert plain.commands == []
+
+    # Nothing left that can hear: an error, not a call that rings nobody.
+    with pytest.raises(ServiceValidationError):
+        await start_call(hass_setup, office, plain)
+
+
+async def test_a_tablet_already_in_a_call_is_not_rung_again(hass_setup, make_tablet):
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    bedroom = await make_tablet("Bedroom Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    await kitchen.next_command("intercom_ring")
+
+    with pytest.raises(ServiceValidationError) as err:
+        await start_call(hass_setup, bedroom, kitchen)
+    assert err.value.translation_key == "intercom_busy"
+    await kitchen.no_command("intercom_ring")
+
+
+async def test_a_ring_refused_busy_ends_the_callers_side(hass_setup, make_tablet, bus):
+    """PROTOCOL 4.5: a busy NACK becomes the caller's `intercom_end` reason."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    kitchen.nack["intercom_ring"] = ("busy", "already in a call")
+
+    with pytest.raises(ServiceValidationError):
+        await start_call(hass_setup, office, kitchen)
+
+    end = await office.next_command("intercom_end")
+    assert end["args"]["reason"] == "busy"
+    ended = await bus.wait(INTERCOM_ENDED)
+    assert ended.data["reason"] == "busy"
+
+
+async def test_caller_must_be_a_tablet_that_can_talk(hass_setup, make_tablet):
+    listen_only = await make_tablet("Kitchen Kiosk", caps=LISTEN_ONLY_CAPS)
+    office = await make_tablet("Office Kiosk")
+    with pytest.raises(ServiceValidationError):
+        await start_call(hass_setup, listen_only, office)
+    with pytest.raises(ServiceValidationError):
+        await hass_setup.services.async_call(
+            DOMAIN,
+            "intercom_call",
+            {"caller": "not-a-tablet", "device_id": office.paired.ha_device_id},
+            blocking=True,
+        )
+
+
+async def test_two_calls_on_different_pairs_run_apart(hass_setup, make_tablet):
+    """Each call relays only between its own two peers."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    bedroom = await make_tablet("Bedroom Kiosk")
+    hall = await make_tablet("Hall Kiosk")
+
+    await start_call(hass_setup, office, kitchen)
+    first = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+    await start_call(hass_setup, bedroom, hall)
+    second = (await hall.next_command("intercom_ring"))["args"]["call_id"]
+    assert first != second
+
+    await office.event(
+        "event.intercom_signal", {"call_id": first, "kind": "offer", "payload": OFFER}
+    )
+    relayed = await kitchen.next_command("intercom_signal")
+    assert relayed["args"]["call_id"] == first
+    await bedroom.event(
+        "event.intercom_signal", {"call_id": second, "kind": "offer", "payload": ANSWER}
+    )
+    relayed = await hall.next_command("intercom_signal")
+    assert relayed["args"] == {"call_id": second, "kind": "offer", "payload": ANSWER}
+    # Neither pair saw the other's signaling.
+    await kitchen.no_command("intercom_signal", wait=0.1)
+    await hall.no_command("intercom_signal", wait=0.1)
+    assert active_calls(hass_setup) == 2
+
+
+async def test_signal_from_a_tablet_not_in_the_call_is_not_relayed(hass_setup, make_tablet):
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    bedroom = await make_tablet("Bedroom Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+
+    await bedroom.event(
+        "event.intercom_signal", {"call_id": call_id, "kind": "offer", "payload": OFFER}
+    )
+    await kitchen.no_command("intercom_signal", wait=0.3)
+    await office.no_command("intercom_signal", wait=0.1)
+
+
+# --- a call started on the tablet's own screen -------------------------------
+
+
+async def test_device_start_request_uses_the_same_path(hass_setup, make_tablet, bus):
+    """`intercom_start_request` resolves the target and rings it (ADR 0025 d6)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+
+    await kitchen.event(
+        "event.intercom_start_request",
+        {
+            "call_id": CALL_ID,
+            "mode": "call",
+            "target_device_id": office.paired.ha_device_id,
+        },
+    )
+
+    ring = await office.next_command("intercom_ring")
+    assert ring["args"] == {
+        "call_id": CALL_ID,
+        "caller_device_id": kitchen.paired.device_id,
+        "caller_name": "Kitchen Kiosk",
+        "mode": "call",
+    }
+    started = await bus.wait(INTERCOM_STARTED)
+    assert started.data["call_id"] == CALL_ID
+    assert started.data["caller"] == kitchen.paired.ha_device_id
+
+
+async def test_device_start_request_by_area_and_broadcast(hass_setup, make_tablet):
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, office, "Kitchen")
+
+    await kitchen.event(
+        "event.intercom_start_request",
+        {"call_id": CALL_ID, "mode": "broadcast", "target_area_id": "kitchen"},
+    )
+    ring = await office.next_command("intercom_ring")
+    assert ring["args"]["call_id"] == CALL_ID
+    assert ring["args"]["mode"] == "broadcast"
+
+    # A broadcast that names no target reaches every listening tablet.
+    await end_call(hass_setup, CALL_ID)
+    await office.next_command("intercom_end")
+    office2 = await make_tablet("Office Kiosk Two")
+    await kitchen.event(
+        "event.intercom_start_request",
+        {"call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRB", "mode": "broadcast"},
+    )
+    for tablet in (office, office2):
+        ring = await tablet.next_command("intercom_ring")
+        assert ring["args"]["call_id"] == "01JC9Z6Q2H3W7K5N8T4V0BXDRB"
+
+
+async def test_device_start_request_without_talk_is_refused(hass_setup, make_tablet):
+    office = await make_tablet("Office Kiosk")
+    listen_only = await make_tablet("Kitchen Kiosk", caps=LISTEN_ONLY_CAPS)
+
+    await listen_only.event(
+        "event.intercom_start_request",
+        {"call_id": CALL_ID, "mode": "call", "target_device_id": office.paired.ha_device_id},
+    )
+    await office.no_command("intercom_ring")
+
+
+async def test_device_start_request_with_an_unknown_target_is_ignored(hass_setup, make_tablet):
+    kitchen = await make_tablet("Kitchen Kiosk")
+    await kitchen.event(
+        "event.intercom_start_request",
+        {
+            "call_id": CALL_ID,
+            "mode": "call",
+            "target_device_id": "9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50",
+        },
+    )
+    await kitchen.no_command("intercom_ring")
+    assert active_calls(hass_setup) == 0
+
+
+async def test_a_reused_call_id_is_refused_and_the_live_call_survives(hass_setup, make_tablet, bus):
+    """A device reusing a live call's id must not orphan that call (P9.2 review)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    bedroom = await make_tablet("Bedroom Kiosk")
+    hall = await make_tablet("Hall Kiosk")
+    await start_call(hass_setup, office, kitchen)
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+
+    await bedroom.event(
+        "event.intercom_start_request",
+        {"call_id": call_id, "mode": "call", "target_device_id": hall.paired.ha_device_id},
+    )
+    await hall.no_command("intercom_ring")
+    assert active_calls(hass_setup) == 1
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.intercom.calls[call_id].callees == [kitchen.paired.device_id]
+    assert bus.silent(INTERCOM_ENDED)
+
+    # The original call still ends from HA, on the id it was started with.
+    await end_call(hass_setup, call_id)
+    for tablet in (office, kitchen):
+        assert (await tablet.next_command("intercom_end"))["args"]["call_id"] == call_id
+    assert (await bus.wait(INTERCOM_ENDED)).data["call_id"] == call_id
+
+
+async def test_same_socket_reregister_mid_call_clears_the_stale_state(hass_setup, make_tablet, bus):
+    """A re-register on an open subscription drains the deferred end (review)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    call_id = await answered_call(hass_setup, office, kitchen)
+
+    await kitchen.reregister(INTERCOM_CAPS, kind="in_call")
+
+    assert (await office.next_command("intercom_end"))["args"] == {
+        "call_id": call_id,
+        "reason": "disconnect",
+    }
+    assert (await kitchen.next_command("intercom_end"))["args"] == {
+        "call_id": call_id,
+        "reason": "disconnect",
+    }
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    assert hub_runtime.intercom._pending_reset == {}
+    assert (await bus.wait(INTERCOM_ENDED)).data["reason"] == "disconnect"
+
+
+async def test_intercom_call_by_area_reaches_a_tablet_with_no_live_entities(
+    hass_setup, make_tablet
+):
+    """An area target resolves through the device registry (P9.2 decision 10)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    area_id = put_in_area(hass_setup, kitchen, "Kitchen")
+    disable_entities(hass_setup, kitchen)
+    await hass_setup.async_block_till_done()
+
+    await hass_setup.services.async_call(
+        DOMAIN,
+        "intercom_call",
+        {"caller": office.paired.ha_device_id, "area_id": area_id},
+        blocking=True,
+    )
+    assert (await kitchen.next_command("intercom_ring"))["args"]["caller_device_id"] == (
+        office.paired.device_id
+    )
+
+    # And the same target ends it.
+    await hass_setup.services.async_call(
+        DOMAIN, "intercom_end", {"area_id": area_id}, blocking=True
+    )
+    assert (await kitchen.next_command("intercom_end"))["args"]["reason"] == "command"
+    assert active_calls(hass_setup) == 0
+
+
+async def test_notify_by_area_reaches_a_tablet_with_no_live_entities(hass_setup, make_tablet):
+    """The widened area resolution serves the other services too (review)."""
+    kitchen = await make_tablet("Kitchen Kiosk")
+    area_id = put_in_area(hass_setup, kitchen, "Kitchen")
+    disable_entities(hass_setup, kitchen)
+    await hass_setup.async_block_till_done()
+
+    await hass_setup.services.async_call(
+        DOMAIN,
+        "notify",
+        {"area_id": area_id, "message": "Dinner is ready"},
+        blocking=True,
+    )
+    assert (await kitchen.next_command("notify"))["args"]["message"] == "Dinner is ready"
+
+
+# --- the sensor --------------------------------------------------------------
+
+
+async def test_intercom_sensor_follows_the_device(hass_setup, make_tablet):
+    kitchen = await make_tablet("Kitchen Kiosk")
+    plain = await make_tablet("Plain Tablet", caps=NO_INTERCOM_CAPS)
+
+    eid = entity_id(hass_setup, "sensor", kitchen.paired, "intercom_state")
+    assert eid is not None
+    await until(lambda: hass_setup.states.get(eid) is not None)
+    await until(lambda: hass_setup.states.get(eid).state == "idle")
+    await kitchen.state({"intercom_state": "ringing"})
+    await until(lambda: hass_setup.states.get(eid).state == "ringing")
+    await kitchen.state({"intercom_state": "in_call"})
+    await until(lambda: hass_setup.states.get(eid).state == "in_call")
+
+    # A tablet that cannot hear a call has no intercom sensor at all.
+    assert entity_id(hass_setup, "sensor", plain.paired, "intercom_state") is None
+
+
+async def test_intercom_entities_follow_a_capability_gained_later(hass_setup, make_tablet):
+    """A tablet that starts declaring the capability gets the sensor then."""
+    kitchen = await make_tablet("Kitchen Kiosk", caps=NO_INTERCOM_CAPS)
+    assert entity_id(hass_setup, "sensor", kitchen.paired, "intercom_state") is None
+
+    await kitchen.reregister(INTERCOM_CAPS)
+    await until(
+        lambda: entity_id(hass_setup, "sensor", kitchen.paired, "intercom_state") is not None
+    )

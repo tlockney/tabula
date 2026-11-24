@@ -47,6 +47,8 @@ from .const import (
     SIGNAL_SCREENSHOT,
     USER_NAME_PREFIX,
 )
+from .exceptions import DeviceCommandError
+from .intercom import IntercomManager
 from .pairing import (
     PendingPairing,
     PendingPairings,
@@ -212,6 +214,8 @@ class TabulaHub:
         self.tlp = TLPValidator()
         self.devices: dict[str, DeviceRecord] = {}
         self.by_user: dict[str, str] = {}
+        # Intercom calls, the signaling relay and the call timers (P9.2).
+        self.intercom = IntercomManager(self)
         # Per-device settings documents and revisions (settings.py, plan 5.6).
         self.settings = SettingsStore(hass)
         # The latest screenshot per device, outside HA's media dir (P3.13, PROTOCOL 5).
@@ -261,6 +265,12 @@ class TabulaHub:
             return None
         device_id = self.by_user.get(user.id)
         return self.devices.get(device_id) if device_id is not None else None
+
+    def record_for_ha_device(self, ha_device_id: str | None) -> DeviceRecord | None:
+        """The paired tablet behind an HA device registry id (services, intercom)."""
+        if not ha_device_id:
+            return None
+        return next((r for r in self.devices.values() if r.ha_device_id == ha_device_id), None)
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -485,6 +495,15 @@ class TabulaHub:
         )
         previous = (set(record.capabilities), record.schema_version)
         record.update_from_register(frame, self.tlp.known_capabilities)
+        # A device that re-registers mid-call does not resume it: the call ends
+        # for the other side, and a stale non-idle state is cleared once this
+        # connection subscribes (ADR 0028 guard 4, P9.2).
+        self.intercom.device_rejoined(record)
+        if session.subscription_id is not None:
+            # A re-register on an open subscription can take the deferred
+            # intercom_end now; waiting for another subscribe would leave the
+            # reset queued for the life of the hub (P9.2 review).
+            self.hass.async_create_task(self.intercom.async_after_subscribe(record))
         self._update_device_registry(record)
         if (set(record.capabilities), record.schema_version) != previous:
             self._persist()
@@ -542,6 +561,9 @@ class TabulaHub:
             record = session.device
             if record is not None and record.current is session:
                 record.current = None
+                # A device that drops out of a call ends it for the other side
+                # instead of leaving someone talking to nobody (P9.2, guard 4).
+                self.intercom.device_offline(record.device_id)
                 self.notify_update(record)
             self.sessions.pop(session.connection, None)
             session.subscription_id = None
@@ -646,7 +668,8 @@ class TabulaHub:
             self.result_futures.pop(key, None)
         if not result["ok"]:
             error = result["error"]
-            raise HomeAssistantError(
+            raise DeviceCommandError(
+                code=str(error.get("code")),
                 translation_domain=DOMAIN,
                 translation_key="command_failed",
                 translation_placeholders={
@@ -707,6 +730,7 @@ class TabulaHub:
     @callback
     def teardown(self) -> None:
         """Close every device socket (#97, ADR 0019), then drop listeners and timers."""
+        self.intercom.shutdown()
         for session in list(self.sessions.values()):
             _close_device_socket(session.connection)
         for unsub in self._unsub:
@@ -717,8 +741,8 @@ class TabulaHub:
         self._pending_timers.clear()
 
 
-def _command_error(key: str, command: str) -> HomeAssistantError:
-    return HomeAssistantError(
+def _command_error(key: str, command: str) -> DeviceCommandError:
+    return DeviceCommandError(
         translation_domain=DOMAIN,
         translation_key=key,
         translation_placeholders={"command": command},
