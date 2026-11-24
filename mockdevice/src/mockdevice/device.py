@@ -169,9 +169,14 @@ class MockDevice:
             # the capability is always declared, so the flag is always sent;
             # off until a settings push switches it on (P7.1, ADR 0030)
             "wake_word_active": False,
-            "intercom_state": "idle",
             "app_version": __version__,
         }
+        # PROTOCOL 4.4's coverage rule: a capability-gated key is only sent by a
+        # device that declares the capability, `register` included. state is
+        # strict for unknown keys even in a tolerant receiver, so a device
+        # without the key must not announce it.
+        if "intercom_listen" in self.capabilities:
+            self.state["intercom_state"] = "idle"
         # The call this device is in, if any (P9.1): its id, mode, caller and
         # the two deadlines the tests drive with the injected clock.
         self.intercom_call: dict[str, Any] | None = None
@@ -302,7 +307,9 @@ class MockDevice:
     # --- intercom (P9.1, ADR 0025) -----------------------------------------
 
     def _intercom_state(self, state: str) -> None:
-        self.update(intercom_state=state)
+        """Report a call-state change, on a device that declares intercom_listen."""
+        if "intercom_listen" in self.capabilities:
+            self.update(intercom_state=state)
 
     def check_intercom_timers(self) -> str | None:
         """Apply the ring limit and the hard call limit (ADR 0028 guards 2).
@@ -312,13 +319,14 @@ class MockDevice:
         ``INTERCOM_RING_LIMIT_S`` and a call ends by itself after
         ``INTERCOM_CALL_LIMIT_S``. Tests drive this with the injected clock;
         every command checks it too, so a live mock notices on its next one.
-        Returns the reason the call ended, or None.
+        Returns the reason the call ended, or None; the tests assert on it, no
+        production path reads it.
         """
         call = self.intercom_call
         if call is None:
             return None
         now = self.clock()
-        if self.state["intercom_state"] == "ringing" and now >= call["ring_deadline"]:
+        if self.state.get("intercom_state") == "ringing" and now >= call["ring_deadline"]:
             self._end_intercom("timeout")
             return "timeout"
         if now >= call["call_deadline"]:
@@ -398,7 +406,7 @@ class MockDevice:
 
     def _ringing_call(self) -> dict[str, Any]:
         call = self.intercom_call
-        if call is None or self.state["intercom_state"] != "ringing":
+        if call is None or self.state.get("intercom_state") != "ringing":
             raise CommandError("invalid_args", "no call is ringing")
         return call
 

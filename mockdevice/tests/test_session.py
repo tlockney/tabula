@@ -374,6 +374,11 @@ async def test_intercom_is_negotiated_and_commands_are_gated(server, store, star
     await start(store, device)
     record = await server.wait_registered(store.device_id)
     assert [c for c in record.capabilities if c.startswith("intercom")] == []
+    # PROTOCOL 4.4: a gated state key belongs only to a device that declares the
+    # capability. `state` is strict for unknown keys even in a tolerant
+    # receiver, so announcing the key would get the whole register refused.
+    assert [k for k in record.state if k.startswith("intercom")] == []
+    assert [k for k in device.state if k.startswith("intercom")] == []
 
     for command, args in (
         ("intercom_ring", intercom_ring()),

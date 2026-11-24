@@ -61,8 +61,14 @@ enum class Capability {
     @SerialName("audio") AUDIO,
     @SerialName("battery") BATTERY,
     @SerialName("navigation") NAVIGATION,
+    // The schema has carried go_home since P3.15; the enum had not caught up,
+    // which the schema-enum guard test (SchemaEnumsTest) found.
+    @SerialName("go_home") GO_HOME,
     @SerialName("logs") LOGS,
     @SerialName("screenshot") SCREENSHOT,
+    // Likewise since P3.16 (the light sensor): schema knowledge, not a claim
+    // the app makes about this device.
+    @SerialName("illuminance") ILLUMINANCE,
     // P7.1: declared only while voice.wake_word_enabled is on and RECORD_AUDIO
     // is granted (ADR 0030 item 2).
     @SerialName("wake_word") WAKE_WORD,
@@ -117,7 +123,6 @@ enum class DismissReason {
     @SerialName("timeout") TIMEOUT,
     @SerialName("replaced") REPLACED,
     @SerialName("command") COMMAND,
-    @SerialName("busy") BUSY,
 }
 
 /** screensaver_started trigger. */

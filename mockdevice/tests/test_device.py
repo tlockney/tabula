@@ -482,6 +482,13 @@ async def test_intercom_commands_need_the_capability():
         assert err.value.code == "unsupported_command"
 
 
+def test_intercom_state_is_only_sent_by_a_device_that_declares_it():
+    """PROTOCOL 4.4: a gated key is not announced by a device without the capability."""
+    assert MockDevice().state["intercom_state"] == "idle"
+    assert "intercom_state" not in MockDevice(capabilities=["screen", "brightness"]).state
+    assert "intercom_state" not in MockDevice(capabilities=["intercom_talk"]).state
+
+
 async def test_intercom_state_is_idle_until_a_call():
     device, _, deltas = intercom_device()
     deltas.clear()

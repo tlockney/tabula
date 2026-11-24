@@ -122,7 +122,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `media_state` | `idle` \| `playing` \| `paused` | |
 | `app_version` | string | |
 
-The device coalesces changes and sends at most one `state` frame per `STATE_MIN_INTERVAL`. Unknown keys are invalid in v1; new keys arrive with a capability (section 8).
+The device coalesces changes and sends at most one `state` frame per `STATE_MIN_INTERVAL`. Unknown keys are invalid in v1; new keys arrive with a capability (section 8). A capability-gated key is sent only by a device that declares the covering capability, and that holds for `register` as much as for a delta: `register` carries every state key the device supports *among those its declared capabilities cover* (4.2's "every state key it supports" reads with this rule). The consequence is worth stating plainly, because `state` stays strict for unknown keys even in a tolerant receiver: an integration older than a key refuses the whole `register` frame over it, so a device gains a gated key only in a build that ships after the integration that knows the key. Gating keeps the key honest; only the integration's release order keeps the frame acceptable.
 
 ### 4.5 Commands (integration → device)
 
