@@ -155,6 +155,26 @@ def assemble_document(
     return document
 
 
+def cross_field_problems(document: dict[str, Any]) -> list[str]:
+    """Rules that span two leaves, which no single-subschema check can make.
+
+    P9.5: ``intercom.auto_answer: listed`` with no ``auto_answer_from`` reads
+    as "answer only these callers" while naming none, and the device would ring
+    instead. The save is refused so the two leaves cannot disagree; the device
+    still treats the pair as a plain ring if a document reaches it another way.
+    """
+    intercom = document.get("intercom")
+    if not isinstance(intercom, dict):
+        return []
+    listed = intercom.get("auto_answer") == "listed"
+    if listed and not intercom.get("auto_answer_from"):
+        return [
+            "intercom/auto_answer_from: 'listed' needs at least one caller "
+            "(or choose 'off' or 'all')"
+        ]
+    return []
+
+
 def _form_errors(problems: list[str], schema: SettingsSchema) -> dict[str, str]:
     """Map schema problems onto form fields: the failing path becomes the key.
 
@@ -295,6 +315,11 @@ class TabulaOptionsFlow(OptionsFlow):
                 hub.settings.schema, user_input, stored.settings if stored else None
             )
             hub.settings.schema.validate(document)
+            # Rules that span leaves come after the per-leaf validation, so a
+            # genuinely invalid value is reported as itself (P9.5)
+            cross_field = cross_field_problems(document)
+            if cross_field:
+                raise SettingsError(cross_field)
         except SettingsError as e:
             base = document if document is not None else (stored.settings if stored else None)
             return self.async_show_form(

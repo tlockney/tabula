@@ -145,6 +145,10 @@ object Constants {
      * payload, in UTF-8 bytes (P9.1). */
     const val INTERCOM_SIGNAL_MAX_BYTES = 4096
 
+    /** INTERCOM_ANSWER_TONE_MS: ms from an auto-answer's tone starting to the
+     * answer, and the microphone, opening (P9.5). */
+    const val INTERCOM_ANSWER_TONE_MS = 500
+
     /**
      * CARD_BACKGROUND: a notification card's near-opaque dark body, ARGB
      * (P2.5). Not const: the literal needs the Long-to-Int narrowing.

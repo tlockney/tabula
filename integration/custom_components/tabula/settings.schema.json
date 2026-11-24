@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tabula.lockney.net/schema/settings.schema.json",
-  "title": "Tabula device settings (v3)",
-  "description": "Single source of truth for per-device settings. HA is authoritative (plan 5.6): the integration validates and stores settings, pushes them with set_settings (docs/PROTOCOL.md 4.5) and the device caches them. This file covers what Phases 1-3 use: identity, connection, screen, screensaver (with the Phase 3 clock, night mode, weather, photos, website, dim, pixel-shift and fade keys), notifications, audio, At a Glance, corner widgets and the schedule. Every property carries a role tag (x-tabula-role); profiles may manage only 'shared' keys (F-MGT-03, F-MGT-04). No property carries the 'hardware' role yet — codegen must not assume every role in x-tabula-roles has members. Every leaf property names its behavior in x-tabula-feature (a docs/FEATURES.md item ID, or 'independent design' with the ADR). Defaults come only from docs/decisions/0002-constants.md. A key HA does not send keeps the device default (PROTOCOL 4.5); settings.schema.json versions independently of the protocol (schema_version in set_settings).",
-  "x-tabula-schema-version": 3,
+  "title": "Tabula device settings (v4)",
+  "description": "Single source of truth for per-device settings. HA is authoritative (plan 5.6): the integration validates and stores settings, pushes them with set_settings (docs/PROTOCOL.md 4.5) and the device caches them. This file covers what Phases 1-3 use: identity, connection, screen, screensaver (with the Phase 3 clock, night mode, weather, photos, website, dim, pixel-shift and fade keys), notifications, audio, At a Glance, corner widgets and the schedule, plus the voice and intercom groups of Phase 7 and 9. Every property carries a role tag (x-tabula-role); profiles may manage only 'shared' keys (F-MGT-03, F-MGT-04). No property carries the 'hardware' role yet — codegen must not assume every role in x-tabula-roles has members. Every leaf property names its behavior in x-tabula-feature (a docs/FEATURES.md item ID, or 'independent design' with the ADR). Defaults come only from docs/decisions/0002-constants.md. A key HA does not send keeps the device default (PROTOCOL 4.5); settings.schema.json versions independently of the protocol (schema_version in set_settings).",
+  "x-tabula-schema-version": 4,
   "x-tabula-roles": [
     "identity",
     "connection",
@@ -668,6 +668,33 @@
           "x-tabula-role": "shared",
           "x-tabula-feature": "independent design (ADR 0030)",
           "description": "Run on-device wake-word detection while the foreground service is up and RECORD_AUDIO is granted. Detection is suspended while the device plays (ADR 0029 item 3). Default per ADR 0002."
+        }
+      }
+    },
+    "intercom": {
+      "type": "object",
+      "description": "Intercom auto-answer (ADR 0025 decision 1, ADR 0028 guard 1). Off by default: answering opens a microphone with no tap, so a household opts in per device and only for callers it names. A ring always plays a short tone on the communication stream before the microphone opens.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "auto_answer": {
+          "enum": ["off", "listed", "all"],
+          "default": "off",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "independent design (ADR 0025 decision 1, ADR 0028 guard 1)",
+          "description": "Which calls this device answers without a tap: none, only the devices in auto_answer_from, or every Tabula device on the hub. A device without a usable microphone never answers automatically; it still rings. Default per ADR 0002 (settings v4)."
+        },
+        "auto_answer_from": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+          },
+          "default": [],
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "independent design (ADR 0025 decision 1, ADR 0028 guard 1)",
+          "description": "The Tabula device ids this device auto-answers when auto_answer is 'listed' (the ids a ring carries as caller_device_id; PROTOCOL 4.5). Empty with 'listed' answers nobody, which is the fail-safe reading. Default per ADR 0002 (settings v4)."
         }
       }
     },
