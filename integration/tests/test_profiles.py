@@ -287,6 +287,46 @@ async def test_override_needs_a_covered_key(hass_setup, runtime, paired):
         await store(hass_setup).async_set_override(paired.device_id, "screensaver_idle_timeout", 5)
 
 
+async def _options_submit(hass_setup, hub, paired, values: dict) -> dict:
+    """Submit the options flow for one device with these form values."""
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"device_id": paired.ha_device_id}
+    )
+    result = await hass_setup.config_entries.options.async_configure(flow["flow_id"], values)
+    await hass_setup.async_block_till_done()
+    return result
+
+
+async def test_options_flow_edit_of_a_covered_key_becomes_an_override(
+    hass_setup, hub, runtime, paired
+):
+    """The options flow writes one device's document, so its edit is an override.
+
+    ADR 0035 item 1 names the options flow among the writers that create one:
+    the form submits a whole document, not a dict of leaves, and the override is
+    what keeps the edit from being silently overwritten by the next profile save.
+    """
+    profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
+    await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
+
+    result = await _options_submit(hass_setup, hub, paired, {"screen_brightness": 80})
+    assert result["type"] == "create_entry", result
+    assert store(hass_setup).overrides(paired.device_id) == {"screen_brightness": 80}
+
+    # A profile save then leaves the device's own choice alone.
+    saved, _ = await store(hass_setup).async_save(
+        profile_id=profile.profile_id, name="Kitchen", values={"screen_brightness": 65}
+    )
+    await store(hass_setup).async_apply_profile(saved.profile_id)
+    assert store(hass_setup).stored_value(paired.device_id, "screen_brightness") == 80
+
+    # Submitting the profile's own value clears the override (ADR 0035 item 1).
+    result = await _options_submit(hass_setup, hub, paired, {"screen_brightness": 65})
+    assert result["type"] == "create_entry", result
+    assert store(hass_setup).overrides(paired.device_id) == {}
+
+
 async def test_reassignment_drops_overrides_that_shadow_nothing(hass_setup, runtime, paired):
     """An override exists only while the assigned profile covers its key."""
     first, _ = await make_profile(hass_setup, "One", {"screen_brightness": 40})

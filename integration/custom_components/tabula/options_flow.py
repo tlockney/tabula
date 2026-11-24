@@ -228,6 +228,8 @@ class TabulaOptionsFlow(OptionsFlow):
                 description_placeholders=placeholders,
             )
         document: dict[str, Any] | None = None
+        # What the save replaces, for the profile override rule (ADR 0035 item 1).
+        before = copy.deepcopy(stored.settings) if stored is not None else None
         try:
             document = assemble_document(
                 hub.settings.schema, user_input, stored.settings if stored else None
@@ -242,6 +244,10 @@ class TabulaOptionsFlow(OptionsFlow):
                 errors=_form_errors(e.problems, hub.settings.schema),
             )
         await hub.settings.async_save(record.device_id, document)
+        # A per-device edit of a key the device's profile covers is that key's
+        # override (ADR 0035 item 1): the form writes a whole document, so the
+        # changed covered keys come from what the save replaced.
+        await hub.profiles.async_record_document_overrides(record.device_id, before, document)
         hub.apply_identity(record)
         schedule_settings_push(hub, record)
         # The entry's options are not this flow's storage (settings live in the

@@ -398,6 +398,32 @@ class ProfileStore:
             self._overrides.pop(device_id, None)
         await self._async_persist()
 
+    async def async_record_document_overrides(
+        self, device_id: str, before: dict[str, Any] | None, after: dict[str, Any]
+    ) -> None:
+        """Turn the covered leaves a whole-document write changed into overrides.
+
+        The options flow submits a whole settings document rather than a dict of
+        leaves, and ADR 0035 item 1 names it among the writers that create an
+        override, so the changed keys are worked out from the two documents:
+        ``before`` is what the save replaced (None when the device had none) and
+        ``after`` is the document it wrote.
+        """
+        profile = self.profile_of(device_id)
+        if not profile.values:
+            return
+        schema = self._hub.settings.schema
+        changed: dict[str, Any] = {}
+        for key in profile.values:
+            path = schema.field(key).path
+            old = get_path(before, path) if before is not None else NO_DEFAULT
+            new = get_path(after, path)
+            if new is NO_DEFAULT or _same(old, new):
+                continue
+            changed[key] = new
+        if changed:
+            await self.async_record_overrides(device_id, changed)
+
     async def async_remove_device(self, device_id: str) -> None:
         """Forget a device's assignment and overrides (its record is gone)."""
         changed = self._assignments.pop(device_id, None) is not None
