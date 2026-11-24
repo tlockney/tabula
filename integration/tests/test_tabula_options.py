@@ -43,22 +43,35 @@ def form_keys(result: dict) -> list[str]:
     return [marker.schema for marker in result["data_schema"].schema]
 
 
+async def open_device_form(hass_setup, entry_id: str, ha_device_id: str) -> dict:
+    """Open the options menu and pick a tablet, as the UI does (P9.6's menu)."""
+    flow = await hass_setup.config_entries.options.async_init(entry_id)
+    assert flow["type"] == "menu", flow
+    assert flow["step_id"] == "init"
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "settings"}
+    )
+    assert flow["type"] == "form", flow
+    assert flow["step_id"] == "settings"
+    return await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"device_id": ha_device_id}
+    )
+
+
 async def test_options_aborts_without_devices(hass_setup, hub):
     """No paired tablets: nothing to edit."""
-    result = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    assert flow["type"] == "menu"
+    result = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "settings"}
+    )
     assert result["type"] == "abort"
     assert result["reason"] == "no_devices"
 
 
 async def test_options_form_is_generated_from_the_schema(hass_setup, server, hub, session, paired):
     """One field per editable leaf, schema order, schema defaults."""
-    result = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    assert result["type"] == "form"
-    assert result["step_id"] == "init"
-
-    result = await hass_setup.config_entries.options.async_configure(
-        result["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    result = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     assert result["type"] == "form"
     assert result["step_id"] == "device"
 
@@ -90,10 +103,7 @@ async def test_options_submit_saves_renames_and_preserves_options(
     """Submit stores revision 1, applies identity.name, leaves options alone."""
     options_before = {**hub.options}
 
-    result = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    result = await hass_setup.config_entries.options.async_configure(
-        result["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    result = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     values = form_values(schema, screen_brightness=23, identity_name="Kitchen")
     result = await hass_setup.config_entries.options.async_configure(result["flow_id"], values)
@@ -121,19 +131,13 @@ async def test_options_edit_after_save_bumps_the_revision(
     hass_setup, server, hub, session, paired, hass_storage
 ):
     """A second submit with one changed key is revision 2, not a new document."""
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], form_values(schema, screen_brightness=23)
     )
 
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     # the stored value is suggested back, not the schema default
     markers = {m.schema: m for m in flow["data_schema"].schema}
     assert markers["screen_brightness"].default() == 23
@@ -161,10 +165,7 @@ async def test_options_submit_pushes_to_a_connected_device(
     subscribed = await client.reply(frame_fixture("subscribe", id=3))
     assert subscribed["success"], subscribed
 
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     result = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], form_values(schema, screen_brightness=31)
@@ -208,10 +209,7 @@ async def test_options_invalid_input_reshows_the_form(hass_setup, server, hub, s
     reshowing. The JSON re-validation inside the flow covers what vol cannot
     express and reshow with field errors instead (next test).
     """
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     with pytest.raises(InvalidData):
         await hass_setup.config_entries.options.async_configure(
@@ -231,10 +229,7 @@ async def test_options_schema_rejection_reshows_with_field_errors(
     A malformed ha_url passes the vol string validator; the JSON schema
     refuses it and the flow maps the problem onto the offending field.
     """
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     result = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], form_values(schema, connection_ha_url="not a url")
@@ -250,10 +245,7 @@ async def test_options_schema_rejection_reshows_with_field_errors(
 
 async def test_options_submit_stores_entity_list(hass_setup, server, hub, session, paired):
     """A list of entity ids: one per line in the text editor, stored as a list."""
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     values = form_values(
         schema,
@@ -274,10 +266,7 @@ async def test_options_submit_stores_entity_list(hass_setup, server, hub, sessio
         "cover.shop",
     ]
     # and the stored value is suggested back as the editor text
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     markers = {m.schema: m for m in flow["data_schema"].schema}
     assert markers["at_a_glance_entities"].default() == "\n".join(
         ["binary_sensor.front_door", "lock.garage", "cover.shop"]
@@ -286,10 +275,7 @@ async def test_options_submit_stores_entity_list(hass_setup, server, hub, sessio
 
 async def test_options_submit_stores_schedule_slots(hass_setup, server, hub, session, paired):
     """The schedule's slots: a YAML list of objects, validated on submit."""
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     slots_yaml = (
         "- start: '07:00'\n  mode: photos\n  brightness: 40\n- start: '22:30'\n  mode: black\n"
@@ -314,10 +300,7 @@ async def test_options_submit_stores_schedule_slots(hass_setup, server, hub, ses
 
 async def test_options_bad_schedule_yaml_reshows(hass_setup, server, hub, session, paired):
     """YAML that is not a list of objects reshows on the slots field."""
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     result = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], form_values(schema, schedule_slots="07:00 photos\n")
@@ -335,10 +318,7 @@ async def test_options_schedule_item_error_maps_to_the_slots_field(
     hass_setup, server, hub, session, paired
 ):
     """An error inside a slot (bad start) lands on the list's field, not base."""
-    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
-    flow = await hass_setup.config_entries.options.async_configure(
-        flow["flow_id"], {"device_id": paired.ha_device_id}
-    )
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
     schema = SettingsSchema()
     result = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], form_values(schema, schedule_slots="- start: 7:5\n")
@@ -351,6 +331,9 @@ async def test_options_schedule_item_error_maps_to_the_slots_field(
 async def test_options_unknown_device_aborts(hass_setup, server, hub, session, paired):
     """A device id the hub does not know aborts the flow."""
     flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "settings"}
+    )
     result = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], {"device_id": "0f0f0f0f-0f0f-0f0f-0f0f-0f0f0f0f0f0f"}
     )
@@ -364,7 +347,7 @@ async def test_options_hub_not_loaded_aborts(hass_setup, server, hub, session, p
     removed = hass_setup.data.pop(DOMAIN)
     try:
         result = await hass_setup.config_entries.options.async_configure(
-            flow["flow_id"], {"device_id": paired.ha_device_id}
+            flow["flow_id"], {"next_step_id": "settings"}
         )
         assert result["type"] == "abort"
         assert result["reason"] == "hub_not_loaded"

@@ -290,6 +290,10 @@ async def test_override_needs_a_covered_key(hass_setup, runtime, paired):
 async def _options_submit(hass_setup, hub, paired, values: dict) -> dict:
     """Submit the options flow for one device with these form values."""
     flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    assert flow["type"] == "menu", flow  # the per-tablet settings sit behind the menu
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "settings"}
+    )
     flow = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], {"device_id": paired.ha_device_id}
     )

@@ -5,6 +5,11 @@ TLP fixtures: every command the integration sends is recorded and answered, so
 the tests see the wire the way a tablet does. No audio is played or captured
 anywhere here; the payloads are the peers' own signaling text, which HA copies
 without reading.
+
+The last section drives calls the way a person speaks them (P9.6, ADR 0036):
+the real conversation agent matches a sentence to a Tabula intent, so the
+sentences on disk, the capability gate, the spoken names and every refusal are
+tested through the same path a satellite uses.
 """
 
 from __future__ import annotations
@@ -15,11 +20,14 @@ from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import partial
+from pathlib import Path
 from typing import Any
 
+import hassil
 import pytest
+import yaml
 from custom_components.tabula import TabulaHub, intercom
-from custom_components.tabula.const import DOMAIN
+from custom_components.tabula.const import DOMAIN, INTERCOM_PERSONS
 from custom_components.tabula.events import (
     INTERCOM_ANSWERED,
     INTERCOM_ENDED,
@@ -27,12 +35,21 @@ from custom_components.tabula.events import (
     INTERCOM_MISSED,
     INTERCOM_STARTED,
 )
+from custom_components.tabula.intents import (
+    INTENT_BROADCAST,
+    INTENT_CALL,
+    PersonMapError,
+    parse_persons,
+    persons_to_text,
+)
 from helpers import WS, Paired, frame_fixture, pair_device, uid, ws_connect
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.components import conversation
+from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import intent as intent_helper
 from homeassistant.util import dt as dt_util
 from homeassistant.util.async_ import run_callback_threadsafe
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
@@ -47,6 +64,19 @@ except ImportError:  # pragma: no cover - only the oldest supported harness
     def fire_time_changed(hass: HomeAssistant, when) -> None:  # type: ignore[misc]
         """The same wrapper, for a harness that does not export it."""
         run_callback_threadsafe(hass.loop, partial(async_fire_time_changed, hass, when)).result()
+
+
+@pytest.fixture
+def expected_lingering_timers(request: pytest.FixtureRequest) -> bool:
+    """One unload test tolerates a leftover aiohttp websocket heartbeat timer.
+
+    HA 2026.10+ (aiohttp 3.14) stopped cancelling prior heartbeat handles, so
+    the tablet's socket can leave one scheduled when an unload closes it while
+    the test's own connection is still open. The timer belongs to the test
+    harness's aiohttp, not to the integration, and every other test here keeps
+    the strict check (see test_tabula_lifecycle.py for the same exemption).
+    """
+    return request.node.name == "test_voice_unload_removes_the_intents_and_the_sentences"
 
 
 # The fixtures' capability list, with the intercom capabilities on top. A
@@ -965,3 +995,363 @@ async def test_intercom_entities_follow_a_capability_gained_later(hass_setup, ma
     await until(
         lambda: entity_id(hass_setup, "sensor", kitchen.paired, "intercom_state") is not None
     )
+
+
+# --- P9.6: calls started by voice (ADR 0036) --------------------------------
+#
+# The caller is the tablet that heard the request (`device_id` of the assist
+# satellite's turn), so every request here goes through the real conversation
+# agent with that device id. HA's own built-in intents are in the same agent,
+# which is why the negative checks matter as much as the positive ones.
+
+# A tablet that can hear a request (`voice`, the assist satellite's capability,
+# P7.3) and capture a call (`intercom_talk`): both, or the intents do not exist.
+VOICE_CAPS: list[str] = [*INTERCOM_CAPS, "voice"]
+# Hears but cannot capture: it may be called, it cannot start one.
+LISTEN_VOICE_CAPS: list[str] = [*LISTEN_ONLY_CAPS, "voice"]
+
+
+def sentences_path(hass: HomeAssistant) -> Path:
+    """Where the integration writes its sentence set (HA's documented location)."""
+    return Path(hass.config.path("custom_sentences", "en", "tabula_intercom.yaml"))
+
+
+def registered_intents(hass: HomeAssistant) -> set[str]:
+    """The Tabula intents registered right now."""
+    return {
+        handler.intent_type
+        for handler in intent_helper.async_get(hass)
+        if handler.intent_type in (INTENT_CALL, INTENT_BROADCAST)
+    }
+
+
+async def wait_for_caps(hass: HomeAssistant, tablet: Tablet, caps: list[str]) -> None:
+    """Wait until the hub has taken the tablet's latest register frame.
+
+    `reregister` reaches Home Assistant over the socket, so the record (and the
+    capability signal the gate follows) can still be the old one when the send
+    returns.
+    """
+    hub_runtime = TabulaHub.get(hass)
+    assert hub_runtime is not None
+    await until(lambda: hub_runtime.devices[tablet.paired.device_id].capabilities == caps)
+
+
+async def say(
+    hass: HomeAssistant, text: str, device_id: str | None = None
+) -> conversation.ConversationResult:
+    """Speak a sentence through the default conversation agent, as a satellite does."""
+    return await conversation.async_converse(
+        hass,
+        text,
+        conversation_id=None,
+        context=Context(),
+        language="en",
+        device_id=device_id,
+    )
+
+
+def speech(result: conversation.ConversationResult) -> str | None:
+    """What the assistant says back."""
+    return result.response.speech.get("plain", {}).get("speech")
+
+
+async def test_intents_exist_only_while_a_tablet_can_hear(hass_setup, make_tablet):
+    """The gate: no tablet that can hear and capture, no intents and no sentences."""
+    assert registered_intents(hass_setup) == set()
+    assert not sentences_path(hass_setup).exists()
+
+    # Hearing is not enough: a listen-only tablet cannot start a call.
+    await make_tablet("Kitchen Kiosk", caps=LISTEN_VOICE_CAPS)
+    await hass_setup.async_block_till_done()
+    assert registered_intents(hass_setup) == set()
+    assert not sentences_path(hass_setup).exists()
+
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    await hass_setup.async_block_till_done()
+    assert registered_intents(hass_setup) == {INTENT_CALL, INTENT_BROADCAST}
+    assert sentences_path(hass_setup).exists()
+
+    # A tablet that stops declaring the capability closes the gate again.
+    await office.reregister(NO_INTERCOM_CAPS)
+    await wait_for_caps(hass_setup, office, NO_INTERCOM_CAPS)
+    await hass_setup.async_block_till_done()
+    assert registered_intents(hass_setup) == set()
+    assert not sentences_path(hass_setup).exists()
+
+
+async def test_sentences_match_the_way_ha_reads_them(hass_setup, make_tablet):
+    """The file on disk is a sentence set hassil matches, and it leaves HA's alone."""
+    await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    document = yaml.safe_load(sentences_path(hass_setup).read_text(encoding="utf-8"))
+    assert document["language"] == "en"
+    intents = hassil.Intents.from_dict(document)
+
+    call = hassil.recognize("call the kitchen", intents)
+    assert call is not None
+    assert call.intent.name == INTENT_CALL
+    assert {name: entity.value for name, entity in call.entities.items()} == {
+        "target": "the kitchen"
+    }
+
+    # "everyone" is a broadcast, not a room called everyone: the broadcast
+    # sentences come first, because hassil stops at the first intent that matches.
+    broadcast = hassil.recognize("call everyone", intents)
+    assert broadcast is not None
+    assert broadcast.intent.name == INTENT_BROADCAST
+
+    # An announcement is HA's own HassBroadcast intent, so the words after
+    # "broadcast" are left to it (ADR 0036 decision 3).
+    assert hassil.recognize("broadcast the time", intents) is None
+
+
+async def test_voice_calls_a_room_and_rings_it(hass_setup, make_tablet):
+    """``call the kitchen`` rings the room's tablet, from the tablet that spoke."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, office, "Office")
+    put_in_area(hass_setup, kitchen, "Kitchen")
+
+    result = await say(hass_setup, "call the kitchen", office.paired.ha_device_id)
+
+    assert speech(result) == "Calling Kitchen."
+    ring = await kitchen.next_command("intercom_ring")
+    assert ring["args"]["caller_device_id"] == office.paired.device_id
+    assert ring["args"]["mode"] == "call"
+    await office.no_command("intercom_ring", wait=0.1)
+    assert active_calls(hass_setup) == 1
+
+
+async def test_voice_calls_a_tablet_by_name(hass_setup, make_tablet):
+    """A tablet's own name works without an area."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk")
+
+    result = await say(hass_setup, "call Kitchen Kiosk", office.paired.ha_device_id)
+
+    assert speech(result) == "Calling Kitchen Kiosk."
+    assert (await kitchen.next_command("intercom_ring"))["args"]["mode"] == "call"
+
+
+async def test_voice_unknown_name_is_answered_not_guessed(hass_setup, make_tablet):
+    """An unknown room is said back, and no call is made."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, kitchen, "Kitchen")
+
+    result = await say(hass_setup, "call the attic", office.paired.ha_device_id)
+
+    assert speech(result) == "I could not find the attic."
+    await kitchen.no_command("intercom_ring", wait=0.1)
+    assert active_calls(hass_setup) == 0
+
+
+async def test_voice_needs_a_tablet_to_start_from(hass_setup, make_tablet):
+    """A request from a device that is not a paired tablet starts nothing."""
+    await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, (await make_tablet("Hall Kiosk")), "Hall")
+
+    result = await say(hass_setup, "call the kitchen")
+
+    assert speech(result) == "This device cannot start an intercom call."
+    assert active_calls(hass_setup) == 0
+
+
+async def test_voice_calls_a_person_from_the_options_map(hass_setup, make_tablet):
+    """A name the household wrote resolves to its area, and is said back by name."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, kitchen, "Kitchen")
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    hass_setup.config_entries.async_update_entry(
+        hub_runtime.entry,
+        options={
+            **hub_runtime.entry.options,
+            INTERCOM_PERSONS: [{"name": "Thomas", "area": "Kitchen"}],
+        },
+    )
+
+    result = await say(hass_setup, "call Thomas", office.paired.ha_device_id)
+
+    assert speech(result) == "Calling Thomas."
+    assert (await kitchen.next_command("intercom_ring"))["args"]["mode"] == "call"
+
+
+async def test_voice_calls_everyone_as_a_broadcast(hass_setup, make_tablet):
+    """``call everyone`` is live one-way audio to every other tablet that can hear."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk")
+    study = await make_tablet("Study Kiosk")
+    for tablet, area in ((office, "Office"), (kitchen, "Kitchen"), (study, "Study")):
+        put_in_area(hass_setup, tablet, area)
+
+    result = await say(hass_setup, "call everyone", office.paired.ha_device_id)
+
+    assert speech(result) == "Broadcasting."
+    for tablet in (kitchen, study):
+        assert (await tablet.next_command("intercom_ring"))["args"]["mode"] == "broadcast"
+    await office.no_command("intercom_ring", wait=0.1)
+
+
+async def test_voice_a_room_of_two_tablets_is_refused(hass_setup, make_tablet):
+    """Two tablets in one room have no single answer, so the request is spoken back."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    first = await make_tablet("Kitchen Wall")
+    second = await make_tablet("Kitchen Counter")
+    put_in_area(hass_setup, first, "Kitchen")
+    put_in_area(hass_setup, second, "Kitchen")
+
+    result = await say(hass_setup, "call the kitchen", office.paired.ha_device_id)
+
+    assert speech(result) == "That is more than one tablet: Kitchen Wall, Kitchen Counter."
+    assert active_calls(hass_setup) == 0
+
+
+async def test_voice_a_call_into_the_same_room_is_refused(hass_setup, make_tablet):
+    """Two speakers in one room feed back, so the refusal is spoken, not silent."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    desk = await make_tablet("Desk Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, office, "Office")
+    put_in_area(hass_setup, desk, "Office")
+    put_in_area(hass_setup, kitchen, "Kitchen")
+
+    result = await say(hass_setup, "call Desk Kiosk", office.paired.ha_device_id)
+
+    assert speech(result) == "Desk Kiosk is in the same room, so a call would echo."
+    await desk.no_command("intercom_ring", wait=0.1)
+    await kitchen.no_command("intercom_ring", wait=0.1)
+    assert active_calls(hass_setup) == 0
+
+
+async def test_voice_a_busy_tablet_is_said_back(hass_setup, make_tablet):
+    """A tablet that refuses the ring because it is in a call is named in the answer."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, kitchen, "Kitchen")
+    kitchen.nack["intercom_ring"] = ("busy", "already in a call")
+
+    result = await say(hass_setup, "call the kitchen", office.paired.ha_device_id)
+
+    assert speech(result) == "Kitchen Kiosk is already in a call."
+    assert active_calls(hass_setup) == 0
+
+
+async def test_voice_picks_up_sentences_after_the_agent_first_spoke(hass_setup, make_tablet):
+    """A hub that gains a voice tablet after the agent cached `en` still works.
+
+    The default agent parses the sentence set once per language; the sentence
+    file appears later, so the integration asks the agent to drop that cache.
+    The two requests are different sentences on purpose: the agent also caches
+    a fuzzy match per sentence and turn source, and only a new sentence makes
+    the agent look at the set again.
+    """
+    office = await make_tablet("Office Kiosk", caps=NO_INTERCOM_CAPS)
+    kitchen = await make_tablet("Kitchen Kiosk")
+    put_in_area(hass_setup, kitchen, "Kitchen")
+    # Prime the agent with the intents it had before the gate opened.
+    primed = await say(hass_setup, "call the garden", office.paired.ha_device_id)
+    assert speech(primed) != "I could not find the garden."
+
+    await office.reregister(VOICE_CAPS)
+    await wait_for_caps(hass_setup, office, VOICE_CAPS)
+    await hass_setup.async_block_till_done()
+    assert registered_intents(hass_setup) == {INTENT_CALL, INTENT_BROADCAST}
+
+    result = await say(hass_setup, "call the kitchen", office.paired.ha_device_id)
+    assert speech(result) == "Calling Kitchen."
+
+
+async def test_voice_unload_removes_the_intents_and_the_sentences(hass_setup, make_tablet, hub):
+    """An unloaded hub leaves nothing behind for the next request to match."""
+    office = await make_tablet("Office Kiosk", caps=VOICE_CAPS)
+    put_in_area(hass_setup, office, "Office")
+    assert sentences_path(hass_setup).exists()
+
+    assert await hass_setup.config_entries.async_unload(hub.entry_id)
+    await hass_setup.async_block_till_done()
+
+    assert registered_intents(hass_setup) == set()
+    assert not sentences_path(hass_setup).exists()
+
+
+# --- the person map ---------------------------------------------------------
+
+
+def test_person_map_is_a_list_of_names_with_one_target_each():
+    """The editor's YAML becomes a list of names, each with one area or tablet."""
+    assert parse_persons("") == []
+    assert parse_persons("[]") == []
+    assert parse_persons(
+        "- name: Thomas\n  area: Kitchen\n- name: Study\n  device: Study tablet\n"
+    ) == [
+        {"name": "Thomas", "area": "Kitchen"},
+        {"name": "Study", "device": "Study tablet"},
+    ]
+    # A list from a service call passes through the same checks.
+    assert parse_persons([{"name": "Thomas", "area": "Kitchen"}]) == [
+        {"name": "Thomas", "area": "Kitchen"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not: a list\n",
+        "- area: Kitchen\n",
+        "- name: Thomas\n",
+        "- name: Thomas\n  area: Kitchen\n  device: Study\n",
+        "- name: Thomas\n  area: Kitchen\n- name: Thomas\n  area: Study\n",
+    ],
+)
+def test_person_map_refuses_what_it_cannot_use(text):
+    """Every unusable entry is refused, with the reason, not stored and ignored."""
+    with pytest.raises(PersonMapError):
+        parse_persons(text)
+
+
+def test_person_map_round_trips_through_the_editor():
+    """What the editor shows is what it will accept back."""
+    persons = [{"name": "Thomas", "area": "Kitchen"}]
+    assert parse_persons(persons_to_text(persons)) == persons
+
+
+async def test_options_flow_edits_the_person_map(hass_setup, server, hub, session, paired):
+    """The names are an option of the hub entry, edited as YAML."""
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    assert flow["type"] == "menu"
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "persons"}
+    )
+    assert flow["type"] == "form"
+    assert flow["step_id"] == "persons"
+    assert flow["data_schema"]({"persons": "- name: Thomas\n  area: Kitchen\n"}) == {
+        "persons": "- name: Thomas\n  area: Kitchen\n"
+    }
+
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"persons": "- name: Thomas\n  area: Kitchen\n"}
+    )
+    assert flow["type"] == "create_entry", flow
+    await hass_setup.async_block_till_done()
+    assert hub.options[INTERCOM_PERSONS] == [{"name": "Thomas", "area": "Kitchen"}]
+
+
+async def test_options_flow_refuses_an_unusable_person_map(
+    hass_setup, server, hub, session, paired
+):
+    """A bad list reshows the editor with the error, and stores nothing."""
+    flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "persons"}
+    )
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"persons": "- name: Thomas\n"}
+    )
+    assert flow["type"] == "form"
+    assert flow["errors"] == {"persons": "invalid_persons"}
+    # The editor says what to fix, not just that something is wrong.
+    assert "give one of area or device" in flow["description_placeholders"]["problems"]
+    assert INTERCOM_PERSONS not in hub.options
