@@ -353,3 +353,47 @@ async def test_options_hub_not_loaded_aborts(hass_setup, server, hub, session, p
         assert result["reason"] == "hub_not_loaded"
     finally:
         hass_setup.data[DOMAIN] = removed
+
+
+# --- cross-leaf rules (P9.5) --------------------------------------------------
+
+
+async def test_options_refuses_listed_auto_answer_without_callers(
+    hass_setup, server, hub, session, paired
+):
+    """'only listed callers' with nobody named is a form error, not a save.
+
+    The device treats the pair as a plain ring, so accepting it would store a
+    setting that reads as a promise it does not keep (P9.5).
+    """
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
+    schema = SettingsSchema()
+    values = form_values(schema, intercom_auto_answer="listed", intercom_auto_answer_from="")
+    result = await hass_setup.config_entries.options.async_configure(flow["flow_id"], values)
+    assert result["type"] == "form", result
+    assert result["errors"] == {"intercom_auto_answer_from": "invalid_settings"}
+
+    runtime = TabulaHub.get(hass_setup)
+    assert runtime is not None
+    assert runtime.settings.revision(paired.device_id) == 0
+
+
+async def test_options_saves_listed_auto_answer_with_a_caller(
+    hass_setup, server, hub, session, paired
+):
+    """One caller is enough, and the value is the document the device reads."""
+    caller = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    flow = await open_device_form(hass_setup, hub.entry_id, paired.ha_device_id)
+    schema = SettingsSchema()
+    values = form_values(schema, intercom_auto_answer="listed", intercom_auto_answer_from=caller)
+    result = await hass_setup.config_entries.options.async_configure(flow["flow_id"], values)
+    assert result["type"] == "create_entry", result
+
+    runtime = TabulaHub.get(hass_setup)
+    assert runtime is not None
+    stored = runtime.settings.get(paired.device_id)
+    assert stored is not None
+    assert stored.settings["intercom"] == {
+        "auto_answer": "listed",
+        "auto_answer_from": [caller],
+    }
