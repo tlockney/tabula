@@ -29,7 +29,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util.ulid import ulid_now
 
-from . import pairing
+from . import pairing, panel
 from .const import (
     CLAIM_RATE_LIMIT,
     COMMAND_CAPABILITIES,
@@ -733,9 +733,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     registered here at component setup; they find the live hub per request and
     survive hub reloads (pairing.register_views, screenshots.register_views).
     """
-    from . import screenshots, services, ws_api
+    from . import panel_api, screenshots, services, ws_api
 
     ws_api.async_register(hass)
+    panel_api.async_register(hass)
     services.async_register(hass)
     pairing.register_views(hass)
     screenshots.register_views(hass)
@@ -751,6 +752,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hub.sweep_orphans()
     hub.listen_device_registry()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # The Tabularium is a view over the hub, so it exists while the hub does
+    # (P5.1); a missing bundle logs and leaves the hub usable.
+    await panel.async_register_panel(hass)
     return True
 
 
@@ -760,6 +764,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     credentials stay for a reload."""
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
+    panel.async_remove_panel(hass)
     hub = hass.data.pop(DOMAIN, None)
     if hub is not None:
         hub.teardown()

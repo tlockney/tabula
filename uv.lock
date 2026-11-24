@@ -1345,6 +1345,15 @@ wheels = [
 ]
 
 [[package]]
+name = "home-assistant-frontend"
+version = "20260128.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/2a/d259c14ed4d02e5babb277ddde6e579efe9132f5605df0aa7049ec1cb3a8/home_assistant_frontend-20260128.6.tar.gz", hash = "sha256:f1e901b059465e795eaf735281fe81e9a1b7eb2a0255c8c9db4f8cc466b95f9a", size = 110643922, upload-time = "2026-02-04T15:09:37.68Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/64/08c95c32215f533dedbc70c14fac2571620ad55ff53695a1d062c7b136ac/home_assistant_frontend-20260128.6-py3-none-any.whl", hash = "sha256:1fd307078b9584a7cfa3dce2e57443975223c9458a797af795253c3c4726ffbb", size = 110528860, upload-time = "2026-02-04T15:09:31.843Z" },
+]
+
+[[package]]
 name = "home-assistant-intents"
 version = "2026.1.28"
 source = { registry = "https://pypi.org/simple" }
@@ -3167,6 +3176,7 @@ source = { virtual = "integration" }
 dev = [
     { name = "ha-ffmpeg" },
     { name = "hassil" },
+    { name = "home-assistant-frontend" },
     { name = "home-assistant-intents" },
     { name = "homeassistant" },
     { name = "mutagen" },
@@ -3182,6 +3192,7 @@ dev = [
 dev = [
     { name = "ha-ffmpeg", specifier = "==3.2.2" },
     { name = "hassil", specifier = "==3.5.0" },
+    { name = "home-assistant-frontend", specifier = "==20260128.6" },
     { name = "home-assistant-intents", specifier = "==2026.1.28" },
     { name = "homeassistant", specifier = "==2026.2.3" },
     { name = "mutagen", specifier = "==1.47.0" },

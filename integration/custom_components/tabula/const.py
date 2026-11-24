@@ -77,3 +77,16 @@ SIGNAL_SETTINGS_UPDATE = f"{DOMAIN}_settings_update_{{}}"
 
 # hass.data keys
 DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
+# The Tabularium bundle is registered as a static path at most once per HA run
+# (P5.1); a reload only re-registers the panel.
+DATA_PANEL_REGISTERED = f"{DOMAIN}_panel_registered"
+DATA_PANEL_STATIC_PATH = f"{DOMAIN}_panel_static_path"
+
+# The Tabularium panel (P5.1, docs/packets/P5.1-panel-shell-and-codegen.md): the
+# sidebar entry, the URL HA serves the bundle from and the custom element name
+# inside it. Names, not tunables, so they live here rather than ADR 0002.
+PANEL_URL_PATH = "tabularium"
+PANEL_STATIC_URL_PATH = "/tabula_panel"
+PANEL_WEBCOMPONENT = "tabula-panel"
+PANEL_TITLE = "Tabularium"
+PANEL_ICON = "mdi:tablet-dashboard"

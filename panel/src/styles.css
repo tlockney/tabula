@@ -1,0 +1,81 @@
+/*
+ * The shell follows Home Assistant's theme through its CSS custom properties,
+ * so light and dark themes both work without asking which is active.
+ */
+:host {
+  display: block;
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 24px;
+  background: var(--primary-background-color, #fafafa);
+  color: var(--primary-text-color, #212121);
+  font-family: var(--paper-font-common-base_-_font-family, Roboto, "Noto Sans", sans-serif);
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 500;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.subtitle,
+.status,
+.route p {
+  margin: 4px 0 0;
+  color: var(--secondary-text-color, #727272);
+}
+
+.status {
+  font-variant-numeric: tabular-nums;
+}
+
+.route {
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: var(--ha-card-border-radius, 12px);
+  border: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--ha-card-background, var(--card-background-color, #ffffff));
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: var(--ha-card-border-radius, 12px);
+  border: 1px solid var(--error-color, #db4437);
+  background: var(--ha-card-background, var(--card-background-color, #ffffff));
+  color: var(--error-color, #db4437);
+}
+
+.error span {
+  flex: 1 1 240px;
+}
+
+button {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--primary-color, #03a9f4);
+  background: transparent;
+  color: var(--primary-color, #03a9f4);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--primary-color, #03a9f4);
+  color: var(--text-primary-color, #ffffff);
+}

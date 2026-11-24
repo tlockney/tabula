@@ -83,6 +83,13 @@ async def integration_fixture(hass_setup):
 @pytest.fixture
 async def server(integration, socket_enabled) -> AsyncGenerator[str]:
     """hass.http.app served on a real local TCP port; yields the base URL."""
+    # aiohttp freezes the router when the runner starts, but HA's own
+    # HomeAssistantHTTP.start() replaces the freeze with a no-op because
+    # components are discovered after boot and still register routes. The panel's
+    # static path is registered from async_setup_entry, so the test server does
+    # what start() does - otherwise every test that starts the server before
+    # loading the hub fails on a frozen router.
+    integration.http.app._router.freeze = lambda: None
     runner = web.AppRunner(integration.http.app)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)

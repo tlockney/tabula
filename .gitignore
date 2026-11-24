@@ -18,6 +18,10 @@ htmlcov/
 # Node
 node_modules/
 
+# The Tabularium bundle: `make panel` builds build/panel and stages it here
+# because HA serves only files inside the integration's directory (P5.1)
+integration/custom_components/tabula/panel/
+
 # Android / Gradle (android/ arrives in P2.0)
 .gradle/
 local.properties
