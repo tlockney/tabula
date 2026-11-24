@@ -9,6 +9,7 @@ import kotlinx.serialization.json.put
 import net.lockney.tabula.core.settings.Settings
 import net.lockney.tabula.core.tlp.CommandEvent
 import net.lockney.tabula.core.tlp.ErrorCode
+import net.lockney.tabula.core.tlp.LogLevel
 import net.lockney.tabula.core.tlp.ScreensaverMode
 import net.lockney.tabula.ha.CommandHandler
 
@@ -431,6 +432,49 @@ class TabulaCommandsTest {
     fun `screenshot is unsupported when not declared`() = runTest {
         val commands = TabulaCommands(store(), onRestartApp = {})
         val reply = commands.run("screenshot", buildJsonObject {})
+        assertTrue(reply is CommandHandler.Reply.Error)
+        assertEquals(ErrorCode.UNSUPPORTED_COMMAND, reply.code)
+    }
+
+    private class FakeLogs : LogControl {
+        val subscriptions = mutableListOf<Pair<Boolean, LogLevel?>>()
+
+        override fun subscribe(enabled: Boolean, level: LogLevel?): CommandHandler.Reply {
+            subscriptions += enabled to level
+            return CommandHandler.Reply.Ok()
+        }
+    }
+
+    @Test
+    fun `log_subscription reaches the log stream with its level`() = runTest {
+        val logs = FakeLogs()
+        val commands = TabulaCommands(store(), onRestartApp = {}, logs = logs)
+
+        val reply = commands.run("log_subscription", buildJsonObject {
+            put("enabled", true)
+            put("level", "warning")
+        })
+
+        assertTrue(reply is CommandHandler.Reply.Ok)
+        assertEquals(listOf<Pair<Boolean, LogLevel?>>(true to LogLevel.WARNING), logs.subscriptions)
+    }
+
+    @Test
+    fun `a new connection ends the log subscription`() = runTest {
+        val logs = FakeLogs()
+        val commands = TabulaCommands(store(), onRestartApp = {}, logs = logs)
+        commands.run("log_subscription", buildJsonObject { put("enabled", true) })
+
+        commands.onNewConnection()
+
+        // A subscription survives nothing (P5.4, PROTOCOL.md 4.8).
+        assertEquals(false to null, logs.subscriptions.last())
+    }
+
+    @Test
+    fun `log_subscription is unsupported when the device declares no logs`() = runTest {
+        val reply = TabulaCommands(store(), onRestartApp = {})
+            .run("log_subscription", buildJsonObject { put("enabled", true) })
         assertTrue(reply is CommandHandler.Reply.Error)
         assertEquals(ErrorCode.UNSUPPORTED_COMMAND, reply.code)
     }

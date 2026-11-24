@@ -7,6 +7,7 @@ import net.lockney.tabula.core.settings.SettingsCodec
 import net.lockney.tabula.core.tlp.CommandEvent
 import net.lockney.tabula.core.tlp.Commands
 import net.lockney.tabula.core.tlp.ErrorCode
+import net.lockney.tabula.core.tlp.LogSubscriptionArgs
 import net.lockney.tabula.core.tlp.MediaControlArgs
 import net.lockney.tabula.core.tlp.NotifyArgs
 import net.lockney.tabula.core.tlp.PlayMediaArgs
@@ -29,7 +30,8 @@ import net.lockney.tabula.ha.DashboardLinks
  * bus, screensaver (P2.4) goes to [screensaver], notify (P2.5) to
  * [notifications], play_media and media_control (P2.5) to [audio], and
  * screenshot (P3.13) to [screenshot], which captures, uploads and only then
- * answers.
+ * answers, and log_subscription (P5.4) to [logs], which starts or stops the
+ * device's log stream.
  */
 class TabulaCommands(
     private val store: TabulaStore,
@@ -42,12 +44,16 @@ class TabulaCommands(
     private val screenshot: ScreenshotControl? = null,
     private val startPage: StartPageControl? = null,
     private val voice: VoiceControl? = null,
+    private val logs: LogControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
 
     override fun onNewConnection() {
         connectionRevision = 0
+        // A log subscription survives nothing (P5.4, PROTOCOL.md 4.8): a new
+        // connection starts with the stream off, and the panel asks again.
+        logs?.subscribe(enabled = false, level = null)
     }
 
     override suspend fun handle(event: CommandEvent): CommandHandler.Reply = when (event.command) {
@@ -78,6 +84,10 @@ class TabulaCommands(
         Commands.SCREENSHOT -> screenshot?.let { control ->
             val parsed = Tlp.json.decodeFromJsonElement(ScreenshotArgs.serializer(), event.args)
             control.capture(parsed.quality, event.commandId)
+        } ?: undeclared(event.command)
+        Commands.LOG_SUBSCRIPTION -> logs?.let { control ->
+            val parsed = Tlp.json.decodeFromJsonElement(LogSubscriptionArgs.serializer(), event.args)
+            control.subscribe(parsed.enabled, parsed.level)
         } ?: undeclared(event.command)
         Commands.RELOAD -> dashboardAction("reload the dashboard") { dashboard.reload() }
         Commands.CLEAR_CACHE -> dashboardAction("clear the cache") { dashboard.clearCache() }

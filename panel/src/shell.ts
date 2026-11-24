@@ -25,6 +25,7 @@ import {
   type DeviceTab,
 } from "./devices";
 import "./activity";
+import "./logs";
 import { STRINGS, errorLine, statusLine } from "./strings";
 import type { HomeAssistant, PanelDevice, PanelInfo, UnsubscribeFunc } from "./types";
 
@@ -442,13 +443,15 @@ export class TabulaPanel extends LitElement {
     `;
   }
 
-  /** The tab body: Overview, Settings and Activity are filled, the rest are later work. */
+  /** The tab body, one case per tab in DEVICE_TABS. */
   private renderTab(device: PanelDevice): TemplateResult {
     switch (this.tab) {
       case "overview":
         return this.renderOverview(device);
       case "settings":
         return this.renderSettings(device);
+      case "logs":
+        return html`<tabula-logs .hass=${this.hass} .device=${device}></tabula-logs>`;
       case "activity":
         return html`<tabula-activity .hass=${this.hass} .device=${device}></tabula-activity>`;
       default:

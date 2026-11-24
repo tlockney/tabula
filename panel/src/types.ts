@@ -24,6 +24,11 @@ export interface HomeAssistant {
 /** HA's event subscription: resolves to the unsubscribe function. */
 export interface HassConnection {
   subscribeEvents(callback: (event: unknown) => void, eventType: string): Promise<UnsubscribeFunc>;
+  /** HA's websocket subscription (`subscribe_events` and friends, P5.4). */
+  subscribeMessage?<T>(
+    callback: (message: T) => void,
+    msg: { type: string; [key: string]: unknown },
+  ): Promise<UnsubscribeFunc>;
 }
 
 export type UnsubscribeFunc = () => Promise<void>;
@@ -61,6 +66,36 @@ export interface PanelDeviceScreen {
   brightness: number | null;
   screensaver_active: boolean | null;
   screensaver_mode: string | null;
+}
+
+/** One line of `tabula/panel_logs` (PROTOCOL.md 4.8's log_line). */
+export interface PanelLogLine {
+  /** RFC 3339, the device's clock when the line was written. */
+  ts: string;
+  level: string;
+  tag: string;
+  message: string;
+}
+
+/** The log stream's state, as the snapshot and the stream report it. */
+export interface PanelLogSubscription {
+  active: boolean;
+  viewers: number;
+  level: string | null;
+  /** RFC 3339; when the device's own subscription expires. */
+  expires_at: string | null;
+}
+
+/** `tabula/panel_logs` (integration/custom_components/tabula/logs.py, P5.4). */
+export interface PanelLogs {
+  device_id: string;
+  connected: boolean;
+  last_seen: string | null;
+  /** The ring's bound, LOG_BUFFER_LINES (ADR 0002). */
+  capacity: number;
+  /** Oldest first, as the device sent them. */
+  lines: PanelLogLine[];
+  subscription: PanelLogSubscription;
 }
 
 /** One entry of `tabula/panel_devices` (P5.2). */

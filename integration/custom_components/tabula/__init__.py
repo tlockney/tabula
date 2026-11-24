@@ -37,6 +37,7 @@ from .const import (
     DOMAIN,
     FRAME_MAX_BYTES,
     LOCAL_ONLY,
+    LOG_BUFFER_LINES,
     PAIR_PENDING_TTL,
     PAIR_RATE_LIMIT,
     PAIR_RATE_WINDOW,
@@ -165,7 +166,9 @@ class DeviceRecord:
     capabilities: list[str] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
     events: deque = field(default_factory=lambda: deque(maxlen=50))
-    logs: deque = field(default_factory=lambda: deque(maxlen=200))
+    # P5.4: the same bound the device holds (LOG_BUFFER_LINES, ADR 0002), newest
+    # last, in arrival order. Memory only: it is never written to HA's log.
+    logs: deque = field(default_factory=lambda: deque(maxlen=LOG_BUFFER_LINES))
     current: DeviceSession | None = None
     # P3.13: when the last button-started capture completed (RFC 3339),
     # persisted so the timestamp sensor survives an HA restart (F-HA-12).
@@ -226,6 +229,11 @@ class TabulaHub:
         self.intercom = IntercomManager(self)
         # Per-device settings documents and revisions (settings.py, plan 5.6).
         self.settings = SettingsStore(hass)
+        # The panel's log streams and the device subscriptions behind them (P5.4).
+        # Imported here: logs.py reads this module's DeviceRecord and TabulaHub.
+        from .logs import LogStreams
+
+        self.logs = LogStreams(self)
         # The latest screenshot per device, outside HA's media dir (P3.13, PROTOCOL 5).
         self.screenshots = ScreenshotStore(hass)
         # Strong refs, keyed by the connection object; entries are removed when the
@@ -579,6 +587,8 @@ class TabulaHub:
                 # A device that drops out of a call ends it for the other side
                 # instead of leaving someone talking to nobody (P9.2, guard 4).
                 self.intercom.device_offline(record.device_id)
+                # No log subscription survives a connection (PROTOCOL 4.8, P5.4).
+                self.logs.device_offline(record)
                 self.notify_update(record)
             self.sessions.pop(session.connection, None)
             session.subscription_id = None
@@ -746,6 +756,7 @@ class TabulaHub:
     def teardown(self) -> None:
         """Close every device socket (#97, ADR 0019), then drop listeners and timers."""
         self.intercom.shutdown()
+        self.logs.shutdown()
         for session in list(self.sessions.values()):
             _close_device_socket(session.connection)
         for unsub in self._unsub:

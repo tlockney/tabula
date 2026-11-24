@@ -212,15 +212,25 @@ describe("device page", () => {
     expect(rows(element)).toEqual([ONLINE.ha_device_id, OFFLINE.ha_device_id]);
   });
 
-  it("switches tabs and keeps the later ones as placeholders", async () => {
+  it("switches tabs, each with its own view", async () => {
     const element = await mount(fakeHass(responder([ONLINE])), deviceRoute(ONLINE.ha_device_id));
     const tabs = [...(element.shadowRoot?.querySelectorAll("[role='tab']") ?? [])];
     expect(tabs).toHaveLength(4);
 
+    // Overview, then the settings editor (P5.3), the log viewer (P5.4) and the
+    // Activity tab (P5.5): every tab in DEVICE_TABS has a view.
+    (tabs[1] as HTMLElement).click();
+    await settle(element);
+    expect(element.shadowRoot?.querySelector("tabula-settings-editor")).toBeTruthy();
+    expect(text(element)).not.toContain("Current page");
+
     (tabs[2] as HTMLElement).click();
     await settle(element);
-    expect(text(element)).toContain("This tab arrives in a later release.");
-    expect(text(element)).not.toContain("Current page");
+    expect(element.shadowRoot?.querySelector("tabula-logs")).toBeTruthy();
+
+    (tabs[3] as HTMLElement).click();
+    await settle(element);
+    expect(element.shadowRoot?.querySelector("tabula-activity")).toBeTruthy();
 
     (tabs[0] as HTMLElement).click();
     await settle(element);

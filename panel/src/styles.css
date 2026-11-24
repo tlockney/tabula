@@ -558,3 +558,123 @@ td a {
   font-weight: 400;
   text-transform: none;
 }
+
+/* P5.4: the logs tab. A status row, a filter toolbar and a tail that scrolls
+   inside its own box, so a long stream cannot stretch the page. Console lines
+   carry a coloured edge, so the dashboard's JavaScript reads apart from the
+   app's own lines (F-MGT-06). */
+.logs {
+  padding: 8px 0;
+}
+
+.log-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.badge.streaming {
+  border-color: var(--success-color, #4caf50);
+  color: var(--success-color, #4caf50);
+}
+
+.badge.paused {
+  color: var(--secondary-text-color, #727272);
+}
+
+.log-status .counts {
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-status button,
+.log-toolbar button {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--divider-color, #c4c4c4);
+  background: var(--card-background-color, #ffffff);
+  color: var(--primary-text-color, #212121);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.log-status button {
+  margin-left: auto;
+}
+
+.log-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.log-toolbar input[type="search"],
+.log-toolbar select {
+  padding: 4px 8px;
+  border: 1px solid var(--divider-color, #c4c4c4);
+  border-radius: 4px;
+  background: var(--card-background-color, #ffffff);
+  color: var(--primary-text-color, #212121);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.log-toolbar button.selected {
+  border-color: var(--primary-color, #03a9f4);
+  color: var(--primary-color, #03a9f4);
+}
+
+.log-note,
+.log-empty {
+  margin: 8px 0;
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.85rem;
+}
+
+.log-lines {
+  max-height: 60vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: var(--ha-card-border-radius, 12px);
+  font-family: var(--code-font-family, "Roboto Mono", monospace);
+  font-size: 0.8rem;
+}
+
+.log-line {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--divider-color, #f0f0f0);
+  overflow-wrap: anywhere;
+}
+
+.log-line:last-child {
+  border-bottom: none;
+}
+
+.log-line time,
+.log-line .tag {
+  color: var(--secondary-text-color, #727272);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-line.level-warning .message {
+  color: var(--warning-color, #ff9800);
+}
+
+.log-line.level-error .message {
+  color: var(--error-color, #db4437);
+}
+
+.log-line.console {
+  border-left: 3px solid var(--primary-color, #03a9f4);
+  background: var(--secondary-background-color, #f5f5f5);
+}
