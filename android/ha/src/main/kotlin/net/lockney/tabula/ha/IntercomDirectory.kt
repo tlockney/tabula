@@ -1,6 +1,7 @@
 package net.lockney.tabula.ha
 
 import java.io.IOException
+import net.lockney.tabula.core.Constants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeoutOrNull
@@ -43,8 +44,12 @@ data class IntercomPeerEntry(
 object IntercomDirectory {
     const val TYPE = "tabula/intercom_directory"
 
-    /** How long the screen waits for the list before it says HA is not reachable. */
-    private const val TIMEOUT_MS = 8_000L
+    /**
+     * How long the screen waits for the list before it says HA is not
+     * reachable: `COMMAND_TIMEOUT`, the ADR 0002 value for every command HA
+     * answers, because this is one (review of #176).
+     */
+    internal val timeoutMs: Long get() = Constants.COMMAND_TIMEOUT_S * 1000L
 
     /** Parse the command's result. An entry that is not a device is skipped, not invented. */
     fun parse(result: JsonElement?): List<IntercomPeerEntry> {
@@ -77,7 +82,7 @@ object IntercomDirectory {
      */
     suspend fun fetch(channel: HaChannel?): List<IntercomPeerEntry>? {
         if (channel == null) return null
-        val result = withTimeoutOrNull(TIMEOUT_MS) {
+        val result = withTimeoutOrNull(timeoutMs) {
             try {
                 channel.call(buildJsonObject { put("type", TYPE) })
             } catch (e: TimeoutCancellationException) {

@@ -122,6 +122,15 @@ class IntercomDirectoryTest {
     }
 
     @Test
+    fun `the fetch waits on the command timeout, not a value of its own`() {
+        // Review of #176: a timeout is ADR 0002's to choose, not a literal here
+        assertEquals(
+            net.lockney.tabula.core.Constants.COMMAND_TIMEOUT_S * 1000L,
+            IntercomDirectory.timeoutMs,
+        )
+    }
+
+    @Test
     fun `no connection means the screen cannot say who to call`() = runBlocking {
         assertNull(IntercomDirectory.fetch(null))
     }

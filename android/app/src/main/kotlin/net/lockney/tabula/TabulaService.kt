@@ -218,7 +218,7 @@ class TabulaService : Service() {
             // The visible clock: one refresh a second, and only while a call is
             // up. Idle costs one comparison a second and publishes nothing.
             while (true) {
-                kotlinx.coroutines.delay(INTERCOM_TICK_MS)
+                kotlinx.coroutines.delay(net.lockney.tabula.core.Constants.INTERCOM_UI_TICK_MS.toLong())
                 if (callEngine.state.value != net.lockney.tabula.core.tlp.IntercomState.IDLE) {
                     publishIntercom(intercomUi.tick())
                 }
@@ -961,8 +961,6 @@ class TabulaService : Service() {
         private const val TAG = "TabulaService"
         private const val CHANNEL_ID = "tabula_connection"
         private const val NOTIFICATION_ID = 1
-        /** The call screen's clock: one refresh a second (P9.4 item 3). */
-        private const val INTERCOM_TICK_MS = 1_000L
 
 
         /** Start the service in the connect state (paired) or nothing (unpaired). */

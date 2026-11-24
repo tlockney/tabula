@@ -55,6 +55,14 @@ object Constants {
     /** APP_PING_INTERVAL: s between the device's own HA ping commands. */
     const val APP_PING_INTERVAL_S = 30.0
 
+    /**
+     * COMMAND_TIMEOUT: s HA has to answer one command before the device treats
+     * it as unanswered (ADR 0002). The intercom screen's directory request is a
+     * command, so it waits exactly this long rather than a value of its own
+     * (review of #176).
+     */
+    const val COMMAND_TIMEOUT_S = 10
+
     /** PONG_TIMEOUT: s to wait for the pong before treating the connection as dead. */
     const val PONG_TIMEOUT_S = 10.0
 
@@ -140,6 +148,14 @@ object Constants {
     /** INTERCOM_CALL_LIMIT_S: the hard call limit, from the moment a call is up
      * (P9.1). Provisional: the owner confirms or changes it. */
     const val INTERCOM_CALL_LIMIT_S = 300
+
+    /**
+     * INTERCOM_UI_TICK_MS: ms between the call screen's refreshes while a call
+     * is up (ADR 0002). The screen shows a running duration and the time left,
+     * both `m:ss`, so a second is the finest step that can change anything and
+     * the coarsest that still looks live; an idle screen ticks nothing.
+     */
+    const val INTERCOM_UI_TICK_MS = 1_000
 
     /** INTERCOM_SIGNAL_MAX_BYTES: the largest one offer, answer or candidate
      * payload, in UTF-8 bytes (P9.1). */
