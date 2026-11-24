@@ -51,6 +51,11 @@ COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
     "clear_cache": frozenset(),
     "log_subscription": frozenset({"logs"}),
     "screenshot": frozenset({"screenshot"}),
+    # Intercom commands need a device that can hear a call (PROTOCOL.md 4.5,
+    # ADR 0025 decision 7); the relay and the end reach every device in a call.
+    "intercom_ring": frozenset({"intercom_listen"}),
+    "intercom_signal": frozenset({"intercom_listen"}),
+    "intercom_end": frozenset({"intercom_listen"}),
 }
 
 # Intercom (P9.2; values chosen in ADR 0002, "Intercom"). The integration owns

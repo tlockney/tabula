@@ -26,12 +26,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import callback
+from homeassistant.core import CoreState, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
@@ -469,10 +469,38 @@ class IntercomManager:
         except_device: str | None = None,
         missed: bool = False,
     ) -> None:
-        """End a call from a callback (a timer, a socket closing, a register)."""
-        self.hass.async_create_task(
-            self._async_end(call, reason, except_device=except_device, missed=missed)
-        )
+        """End a call from a callback (a timer, a socket closing, a register).
+
+        A timer can land while HA is stopping or after it stopped (a reload, a
+        test teardown): there is nowhere to send a command then, so the call is
+        dropped without touching the loop.
+        """
+        if self.hass.state is not CoreState.running:
+            if self.calls.pop(call.call_id, None) is not None:
+                self._cancel_timers(call)
+            return
+        self._spawn(self._async_end(call, reason, except_device=except_device, missed=missed))
+
+    def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Schedule one piece of call work from a callback.
+
+        A timer, a socket closing and a register all run as callbacks, and HA
+        may invoke a call-later callback from another thread (its own timer
+        helper is free to): the coroutine is handed to the loop's thread, which
+        is where `hass.async_create_task` is allowed to run.
+        """
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is self.hass.loop:
+            self.hass.async_create_task(coro)
+            return
+        try:
+            self.hass.loop.call_soon_threadsafe(self.hass.async_create_task, coro)
+        except RuntimeError:
+            # The loop is closed: nothing can run, so nothing is left dangling.
+            coro.close()
 
     async def async_end_call(self, call_id: str) -> IntercomCall:
         """End a call by id, wherever its devices are (the service's path)."""
