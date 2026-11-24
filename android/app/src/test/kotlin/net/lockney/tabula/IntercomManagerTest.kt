@@ -266,6 +266,17 @@ class IntercomManagerTest {
         assertEquals("v=0 answer", text(frame, "payload"))
     }
 
+    @Test
+    fun `a signal naming a peer the call does not hold is refused invalid_args`() {
+        // ADR 0037 decision 4: the same answer the mock device gives
+        start(peers = listOf(IntercomPeer(TARGET, "Kitchen Kiosk")))
+        val reply = manager.signal(
+            IntercomSignalArgs(CALL, IntercomSignalKind.ANSWER, "v=0 answer", CALLER),
+        )
+        assertEquals(ErrorCode.INVALID_ARGS, (reply as CommandHandler.Reply.Error).code)
+        assertTrue(engine.signals.isEmpty())
+    }
+
     companion object {
         private const val CALL = "call-abc"
         private const val CALLER = "11111111-1111-4111-8111-111111111111"

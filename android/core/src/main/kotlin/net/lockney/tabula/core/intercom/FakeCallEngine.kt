@@ -155,7 +155,14 @@ class FakeCallEngine : CallEngine {
         payload: String,
         peerDeviceId: String?,
     ): Boolean {
-        if (info.value?.callId != callId) return false
+        val current = info.value ?: return false
+        if (current.callId != callId) return false
+        // A label the call does not hold is refused, as the real machine does
+        if (peerDeviceId != null) {
+            val known = prepares.lastOrNull { it.callId == callId }?.peers?.map { it.deviceId }?.toSet()
+                ?: setOfNotNull(current.peerDeviceId)
+            if (peerDeviceId !in known) return false
+        }
         signals += SignalCall(callId, kind, payload, peerDeviceId)
         return true
     }

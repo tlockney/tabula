@@ -106,8 +106,12 @@ class CallMachine(
     private var connected = false
     private var closed = false
 
-    /** One answer per call: a relayed repeat is acknowledged and ignored. */
-    private var answerApplied = false
+    /**
+     * One answer per connection: a relayed repeat on the same connection is
+     * acknowledged and ignored, and a broadcast's second receiver still gets
+     * its own (review of #177, finding 1).
+     */
+    private val answeredKeys = mutableSetOf<String>()
 
     private var ringTimer: CallScheduler.Cancelable? = null
     private var connectTimer: CallScheduler.Cancelable? = null
@@ -284,10 +288,11 @@ class CallMachine(
     ): Boolean {
         val info = _info.value ?: return false
         if (info.callId != callId) return false
-        // A named connection that this call does not hold is ignored: a receiver
-        // cannot address a frame to an arbitrary peer (ADR 0037 decision 4)
+        // A named connection that this call does not hold is refused
+        // `invalid_args`, as ADR 0037 decision 4 and the mock device both say;
+        // the call itself survives, so a stray id cannot end it
         val connection = if (peerDeviceId != null) connections[peerDeviceId] else connections.values.singleOrNull()
-        if (peerDeviceId != null && connection == null) return true
+        if (peerDeviceId != null && connection == null) return false
         when (kind) {
             IntercomSignalKind.OFFER -> {
                 // Only the answerer takes an offer; the caller made it and
@@ -305,8 +310,8 @@ class CallMachine(
                 // side takes: acknowledge it rather than NACK a live call
                 // (review of #171, finding 4)
                 if (info.direction != CallDirection.OUTGOING) return true
-                if (answerApplied) return true
-                answerApplied = true
+                val key = peerDeviceId ?: connections.keys.singleOrNull() ?: return true
+                if (!answeredKeys.add(key)) return true
                 cancel(ringTimer)
                 ringTimer = null
                 connection?.answerReceived(payload)
@@ -514,7 +519,7 @@ class CallMachine(
         pendingOffer = null
         pendingCandidates.clear()
         answeredOffer = false
-        answerApplied = false
+        answeredKeys.clear()
         connected = false
         // closed outside this object's monitor, by the executor (finding 1)
         closing.forEach { connection -> closeLater(connection) }

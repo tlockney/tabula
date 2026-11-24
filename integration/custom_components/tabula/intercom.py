@@ -277,7 +277,6 @@ class IntercomManager:
             except HomeAssistantError as err:
                 await self._async_end(call, "error")
                 raise _invalid("intercom_start_failed", device=_label(caller)) from err
-        call.ready = True
         await self._async_flush_pending(call)
 
     @staticmethod
@@ -428,12 +427,21 @@ class IntercomManager:
         await self._async_route_signal(call, record, data)
 
     async def _async_flush_pending(self, call: IntercomCall) -> None:
-        """Relay the caller's held signals, in the order they arrived."""
-        pending, call.pending_signals = call.pending_signals, []
-        for record, data in pending:
-            if self.calls.get(call.call_id) is not call:
-                return
-            await self._async_route_signal(call, record, data)
+        """Relay the caller's held signals, in the order they arrived.
+
+        `ready` stays false until the queue is empty, so a signal that arrives
+        while a relay is in flight joins the queue behind the ones it must not
+        overtake - a candidate can never pass the offer it belongs to (review
+        of #177, note 4). The loop cannot run long: the hold is bounded by the
+        `COMMAND_TIMEOUT` on the `intercom_start` result.
+        """
+        while call.pending_signals:
+            pending, call.pending_signals = call.pending_signals, []
+            for record, data in pending:
+                if self.calls.get(call.call_id) is not call:
+                    return
+                await self._async_route_signal(call, record, data)
+        call.ready = True
 
     async def _async_route_signal(
         self, call: IntercomCall, sender: DeviceRecord, data: dict[str, Any]

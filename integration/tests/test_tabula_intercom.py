@@ -1049,6 +1049,57 @@ async def test_a_callers_early_offer_is_held_and_flushed_not_dropped(
     assert manager.calls[call_id].ready is True
 
 
+async def test_a_signal_arriving_during_the_flush_keeps_the_order(
+    hass_setup, make_tablet, monkeypatch
+):
+    """A signal that arrives mid-drain joins the queue behind the held ones (#177 note 4)."""
+    office = await make_tablet("Office Kiosk")
+    kitchen = await make_tablet("Kitchen Kiosk")
+    hub_runtime = TabulaHub.get(hass_setup)
+    assert hub_runtime is not None
+    manager = hub_runtime.intercom
+    release_prepare = asyncio.Event()
+    gate = asyncio.Event()
+    routed: list[str] = []
+    original_prepare = manager._async_prepare_caller
+    original_relay = manager._async_relay
+
+    async def held_prepare(*args: Any, **kwargs: Any) -> None:
+        await release_prepare.wait()
+        await original_prepare(*args, **kwargs)
+
+    async def slow_relay(call: Any, peer_ids: list[str], args: dict[str, Any]) -> None:
+        routed.append(args["payload"])
+        if len(routed) == 1:
+            await gate.wait()
+        await original_relay(call, peer_ids, args)
+
+    monkeypatch.setattr(manager, "_async_prepare_caller", held_prepare)
+    monkeypatch.setattr(manager, "_async_relay", slow_relay)
+    task = hass_setup.async_create_task(start_call(hass_setup, office, kitchen))
+    call_id = (await kitchen.next_command("intercom_ring"))["args"]["call_id"]
+
+    for kind, payload in (("offer", OFFER), ("candidate", "candidate:1")):
+        await office.event(
+            "event.intercom_signal", {"call_id": call_id, "kind": kind, "payload": payload}
+        )
+    await kitchen.no_command("intercom_signal", wait=0.2)
+
+    release_prepare.set()
+    await until(lambda: len(routed) == 1)
+    # Arrives while the first relay is in flight: it must not overtake the queue
+    await office.event(
+        "event.intercom_signal", {"call_id": call_id, "kind": "candidate", "payload": "candidate:2"}
+    )
+    gate.set()
+    await task
+
+    seen = []
+    for _ in range(3):
+        seen.append((await kitchen.next_command("intercom_signal"))["args"]["payload"])
+    assert seen == [OFFER, "candidate:1", "candidate:2"]
+
+
 async def test_a_broadcast_routes_each_offer_to_one_receiver(hass_setup, make_tablet):
     """One connection per receiver, star-shaped at the caller (decisions 1 and 4)."""
     office = await make_tablet("Office Kiosk")

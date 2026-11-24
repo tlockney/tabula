@@ -584,24 +584,36 @@ class CallMachineTest {
     }
 
     @Test
-    fun `an answer is routed by its peer and an unknown peer is ignored`() {
+    fun `every peer of a broadcast takes its own answer`() {
+        // Review of #177, finding 1: one answer per connection, not per call
+        machine.prepare(CALL_TEST, IntercomMode.BROADCAST, listOf(peer(A, "Kitchen"), peer(B, "Bedroom")))
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 a", A))
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 b", B))
+        assertEquals(listOf(1, 1), peers.created.map { it.answerReceipts })
+
+        // A repeat on the same connection is acknowledged and ignored
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 again", A))
+        assertEquals(listOf(1, 1), peers.created.map { it.answerReceipts })
+    }
+
+    @Test
+    fun `a two-device answer reaches its one peer and a repeat is ignored`() {
         machine.prepare(CALL_TEST, IntercomMode.CALL, listOf(peer(A, "Kitchen")))
-        // A two-device call's answer carries no peer id and reaches the one peer
         assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 answer"))
         assertEquals("v=0 answer", peers.created.single().answerReceived)
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 again"))
+        assertEquals(1, peers.created.single().answerReceipts)
+    }
 
-        // A broadcast's answer names its connection
-        val broadcast = CALL_TEST + "-b"
-        machine.end(CALL_TEST, IntercomEndReason.HANGUP)
-        machine.prepare(broadcast, IntercomMode.BROADCAST, listOf(peer(A, "Kitchen"), peer(B, "Bedroom")))
-        assertTrue(machine.signal(broadcast, IntercomSignalKind.ANSWER, "v=0 answer", B))
-        assertEquals("v=0 answer", peers.created.last().answerReceived)
-        assertNull(peers.created[peers.created.size - 2].answerReceived)
-
-        // A peer id this call does not hold is ignored, and the call survives
-        assertTrue(machine.signal(broadcast, IntercomSignalKind.ANSWER, "v=0 other", C))
+    @Test
+    fun `a signal naming a peer this call does not hold is refused`() {
+        // ADR 0037 decision 4 and the mock device: `invalid_args`, call alive
+        machine.prepare(CALL_TEST, IntercomMode.BROADCAST, listOf(peer(A, "Kitchen"), peer(B, "Bedroom")))
+        assertFalse(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 other", C))
+        assertFalse(machine.signal(CALL_TEST, IntercomSignalKind.CANDIDATE, "candidate:1", C))
         assertEquals(IntercomState.BROADCASTING, machine.state.value)
-        assertTrue(events().filterIsInstance<EngineEvent.Ended>().none { it.callId == broadcast })
+        assertTrue(events().filterIsInstance<EngineEvent.Ended>().none { it.callId == CALL_TEST })
+        assertEquals(listOf(0, 0), peers.created.map { it.answerReceipts })
     }
 
     @Test
