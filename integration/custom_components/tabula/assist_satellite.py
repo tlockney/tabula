@@ -309,12 +309,14 @@ class TabulaSatellite(TabulaEntity, AssistSatelliteEntity):
         if event.data.get("turn_id") != turn.turn_id:
             return
         reason = event.data.get("reason")
-        # `command` is the device echoing our own voice_stop; timeout and error
-        # mean its audio stopped early, so the pipeline has nothing left to read.
-        self._close_turn(
-            "ended" if reason == "command" else "cancelled",
-            cancel_pipeline=reason in ("timeout", "error"),
-        )
+        if reason == "command":
+            # The echo of our own voice_stop (PROTOCOL.md 4.10), which already
+            # closed capture at stt-end. It says nothing we did not send, and
+            # the turn is still open for the reply: run-end closes it.
+            return
+        # timeout and error mean the device's audio stopped early, so the
+        # pipeline has nothing left to read.
+        self._close_turn("cancelled", cancel_pipeline=reason in ("timeout", "error"))
 
     @callback
     def _close_turn(self, reason: str, *, cancel_pipeline: bool) -> None:
@@ -325,12 +327,18 @@ class TabulaSatellite(TabulaEntity, AssistSatelliteEntity):
         self._turn = None
         self._close_capture(turn, reason)
         task = turn.task
-        if cancel_pipeline and task is not None and task is not asyncio.current_task():
-            if not task.done():
-                task.cancel()
-            # A cancelled pipeline never reports run-end, so the base class
-            # would leave the entity listening (or responding) forever. This is
-            # HA's own "back to idle" callback (ADR 0034 item 5).
+        if (
+            cancel_pipeline
+            and task is not None
+            and task is not asyncio.current_task()
+            and not task.done()
+        ):
+            task.cancel()
+        # However the turn ended, it cannot leave the entity listening or
+        # responding: HA's base class only goes idle on a run-end it produces
+        # itself, and skips that when the run started TTS. A reply still on its
+        # way resets the entity when it finishes (ADR 0034 item 4).
+        if self._reply is None or self._reply.done():
             self.tts_response_finished()
         _LOGGER.debug("Voice turn %s closed (%s)", turn.turn_id, reason)
 

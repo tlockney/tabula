@@ -87,10 +87,16 @@ class FakePipeline:
         tts_url: str | None = TTS_URL,
         error: str | None = None,
         tts_urls: list[str] | None = None,
+        tts_error: str | None = None,
+        delay: float = 0.0,
     ) -> None:
         self.chunks = chunks
         self.tts_url = tts_url
         self.error = error
+        # A pause between the transcript and the reply, as a real intent stage
+        # plus synthesis takes.
+        self.delay = delay
+        self.tts_error = tts_error
         # A reply per url, for the case of a second tts-end before the first
         # reply has finished playing.
         self.tts_urls = tts_urls if tts_urls is not None else ([tts_url] if tts_url else [])
@@ -137,10 +143,22 @@ class FakePipeline:
                 {"intent_output": {"conversation_id": "01JCVINTENT000000000000A0"}},
             )
         )
+        if self.delay:
+            await asyncio.sleep(self.delay)
         if not self.tts_urls:
             event_callback(PipelineEvent(PipelineEventType.RUN_END))
             return
         event_callback(PipelineEvent(PipelineEventType.TTS_START))
+        if self.tts_error is not None:
+            # A run that reached the TTS stage and then failed: no reply.
+            event_callback(
+                PipelineEvent(
+                    PipelineEventType.ERROR,
+                    {"code": self.tts_error, "message": self.tts_error},
+                )
+            )
+            event_callback(PipelineEvent(PipelineEventType.RUN_END))
+            return
         for url in self.tts_urls:
             event_callback(
                 PipelineEvent(
@@ -581,3 +599,67 @@ async def test_a_full_turn_against_the_mock_device(
 async def _run_client(client: TLPClient) -> None:
     async with aiohttp.ClientSession() as session:
         await client.run(session)
+
+
+async def test_the_turn_ended_echo_does_not_cancel_the_reply(
+    hass_setup, server, hub, session, paired, fake_pipeline
+):
+    """The device's ``command`` echo must not close the turn before tts-end.
+
+    PROTOCOL 4.10 makes the device answer ``voice_stop`` with
+    ``voice_turn_ended`` reason ``command``. That arrives long before a slow
+    intent stage and synthesis finish, and the reply is the point of the turn.
+    """
+    fake_pipeline(chunks=1, delay=0.3)
+    client = await ws_connect(session, server, paired.refresh_token)
+    device = Device(client, paired)
+    await device.register(VOICE_CAPS)
+    await device.subscribe()
+    await hass_setup.async_block_till_done()
+
+    start = await open_turn(device)
+    await device.ack(start)
+    await device.audio(start["args"]["handler_id"], frames=1)
+    stop = await device.command("voice_stop")
+    await device.ack(stop)
+    # The device answers the stop at once, as it does on real hardware.
+    await device.event(
+        "voice_turn_ended", {"turn_id": start["args"]["turn_id"], "reason": "command"}
+    )
+
+    play = await device.command("play_media", timeout=5.0)
+    assert play["args"]["url"] == TTS_URL
+    await device.ack(play)
+    await device.event("media_finished", {"reason": "ended"})
+    await until(lambda: state_of(hass_setup, paired) == "idle")
+    await device.close()
+
+
+async def test_an_error_after_tts_start_returns_to_idle(
+    hass_setup, server, hub, session, paired, fake_pipeline
+):
+    """A pipeline that reaches tts-start and then fails leaves nothing hanging."""
+    fake_pipeline(chunks=1, tts_error="tts_failed")
+    client = await ws_connect(session, server, paired.refresh_token)
+    device = Device(client, paired)
+    await device.register(VOICE_CAPS)
+    await device.subscribe()
+    await hass_setup.async_block_till_done()
+
+    entity_id = satellite_id(hass_setup, paired)
+    start = await open_turn(device)
+    await device.ack(start)
+    await device.audio(start["args"]["handler_id"], frames=1)
+    await device.ack(await device.command("voice_stop"))
+
+    # HA leaves a run that started TTS in ``responding`` at run-end, so the
+    # reset has to come from the integration.
+    await until(lambda: state_of(hass_setup, paired) == "idle")
+    assert hass_setup.states.get(entity_id).state == "idle"
+    await hass_setup.async_block_till_done()
+    sent: list[str] = []
+    while not device.commands.empty():
+        sent.append(device.commands.get_nowait()["command"])
+    assert "play_media" not in sent
+    assert all(handler is None for handler in session_connection(hass_setup).binary_handlers)
+    await device.close()
