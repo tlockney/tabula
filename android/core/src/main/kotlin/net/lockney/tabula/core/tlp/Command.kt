@@ -34,6 +34,12 @@ object Commands {
     const val LOG_SUBSCRIPTION = "log_subscription"
     const val SCREENSHOT = "screenshot"
 
+    // P7.2: the codec knows the voice commands, but the app declares no `voice`
+    // capability and captures nothing yet, so they stay out of [all]: a voice
+    // command still answers unsupported_command (PROTOCOL 4.5).
+    const val VOICE_START = "voice_start"
+    const val VOICE_STOP = "voice_stop"
+
     val all: Set<String> = setOf(
         SET_SETTINGS, SCREEN, NOTIFY, PLAY_MEDIA, MEDIA_CONTROL, SCREENSAVER,
         NAVIGATE, GO_HOME, RELOAD, RESTART_APP, CLEAR_CACHE, LOG_SUBSCRIPTION, SCREENSHOT,
@@ -85,6 +91,12 @@ data class CommandEvent(
         json.decodeFromJsonElement(LogSubscriptionArgs.serializer(), args)
 
     fun screenshotArgs(json: Json): ScreenshotArgs = json.decodeFromJsonElement(ScreenshotArgs.serializer(), args)
+
+    fun voiceStartArgs(json: Json): VoiceStartArgs =
+        json.decodeFromJsonElement(VoiceStartArgs.serializer(), args)
+
+    fun voiceStopArgs(json: Json): VoiceStopArgs =
+        json.decodeFromJsonElement(VoiceStopArgs.serializer(), args)
 }
 
 /** set_settings: full settings document at a revision (PROTOCOL 4.5, plan 5.6). */
@@ -206,5 +218,38 @@ data class ScreenshotArgs(
 ) {
     init {
         quality?.let { Wire.requireRange("screenshot.quality", it, 10, 95) }
+    }
+}
+
+/**
+ * voice_start: open a turn and stream PCM on the binary channel (P7.2, 4.10).
+ * ``handlerId`` is HA's binary handler, one byte, that prefixes every frame;
+ * a wake_word turn leaves the phrase out because the phrase is HA's own.
+ */
+@Serializable
+data class VoiceStartArgs(
+    @SerialName("turn_id") val turnId: String,
+    @SerialName("handler_id") val handlerId: Int,
+    @SerialName("start_stage") val startStage: VoiceStartStage,
+    @SerialName("wake_word_phrase") val wakeWordPhrase: String? = null,
+) {
+    init {
+        Wire.requireTurnId(turnId)
+        Wire.requireRange("voice_start.handler_id", handlerId, 1, 255)
+        wakeWordPhrase?.let {
+            require(startStage == VoiceStartStage.STT) { "voice_start.wake_word carries no phrase" }
+            Wire.requirePattern("voice_start.wake_word_phrase", it, Wire.wakeWordPhrase)
+        }
+    }
+}
+
+/** voice_stop: close a turn; idempotent for a turn that is already closed. */
+@Serializable
+data class VoiceStopArgs(
+    @SerialName("turn_id") val turnId: String,
+    val reason: VoiceStopReason,
+) {
+    init {
+        Wire.requireTurnId(turnId)
     }
 }

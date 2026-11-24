@@ -10,6 +10,9 @@ import java.time.OffsetDateTime
 internal object Wire {
     val deviceId = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     val commandId = Regex("^[0-9A-Za-z_-]{8,64}$")
+
+    /** Opaque voice-turn ID chosen by the integration (P7.2). */
+    val turnId = Regex("^[0-9A-Za-z_-]{8,64}$")
     val capability = Regex("^[a-z][a-z0-9_]{0,31}$")
 
     /** Frontend path with no query string or fragment, single leading slash (state, page_changed). */
@@ -35,6 +38,10 @@ internal object Wire {
 
     fun requireCommandId(value: String) {
         require(commandId.matches(value)) { "command_id must be 8-64 chars of [0-9A-Za-z_-]: $value" }
+    }
+
+    fun requireTurnId(value: String) {
+        require(turnId.matches(value)) { "turn_id must be 8-64 chars of [0-9A-Za-z_-]: $value" }
     }
 
     fun requireLength(path: String, value: String, min: Int, max: Int) {

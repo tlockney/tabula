@@ -66,6 +66,8 @@ enum class Capability {
     // P7.1: declared only while voice.wake_word_enabled is on and RECORD_AUDIO
     // is granted (ADR 0030 item 2).
     @SerialName("wake_word") WAKE_WORD,
+    // P7.2: the device can stream a voice turn's audio as binary frames (4.10).
+    @SerialName("voice") VOICE,
 }
 
 /** Tabula error codes (command_result.error.code, docs/PROTOCOL.md 6). */
@@ -137,6 +139,36 @@ enum class MediaFinishedReason {
     @SerialName("error") ERROR,
 }
 
+/** voice_start start_stage: which pipeline stage the audio joins (P7.2, 4.10). */
+@Serializable
+enum class VoiceStartStage {
+    @SerialName("stt") STT,
+    @SerialName("wake_word") WAKE_WORD,
+}
+
+/** voice_stop reason, the integration's view of why a turn closed. */
+@Serializable
+enum class VoiceStopReason {
+    @SerialName("ended") ENDED,
+    @SerialName("cancelled") CANCELLED,
+    @SerialName("timeout") TIMEOUT,
+}
+
+/** voice_turn_ended reason, the device's own account of why a turn closed. */
+@Serializable
+enum class VoiceTurnEndReason {
+    @SerialName("command") COMMAND,
+    @SerialName("timeout") TIMEOUT,
+    @SerialName("error") ERROR,
+}
+
+/** state voice_turn: capture state, independent of media_state (which is playback). */
+@Serializable
+enum class VoiceTurn {
+    @SerialName("idle") IDLE,
+    @SerialName("listening") LISTENING,
+}
+
 /** tabula/event names (docs/PROTOCOL.md 4.7). */
 @Serializable
 enum class EventName {
@@ -148,6 +180,8 @@ enum class EventName {
     @SerialName("media_finished") MEDIA_FINISHED,
     @SerialName("page_changed") PAGE_CHANGED,
     @SerialName("wake_word_detected") WAKE_WORD_DETECTED,
+    @SerialName("voice_turn_started") VOICE_TURN_STARTED,
+    @SerialName("voice_turn_ended") VOICE_TURN_ENDED,
 }
 
 /** http_error error names (docs/PROTOCOL.md 2, 5). */

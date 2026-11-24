@@ -31,6 +31,7 @@ data class StateDelta(
     val illuminance: Double? = null,
     @SerialName("wake_word_active") val wakeWordActive: Boolean? = null,
     @SerialName("last_wake_word") val lastWakeWord: String? = null,
+    @SerialName("voice_turn") val voiceTurn: VoiceTurn? = null,
     @SerialName("current_page") val currentPage: String? = null,
     val volume: Int? = null,
     val muted: Boolean? = null,

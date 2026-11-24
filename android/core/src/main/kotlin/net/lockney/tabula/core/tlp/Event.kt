@@ -56,6 +56,12 @@ data class EventFrame(
 
         EventName.WAKE_WORD_DETECTED ->
             json.decodeFromJsonElement(WakeWordDetected.serializer(), data)
+
+        EventName.VOICE_TURN_STARTED ->
+            json.decodeFromJsonElement(VoiceTurnStarted.serializer(), data)
+
+        EventName.VOICE_TURN_ENDED ->
+            json.decodeFromJsonElement(VoiceTurnEnded.serializer(), data)
     }
 
     companion object {
@@ -204,5 +210,34 @@ data class PageChanged(
     init {
         Wire.requireLength("event.path", path, 1, 2048)
         Wire.requirePattern("event.path", path, Wire.pagePath)
+    }
+}
+
+/**
+ * A voice turn opened and its PCM is streaming on the binary channel (P7.2).
+ * ``phrase`` is present only when the device's own wake word started the turn.
+ */
+@Serializable
+data class VoiceTurnStarted(
+    @SerialName("turn_id") val turnId: String,
+    val phrase: String? = null,
+) : EventData {
+    init {
+        Wire.requireTurnId(turnId)
+        phrase?.let {
+            Wire.requireLength("event.phrase", it, 1, 32)
+            Wire.requirePattern("event.phrase", it, Wire.wakeWordPhrase)
+        }
+    }
+}
+
+/** A voice turn closed; the device says why (command, its own limit, or a failure). */
+@Serializable
+data class VoiceTurnEnded(
+    @SerialName("turn_id") val turnId: String,
+    val reason: VoiceTurnEndReason,
+) : EventData {
+    init {
+        Wire.requireTurnId(turnId)
     }
 }

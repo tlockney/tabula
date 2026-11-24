@@ -34,6 +34,9 @@ BUS_EVENT_TYPES: dict[str, str] = {
     "media_finished": "tabula_media",
     "page_changed": "tabula_page",
     "wake_word_detected": "tabula_wake_word",
+    # P7.2: a voice turn opened or closed; the audio itself is binary (4.10).
+    "voice_turn_started": "tabula_voice",
+    "voice_turn_ended": "tabula_voice",
 }
 
 

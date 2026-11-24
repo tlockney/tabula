@@ -80,6 +80,13 @@ class TlpFixturesTest {
                 typed(command.event.logSubscriptionArgs(Tlp.strict), LogSubscriptionArgs.serializer())
 
             "command_screenshot" -> typed(command.event.screenshotArgs(Tlp.strict), ScreenshotArgs.serializer())
+
+            "command_voice_start" ->
+                typed(command.event.voiceStartArgs(Tlp.strict), VoiceStartArgs.serializer())
+
+            "command_voice_stop" ->
+                typed(command.event.voiceStopArgs(Tlp.strict), VoiceStopArgs.serializer())
+
             else -> error("unexpected command frame $frame")
         }
         assertTrue(args.canonical() == command.event.args.canonical(), "$frame args must round-trip typed")
@@ -103,6 +110,8 @@ class TlpFixturesTest {
                 is MediaFinished -> typed(data, MediaFinished.serializer())
                 is PageChanged -> typed(data, PageChanged.serializer())
                 is WakeWordDetected -> typed(data, WakeWordDetected.serializer())
+                is VoiceTurnStarted -> typed(data, VoiceTurnStarted.serializer())
+                is VoiceTurnEnded -> typed(data, VoiceTurnEnded.serializer())
             }
             assertTrue(
                 encoded.canonical() == frame.data.canonical(),
