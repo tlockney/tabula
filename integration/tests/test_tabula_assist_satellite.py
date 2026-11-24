@@ -112,9 +112,7 @@ class FakePipeline:
         event_callback(PipelineEvent(PipelineEventType.RUN_START))
         if self.error is not None:
             event_callback(
-                PipelineEvent(
-                    PipelineEventType.ERROR, {"code": self.error, "message": self.error}
-                )
+                PipelineEvent(PipelineEventType.ERROR, {"code": self.error, "message": self.error})
             )
             event_callback(PipelineEvent(PipelineEventType.RUN_END))
             return
@@ -203,9 +201,7 @@ class Device:
 
     async def ack(self, command: dict, ok: bool = True) -> None:
         reply = await self.send(
-            frame_fixture(
-                "command_result", id=self._id(), command_id=command["command_id"], ok=ok
-            )
+            frame_fixture("command_result", id=self._id(), command_id=command["command_id"], ok=ok)
         )
         assert reply["success"], reply
 
@@ -312,7 +308,7 @@ async def test_a_duplicate_wake_word_cancels_the_turn(
     hass_setup, server, hub, session, paired, fake_pipeline
 ):
     """HA's cross-device cooldown rejection ends the turn cleanly, without a reply."""
-    pipeline = fake_pipeline(error="duplicate_wake_up_detected")
+    fake_pipeline(error="duplicate_wake_up_detected")
     client = await ws_connect(session, server, paired.refresh_token)
     device = Device(client, paired)
     await device.register(VOICE_CAPS)
@@ -471,9 +467,7 @@ async def test_two_devices_run_turns_in_parallel(
             starts.append(start)
             await device.ack(start)
         for index, device in enumerate(devices):
-            await device.audio(
-                starts[index]["args"]["handler_id"], frames=2, marker=index
-            )
+            await device.audio(starts[index]["args"]["handler_id"], frames=2, marker=index)
         await until(lambda: len(first.audio) == 2 and len(second.audio) == 2)
 
         # Two independent handler tables: each connection's first id is 1, and

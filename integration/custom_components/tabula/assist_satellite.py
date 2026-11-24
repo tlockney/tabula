@@ -160,9 +160,7 @@ class TabulaSatellite(TabulaEntity, AssistSatelliteEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        self.async_on_remove(
-            self.hass.bus.async_listen("tabula_wake_word", self._on_wake_word)
-        )
+        self.async_on_remove(self.hass.bus.async_listen("tabula_wake_word", self._on_wake_word))
         self.async_on_remove(self.hass.bus.async_listen("tabula_voice", self._on_voice_event))
         self.async_on_remove(self.hass.bus.async_listen("tabula_media", self._on_media_event))
 
@@ -260,7 +258,7 @@ class TabulaSatellite(TabulaEntity, AssistSatelliteEntity):
             )
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - a pipeline failure ends the turn, not HA
+        except Exception:  # a pipeline failure ends the turn, not the integration
             _LOGGER.exception("Voice pipeline on %s failed", self.device_id[:8])
         finally:
             self._close_turn("ended", cancel_pipeline=False)
