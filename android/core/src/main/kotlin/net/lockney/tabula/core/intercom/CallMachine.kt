@@ -111,6 +111,12 @@ class CallMachine(
 
     private var ringTimer: CallScheduler.Cancelable? = null
     private var answerTimer: CallScheduler.Cancelable? = null
+
+    /**
+     * False while the TLP session is gone. A ring can only arrive over a live
+     * session, so this starts up (P9.5).
+     */
+    private var transportDown = false
     private var connectTimer: CallScheduler.Cancelable? = null
     private var callTimer: CallScheduler.Cancelable? = null
     private var transportTimer: CallScheduler.Cancelable? = null
@@ -281,13 +287,19 @@ class CallMachine(
 
     @Synchronized
     override fun onTransportUp() {
+        transportDown = false
         cancel(transportTimer)
         transportTimer = null
     }
 
     @Synchronized
     override fun onTransportDown() {
+        transportDown = true
         if (_state.value == IntercomState.IDLE) return
+        // A link that dies in the tone's run-up must not open a microphone:
+        // HA cannot end a call it cannot reach (guard 3, P9.5)
+        cancel(answerTimer)
+        answerTimer = null
         // HA cannot send intercom_end over a dead link, so the call may not
         // outlive it (guard 3): the grace is one PONG_TIMEOUT_S
         if (transportTimer != null) return
@@ -398,9 +410,10 @@ class CallMachine(
      *
      * The tone comes first and the microphone opens [Timings.answerToneMs]
      * later, so the far end hears the beep rather than the capture it is
-     * meant to announce (ADR 0028 guard 1). A decline, an end from HA or the
-     * ring limit in that window cancels the pending answer, because
-     * [onAnswerTone] re-checks the state it was armed in.
+     * meant to announce (ADR 0028 guard 1). A decline, an end from HA, the
+     * ring limit or a lost link cancels the pending answer, and
+     * [onAnswerTone] re-checks the state it was armed in anyway, so a timer
+     * that fired before its cancel still answers nothing.
      */
     private fun beginAutoAnswer(info: CallInfo) {
         runCatching { tone.play() }
@@ -412,6 +425,8 @@ class CallMachine(
         answerTimer = null
         val info = _info.value ?: return
         if (info.callId != callId || _state.value != IntercomState.RINGING) return
+        // A link that died in the window: HA could not end the call it opened
+        if (transportDown) return
         answer()
     }
 

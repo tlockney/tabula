@@ -49,7 +49,7 @@ INTERCOM_AUTO_ANSWER = TabulaEntityDescription(
     key="intercom_auto_answer",
     translation_key="intercom_auto_answer",
     entity_category=EntityCategory.CONFIG,
-    setting="intercom_auto_answer",  # F-INT-04; off unless the household opts in
+    setting="intercom_auto_answer",  # ADR 0025 decision 1; off unless the household opts in
 )
 
 

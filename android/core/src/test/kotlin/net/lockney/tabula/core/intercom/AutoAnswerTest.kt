@@ -190,6 +190,19 @@ class AutoAnswerTest {
     }
 
     @Test
+    fun `a link that dies during the tone's run-up never opens the microphone`() {
+        // HA cannot end a call it cannot reach, so a ring whose link is gone
+        // must not answer itself and leave a live call nobody can stop (P9.5)
+        val m = machine(AutoAnswerPolicy.of(Intercom(IntercomAutoAnswer.All)))
+        ring(m)
+        m.onTransportDown()
+        scheduler.ignoreCancellation = true
+        scheduler.advance(toneMs * 2)
+        assertTrue(peers.created.isEmpty(), "the microphone stays closed")
+        assertEquals(IntercomState.RINGING, m.state.value)
+    }
+
+    @Test
     fun `a second ring during the tone's run-up is refused`() {
         val m = machine(AutoAnswerPolicy.of(Intercom(IntercomAutoAnswer.All)))
         assertTrue(ring(m))
