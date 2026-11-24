@@ -1,0 +1,12 @@
+{
+  "id": 21,
+  "type": "event",
+  "event": {
+    "command_id": "c-0013-end",
+    "command": "intercom_end",
+    "args": {
+      "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+      "reason": "bored"
+    }
+  }
+}

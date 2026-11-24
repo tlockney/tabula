@@ -1,0 +1,8 @@
+{
+  "id": 22,
+  "type": "tabula/event",
+  "event": "intercom_answer",
+  "data": {
+    "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+  }
+}

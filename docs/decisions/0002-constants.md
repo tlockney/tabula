@@ -85,7 +85,7 @@ These appear as bounds in `schema/tlp-v1.schema.json` and are chosen here:
 | `play_media.url` | 4096 chars | Signed media URLs carry long query strings. |
 | `wifi_rssi` | −127 to 0 dBm | The range Android reports. |
 | `illuminance` | 0–100000 lx | Sunlight is about 100000 lx and Android light sensors top out below it, so the bound admits every real reading while keeping the number sane. The floor is why a supported key with no value yet is omitted rather than sent as a placeholder (PROTOCOL.md 4.2): the schema requires a number, never null or negative. |
-| `capabilities` (register) | 64 items, names `[a-z][a-z0-9_]{0,31}` | Room for many future capabilities while bounding the frame. |
+| `capabilities` (register) | 64 items, names `[a-z][a-z0-9_]{0,31}` | Room for many future capabilities while bounding the frame. One segment, no dots: an integration that predates a name must be able to ignore it, and a name it cannot parse as a capability rejects the whole `register` frame (PROTOCOL 4.0, 8). |
 | `credential.refresh_token` | at least 32 chars | HA refresh tokens are far longer; a shorter one is a bug. |
 
 ### Screen control (P2.3)
@@ -320,6 +320,10 @@ Chosen in ADR 0028 from the measurements in that ADR and the packet's Result.
 | --- | --- | --- |
 | `INTERCOM_RING_LIMIT_S` | 45 s | Long enough to cross a house and answer hands-free, which is why intercom exists; short enough that a call into an empty room ends within a minute. A phone rings about 30 s; 45 s adds one walk-over. |
 | `INTERCOM_CONNECT_TIMEOUT_S` | 10 s | ICE on the LAN took 0.3–0.6 s in the spike, so 10 s is an order of magnitude of margin. Past it a caller is told the call could not connect instead of waiting on one that never starts. Same value as `COMMAND_TIMEOUT`, because both mean "the device did not answer". |
+| `INTERCOM_CALL_LIMIT_S` | 300 s | The hard call limit ADR 0028 guard 2 requires: every call ends by itself this long after it is up, answered or not, so a call feeding back cannot run unattended for an hour. Five minutes is longer than any conversation this household has across rooms and far shorter than an hour; **provisional** — the owner confirms or changes it (P9.1 Result). |
+| `INTERCOM_SIGNAL_MAX_BYTES` | 4096 B | The largest one `intercom_signal` payload: an offer, an answer or one ICE candidate. Measured from a synthetic 38-line Opus offer of the shape the spike logged (`sdpLines=38`, an `audio/opus` m-line, 4 extmaps, 8 codecs, a sha-256 fingerprint and two SSRC lines): 1322 bytes of SDP, 1396 inside the frame once escaped. A candidate is about 120 B. 4 KiB is about three times the measured offer, leaves room for another codec or extmap, and keeps one relayed frame far under `FRAME_MAX_BYTES`. |
+
+The capability names on the wire are `intercom_listen` and `intercom_talk`. ADR 0025 decision 7 names the concepts `intercom.listen` and `intercom.talk`; the wire spelling is single-segment because a dotted name is not a capability an older integration can ignore (PROTOCOL 4.0, 8, and P9.1's Result).
 
 ### At a Glance (P3.6)
 

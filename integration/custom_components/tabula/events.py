@@ -34,6 +34,13 @@ BUS_EVENT_TYPES: dict[str, str] = {
     "media_finished": "tabula_media",
     "page_changed": "tabula_page",
     "wake_word_detected": "tabula_wake_word",
+    # Intercom (P9.1): the signaling events reach the bus so an automation can
+    # follow a call; the services and entities that start one arrive with P9.2.
+    "intercom_answer": "tabula_intercom",
+    "intercom_decline": "tabula_intercom",
+    "intercom_signal": "tabula_intercom",
+    "intercom_ended": "tabula_intercom",
+    "intercom_start_request": "tabula_intercom",
 }
 
 
