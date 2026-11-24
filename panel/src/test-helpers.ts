@@ -5,13 +5,18 @@
  */
 import "./panel";
 import type { TabulaActivity } from "./activity";
+import "./settings-editor";
+import { SETTINGS_DEFAULTS } from "./generated/settings";
+import type { TabulaSettingsEditor } from "./settings-editor";
 import type { TabulaPanel } from "./shell";
 import type {
   HassConnection,
   HassEntity,
+  HassStates,
   HomeAssistant,
   PanelDevice,
   PanelInfo,
+  SettingsSnapshot,
   UnsubscribeFunc,
 } from "./types";
 
@@ -24,10 +29,15 @@ export const INFO: PanelInfo = {
 
 export type CallHandler = (msg: { type: string; [key: string]: unknown }) => Promise<unknown>;
 
-export function fakeHass(handler: CallHandler, connection?: HassConnection): HomeAssistant {
+export function fakeHass(
+  handler: CallHandler,
+  connection?: HassConnection,
+  states?: HassStates,
+): HomeAssistant {
   return {
     callWS: <T>(msg: { type: string; [key: string]: unknown }) => handler(msg) as Promise<T>,
     connection,
+    states,
   };
 }
 
@@ -218,4 +228,56 @@ export async function mountActivity(
 export async function updateHass(element: TabulaActivity, hass: HomeAssistant): Promise<void> {
   element.hass = hass;
   await settle(element);
+/** A document with every schema default filled in, as a fresh copy. */
+export function settingsDocument(): Record<string, unknown> {
+  return structuredClone(SETTINGS_DEFAULTS) as unknown as Record<string, unknown>;
+}
+
+/** One `tabula/panel_settings` payload, with everything a test does not name. */
+export function settingsSnapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
+  return {
+    device_id: "11111111-2222-3333-4444-555555555555",
+    ha_device_id: "abcdef0123456789abcdef0123456789",
+    name: "Office Kiosk",
+    connected: true,
+    stored: true,
+    settings: settingsDocument(),
+    defaults: settingsDocument(),
+    ha_revision: 1,
+    device_revision: 1,
+    pending: false,
+    schema_version: 3,
+    device_schema_version: 3,
+    capabilities: ["screen", "screensaver"],
+    field_since: { screen_brightness: 1, schedule_slots: 2, voice_wake_word_enabled: 3 },
+    ...overrides,
+  };
+}
+
+/** A couple of live entity states, for the editor's entity picker. */
+export const STATES: HassStates = {
+  "sensor.office_temperature": {
+    entity_id: "sensor.office_temperature",
+    state: "21",
+    attributes: {},
+  },
+  "light.kitchen": { entity_id: "light.kitchen", state: "on", attributes: {} },
+};
+
+/**
+ * Mount the settings editor with a fake hass and the read it answers with.
+ *
+ * The element is the device page's Settings tab body; a test drives it as the
+ * user would (typing, selecting, pressing Save) and reads the calls it made.
+ */
+export async function mountEditor(
+  handler: CallHandler,
+  snapshot: SettingsSnapshot = settingsSnapshot(),
+): Promise<TabulaSettingsEditor> {
+  const element = document.createElement("tabula-settings-editor") as TabulaSettingsEditor;
+  element.hass = fakeHass(handler, undefined, STATES);
+  element.deviceId = snapshot.device_id;
+  document.body.append(element);
+  await settle(element);
+  return element;
 }

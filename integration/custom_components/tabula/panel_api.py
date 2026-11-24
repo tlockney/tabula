@@ -99,7 +99,7 @@ def _entities(hass: HomeAssistant, record: DeviceRecord) -> dict[str, list[dict[
     return dict(sorted(grouped.items()))
 
 
-def _settings_state(hub: TabulaHub, record: DeviceRecord) -> dict[str, Any]:
+def settings_state(hub: TabulaHub, record: DeviceRecord) -> dict[str, Any]:
     """Settings revisions and whether the integration still owes the device a push.
 
     The device's revision is what it reported at registration or in its last
@@ -145,7 +145,7 @@ def device_snapshot(hass: HomeAssistant, hub: TabulaHub, record: DeviceRecord) -
         "protocol_version": record.protocol_version,
         "settings_schema_version": record.schema_version,
         "capabilities": list(record.capabilities),
-        "settings": _settings_state(hub, record),
+        "settings": settings_state(hub, record),
         "current_page": state.get("current_page"),
         "screen": {key: state.get(key) for key in SCREEN_KEYS},
         "entities": _entities(hass, record),
@@ -181,3 +181,9 @@ def async_register(hass: HomeAssistant) -> None:
     """Register the panel commands (called once from async_setup)."""
     websocket_api.async_register_command(hass, ws_panel_info)
     websocket_api.async_register_command(hass, ws_panel_devices)
+    # The settings editor's two commands live in panel_settings.py (P5.3); it
+    # imports settings_state from here, so this import is deferred to keep the
+    # module graph acyclic while panel_api stays the one place commands register.
+    from .panel_settings import async_register as register_settings
+
+    register_settings(hass)

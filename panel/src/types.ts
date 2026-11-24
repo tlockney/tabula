@@ -24,6 +24,8 @@ export interface HomeAssistant {
   states?: Record<string, HassEntity>;
   /** The frontend's event bus; absent in a test's fake unless the test needs it. */
   connection?: HassConnection;
+  /** The frontend's live states: the settings editor's entity picker reads it. */
+  states?: HassStates;
 }
 
 /** HA's event subscription: resolves to the unsubscribe function. */
@@ -89,4 +91,51 @@ export interface PanelDevice {
   screen: PanelDeviceScreen;
   /** Entities grouped by platform (the entity id's domain). */
   entities: Record<string, PanelDeviceEntity[]>;
+}
+
+/** One reported entity's live state, as the frontend's `hass.states` holds it. */
+export interface HassState {
+  entity_id: string;
+  state: string;
+  attributes: Record<string, unknown>;
+}
+
+/** The part of `hass.states` the editor's entity picker reads. */
+export type HassStates = Record<string, HassState>;
+
+/** `tabula/panel_settings` (integration/custom_components/tabula/panel_settings.py). */
+export interface SettingsSnapshot {
+  device_id: string;
+  ha_device_id: string;
+  name: string | null;
+  connected: boolean;
+  /** False when the device has no stored document: `settings` is the defaults. */
+  stored: boolean;
+  /** The stored document, or the schema defaults when there is none. */
+  settings: Record<string, unknown>;
+  /** The schema's defaults, for showing an unset key as what it would be. */
+  defaults: Record<string, unknown>;
+  /** HA's revision; a write bumps it by one. */
+  ha_revision: number;
+  /** What the device reported at registration or in its last ACK; null offline. */
+  device_revision: number | null;
+  /** A stored document the device has not applied yet. */
+  pending: boolean;
+  /** The settings schema version the integration stores. */
+  schema_version: number;
+  /** The device's reported settings schema version; null before registration. */
+  device_schema_version: number | null;
+  capabilities: string[];
+  /** The schema version that introduced each key (`SettingsSchema.since`). */
+  field_since: Record<string, number>;
+}
+
+/** `tabula/panel_settings_set`'s response. */
+export interface SettingsSaveResult {
+  /** The revision saved, or null when every submitted key was rejected. */
+  revision: number | null;
+  /** The keys that applied, as flat schema keys. */
+  applied: string[];
+  /** The keys that did not, each with the schema's reason. */
+  rejected: { key: string; reason: string }[];
 }
