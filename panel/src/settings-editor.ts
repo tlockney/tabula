@@ -703,8 +703,8 @@ export class TabulaSettingsEditor extends LitElement {
     index: number,
     row: Record<string, unknown>,
   ): void {
-    // The rows shown are sorted for display; write back in the same order, and
-    // let saveValues sort again when the list is submitted (schema order).
+    // Rows stay where the user put them (the up/down buttons act on this
+    // order); saveValues sorts an object array into schema order when submitted.
     const next = [...rows];
     next[index] = row;
     this.setValue(field, next);
