@@ -12,6 +12,7 @@ import pytest
 from custom_components.tabula import panel
 from custom_components.tabula.const import (
     DATA_PANEL_REGISTERED,
+    DATA_PANEL_STATIC_PATH,
     DOMAIN,
     PANEL_ICON,
     PANEL_STATIC_URL_PATH,
@@ -43,15 +44,12 @@ def panel_config(hass_setup):
     return (hass_setup.data.get(frontend.DATA_PANELS) or {}).get(PANEL_URL_PATH)
 
 
-def static_paths(hass_setup) -> list[str]:
-    """The static paths registered for the bundle, one entry per registration."""
+def static_resources(hass_setup) -> list[tuple[str, str]]:
+    """The router resources serving the bundle (HA adds a caching and a plain one)."""
     return sorted(
-        {
-            (route.resource.canonical or "").split("?")[0]
-            for resource in hass_setup.http.app.router.resources()
-            for route in resource
-            if (route.resource.canonical or "").startswith(PANEL_STATIC_URL_PATH)
-        }
+        (canonical, type(resource).__name__)
+        for resource in hass_setup.http.app.router.resources()
+        if (canonical := resource.canonical or "").startswith(PANEL_STATIC_URL_PATH)
     )
 
 
@@ -69,7 +67,7 @@ async def test_registers_the_panel_once_with_the_expected_arguments(hass_setup, 
     # The manifest version, so an upgrade busts the browser cache.
     assert custom["module_url"] == f"{PANEL_STATIC_URL_PATH}/panel.js?v=0.1.0"
     # The static path serves the same directory the bundle is read from.
-    assert static_paths(hass_setup) == [PANEL_STATIC_URL_PATH]
+    assert len(static_resources(hass_setup)) == 2, "the bundle's static path is registered"
 
     # Idempotent: frontend rejects a second panel on the same URL path.
     assert await panel.async_register_panel(hass_setup) is True
@@ -99,23 +97,28 @@ async def test_skips_registration_with_a_warning_when_the_bundle_is_absent(
 
     assert panel_config(hass_setup) is None
     assert "make panel" in caplog.text
-    assert static_paths(hass_setup) == []
+    assert not static_resources(hass_setup)
 
 
 async def test_unload_removes_the_panel_and_keeps_the_static_path(hass_setup, bundle, hub):
     """The sidebar entry follows the hub; the frozen HTTP route stays."""
     assert panel_config(hass_setup) is not None
+    before = static_resources(hass_setup)
 
     assert await hass_setup.config_entries.async_unload(hub.entry_id)
     await hass_setup.async_block_till_done()
 
     assert panel_config(hass_setup) is None
     assert DATA_PANEL_REGISTERED not in hass_setup.data
+    assert hass_setup.data[DATA_PANEL_STATIC_PATH] is True
+    assert static_resources(hass_setup) == before
     # Reloading the hub brings the panel back.
     assert await hass_setup.config_entries.async_setup(hub.entry_id)
     await hass_setup.async_block_till_done()
     assert panel_config(hass_setup) is not None
-    assert static_paths(hass_setup) == [PANEL_STATIC_URL_PATH], "static path re-registered"
+    # A reload re-adds the sidebar entry but never the static path: the router
+    # is frozen, so a second registration would be a duplicate route.
+    assert static_resources(hass_setup) == before
 
 
 async def test_panel_info_for_an_admin(hass_setup, server, hub, paired, session):

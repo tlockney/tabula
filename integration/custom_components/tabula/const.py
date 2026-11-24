@@ -74,6 +74,7 @@ DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
 # The Tabularium bundle is registered as a static path at most once per HA run
 # (P5.1); a reload only re-registers the panel.
 DATA_PANEL_REGISTERED = f"{DOMAIN}_panel_registered"
+DATA_PANEL_STATIC_PATH = f"{DOMAIN}_panel_static_path"
 
 # The Tabularium panel (P5.1, docs/packets/P5.1-panel-shell-and-codegen.md): the
 # sidebar entry, the URL HA serves the bundle from and the custom element name

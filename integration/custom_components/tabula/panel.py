@@ -22,6 +22,7 @@ from homeassistant.loader import async_get_integration
 
 from .const import (
     DATA_PANEL_REGISTERED,
+    DATA_PANEL_STATIC_PATH,
     DOMAIN,
     PANEL_ICON,
     PANEL_STATIC_URL_PATH,
@@ -62,11 +63,16 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
     if hass.data.get(DATA_PANEL_REGISTERED):
         return True
 
-    await hass.http.async_register_static_paths(
-        # cache_headers=False: the folder's contents change on upgrade, and the
-        # module URL carries the version.
-        [StaticPathConfig(PANEL_STATIC_URL_PATH, str(BUNDLE_DIR), False)]
-    )
+    if not hass.data.get(DATA_PANEL_STATIC_PATH):
+        # The router freezes after startup, so this half is once per HA run and
+        # outlives the hub; only the sidebar entry follows the entry.
+        await hass.http.async_register_static_paths(
+            # cache_headers=False: the folder's contents change on upgrade, and
+            # the module URL carries the version.
+            [StaticPathConfig(PANEL_STATIC_URL_PATH, str(BUNDLE_DIR), False)]
+        )
+        hass.data[DATA_PANEL_STATIC_PATH] = True
+
     integration = await async_get_integration(hass, DOMAIN)
     await panel_custom.async_register_panel(
         hass,
