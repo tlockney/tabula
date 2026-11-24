@@ -59,7 +59,7 @@ Standard HA WebSocket API at `/api/websocket`: `auth_required` → `{"type":"aut
 - The integration replies with HA's result envelope: `ack` (`success: true`, `result: null`), `register_result`, or `error_result`.
 - Integration-to-device commands arrive as HA subscription events on the `tabula/subscribe` ID: `{"id": <subscribe id>, "type": "event", "event": {command}}`.
 - **Connection binding:** every `tabula/*` command resolves the device from the authenticated user (`connection.user`). `device_id` in `tabula/register` must match the device bound to that user, else `unknown_device`. No other frame carries a device ID.
-- **Size:** no frame may exceed `FRAME_MAX_BYTES` (UTF-8 JSON). Larger data goes over HTTP.
+- **Size:** no JSON frame may exceed `FRAME_MAX_BYTES` (UTF-8 JSON). Binary voice frames (4.10) are bounded by `VOICE_CHUNK_BYTES` instead. Larger data goes over HTTP.
 - **Keepalive:** HA's own pings are answered by the WebSocket library and are invisible to the app, so the device sends HA's `ping` command (`{"id": n, "type": "ping"}` → `{"id": n, "type": "pong"}`) every `APP_PING_INTERVAL` and treats a missing `pong` after `PONG_TIMEOUT` as a dead connection.
 
 ### 4.0 Strict senders, tolerant receivers
@@ -75,7 +75,7 @@ The schema describes exactly what a sender of this version produces, and fixture
 
 1. `tabula/register` (must be first; any other `tabula/*` before it gets `not_registered`).
 2. `tabula/subscribe`.
-3. Then, in any order: `tabula/state`, `tabula/result`, `tabula/event`, `tabula/log`.
+3. Then, in any order: `tabula/state`, `tabula/result`, `tabula/event`, `tabula/log`, and binary voice frames while a turn is open (4.10).
 
 The device waits up to `REGISTER_TIMEOUT` for each reply; on timeout it closes the socket and reconnects (section 7).
 
@@ -115,6 +115,7 @@ No fields. `ack`, then command events for the life of the connection. One subscr
 | `illuminance` | 0–100000 | Ambient light, lux (P3.16); covered by the `illuminance` capability |
 | `wake_word_active` | bool | Always present, because the APK always ships the detector and the capability is declared on every register: true while the microphone is open and the wake-word frontend is computing features (setting on, permission held, nothing playing), false otherwise (P7.1) |
 | `last_wake_word` | date-time | Device clock at the last accepted detection; omitted until there is one (P7.1) |
+| `voice_turn` | `idle` \| `listening` | `listening` while a voice turn is open and PCM is streaming on the binary channel, else `idle`; always present while the `voice` capability is declared. Speaking is `media_state`, not this key (ADR 0024) |
 | `current_page` | string \| null | Frontend path shown in the WebView, without query string or fragment |
 | `volume` | 0–100 | Media stream volume |
 | `muted` | bool | |
@@ -140,6 +141,8 @@ Every command event has `command_id` (unique per device for the integration's li
 | `reload`, `restart_app`, `clear_cache` | `{}` | always |
 | `log_subscription` (`command_log_subscription`) | `enabled`, optional minimum `level` | `logs` |
 | `screenshot` (`command_screenshot`) | optional JPEG `quality` | `screenshot` (Phase 3) |
+| `voice_start` (`command_voice_start`) | `turn_id`, `handler_id` (1–255, the byte that prefixes every binary frame of the turn), `start_stage` (`stt`: the device detected the wake word; `wake_word`: HA's engine runs on the stream), optional `wake_word_phrase` (absent for `wake_word`) | `voice` (Phase 7) |
+| `voice_stop` (`command_voice_stop`) | `turn_id`, `reason` (`ended`, `cancelled`, `timeout`) | `voice` (Phase 7) |
 
 The integration never sends a command whose capability the device did not declare.
 
@@ -165,6 +168,8 @@ The integration never sends a command whose capability the device did not declar
 | `media_finished` | `reason`: `ended`, `stopped`, `error` | `tabula_media` |
 | `page_changed` | `path` (no query string or fragment) | `tabula_page` |
 | `wake_word_detected` | `phrase` (`[a-z0-9_]{1,32}`), `probability` (0–255, the model's own scale) | `tabula_wake_word` |
+| `voice_turn_started` | `turn_id`, optional `phrase` (the wake word the turn began with) | `tabula_voice` |
+| `voice_turn_ended` | `turn_id`, `reason`: `command` (a `voice_stop`), `timeout` (the device's own limit), `error` (microphone or codec failed) | `tabula_voice` |
 
 ### 4.8 `log`
 
@@ -178,6 +183,18 @@ A device has one current connection. When a newer `tabula/register` succeeds for
 - Any later `tabula/*` frame on the old connection gets `error_result` `superseded` and has no effect, so stale state never overwrites fresh state. A device that receives `superseded` closes that socket.
 - Commands still waiting for results on the old connection fail when their timeout expires (results are matched per connection, 4.6).
 - The old connection closing does not change the device's availability; only the current connection's close does.
+
+### 4.10 Binary voice frames (`voice`)
+
+While a voice turn is open the device sends HA WebSocket **binary** messages on the same connection. The first byte is the `handler_id` from `voice_start`; the rest is exactly `VOICE_CHUNK_BYTES` (320) bytes of PCM: 16 kHz, 16-bit signed little-endian, mono. 320 bytes is 160 samples, 10 ms of audio, which is HA's own assist chunk (`SAMPLE_RATE` 16000, `SAMPLES_PER_CHUNK` 160 in `assist_pipeline/const.py` at the 2025.1 floor).
+
+- A binary frame has no `id`, no `type` and no device ID. The connection binds it to the device and the handler byte binds it to the turn.
+- The device sends one frame per 10 ms of real time while the turn is open, starting after `voice_start` is acknowledged. It may interleave `tabula/*` JSON frames freely; the two are separate message types.
+- The turn ends on `voice_stop` (device emits `voice_turn_ended` with `command`), after `VOICE_TURN_MAX_S` seconds (reason `timeout`), on a capture error (reason `error`), or when the connection closes (no event: there is nowhere left to send it). Nothing binary is sent outside an open turn.
+- The device enforces `VOICE_TURN_MAX_S` itself, so a lost `voice_stop` cannot stream forever. The integration reads the timeout event as the end of its pipeline.
+- `voice_stop` for a turn that is not open gets `ok`: the state it asks for already holds, and a stop that arrives after the device's own timeout is normal.
+- The integration registers an HA binary handler for the turn (`ActiveConnection.async_register_binary_handler`, one byte id, 1–255) before sending `voice_start`, and unregisters it when the turn ends; HA reuses freed ids. Frames whose handler byte names no open turn are dropped.
+- The mock device and the Android codec carry this frame as a byte-array wrapper with the handler byte split off (`VoiceFrame.handlerId` + `payload`); it has no JSON schema entry.
 
 ## 5. Screenshot upload (HTTP, authenticated)
 

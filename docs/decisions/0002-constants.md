@@ -291,6 +291,16 @@ The detector's constants. ADR 0029 already fixed the model, its cutoff and the a
 | `AUDIO_SOURCE` order | `MIC`, then `VOICE_RECOGNITION` | ADR 0029 item 2: the raw path first, the OS's speech path when another app holds `MIC`. |
 | `WAKE_WORD_CHIME_GUARD_MS` | 500 ms | Half-duplex keeps detection closed after a chime (ADR 0030 item 7). `TONE_PROP_BEEP` is a short one-shot with no completion callback, so the guard is the tone's length plus the speaker's tail: long enough that the microphone never reopens on the beep's last samples, short enough not to swallow a phrase spoken right after the notification. |
 
+### Voice audio channel (P7.2)
+
+The device→HA PCM channel of ADR 0024 item 2, as defined in PROTOCOL.md 4.10. Both values are HA's, not ours: `assist_pipeline/const.py` at the 2025.1 floor fixes the format (16 kHz, 16-bit, mono), the chunk (`SAMPLES_PER_CHUNK` 160 = 10 ms, `BYTES_PER_CHUNK` 320) and the default pipeline timeout (300 s).
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `VOICE_CHUNK_BYTES` | 320 (160 samples, 10 ms) | Exactly `BYTES_PER_CHUNK` from `assist_pipeline/const.py`: one TLP binary frame carries one HA chunk, so the integration's stream sees the same granularity as `assist_pipeline/run` and framing adds no buffering of its own. 320 + 1 bytes is far under any WebSocket message limit, so `FRAME_MAX_BYTES` stays a JSON-frame rule (PROTOCOL 4.10). |
+| `VOICE_FRAME_INTERVAL` | 10 ms | One chunk per `VOICE_CHUNK_BYTES` = 10 ms of audio: send pacing must match the audio clock or the stream drifts against HA's real-time consumer. |
+| `VOICE_TURN_MAX_S` | 300 s | `DEFAULT_PIPELINE_TIMEOUT` in `assist_pipeline/const.py`. The device stops on its own at the same second HA abandons the run, so a lost `voice_stop` cannot stream forever and both ends agree on when the turn is over. It is also far longer than any utterance and shorter than a forgotten open microphone. |
+
 ### Phase 1–2 behavior defaults
 
 Defaults for the settings schema (P0.5) and the device's behavior before HA has sent any settings.
