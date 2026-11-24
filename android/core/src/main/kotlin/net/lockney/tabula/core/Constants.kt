@@ -145,6 +145,10 @@ object Constants {
      * payload, in UTF-8 bytes (P9.1). */
     const val INTERCOM_SIGNAL_MAX_BYTES = 4096
 
+    /** INTERCOM_BROADCAST_MAX_TARGETS: one broadcast's receivers, provisional
+     * until a broadcast is measured on hardware (P9.1b, ADR 0037 decision 7). */
+    const val INTERCOM_BROADCAST_MAX_TARGETS = 8
+
     /** INTERCOM_ANSWER_TONE_MS: ms from an auto-answer's tone starting to the
      * answer, and the microphone, opening (P9.5). */
     const val INTERCOM_ANSWER_TONE_MS = 500

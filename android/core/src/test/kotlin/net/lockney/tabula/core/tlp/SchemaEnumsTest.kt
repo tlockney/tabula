@@ -181,4 +181,18 @@ class SchemaEnumsTest {
         assertEquals(Constants.INTERCOM_SIGNAL_MAX_BYTES, commandBound)
         assertEquals(Constants.INTERCOM_SIGNAL_MAX_BYTES, eventBound)
     }
+
+    @Test
+    fun `the broadcast cap matches the schema's peers bound`() {
+        // INTERCOM_BROADCAST_MAX_TARGETS is one number in five places (ADR
+        // 0002, the integration, Constants.kt, the mock and the schema's
+        // peers.maxItems); this holds Android and the schema together, and the
+        // integration's own tests cover its copy (ADR 0037 decision 7).
+        val maxItems = definition("command_intercom_start")
+            .getValue("properties").jsonObject.getValue("event").jsonObject
+            .getValue("properties").jsonObject.getValue("args").jsonObject
+            .getValue("properties").jsonObject.getValue("peers").jsonObject
+            .getValue("maxItems").jsonPrimitive.content.toInt()
+        assertEquals(Constants.INTERCOM_BROADCAST_MAX_TARGETS, maxItems)
+    }
 }

@@ -48,6 +48,7 @@ INTERCOM_RING_LIMIT_S = 45  # a ringing call nobody answers ends
 INTERCOM_CONNECT_TIMEOUT_S = 10  # offer to connected audio
 INTERCOM_CALL_LIMIT_S = 300  # the hard call limit, from the moment the call is up
 INTERCOM_SIGNAL_MAX_BYTES = 4096  # one offer, answer or candidate's payload
+INTERCOM_BROADCAST_MAX_TARGETS = 8  # one broadcast's receivers (provisional, ADR 0037 decision 7)
 
 # Logs
 LOG_MAX_LINES = 200

@@ -14,6 +14,7 @@ from urllib.parse import urljoin, urlsplit
 
 from mockdevice import __version__
 from mockdevice.constants import (
+    INTERCOM_BROADCAST_MAX_TARGETS,
     INTERCOM_CALL_LIMIT_S,
     INTERCOM_RING_LIMIT_S,
     INTERCOM_SIGNAL_MAX_BYTES,
@@ -41,6 +42,9 @@ ALL_CAPABILITIES = [
     # ignores them instead of refusing the register frame (PROTOCOL 4.0).
     "intercom_listen",
     "intercom_talk",
+    # The calling end of a call the integration started, a broadcast included
+    # (ADR 0037 decision 2). Single-segment for the same reason.
+    "intercom_caller",
 ]
 
 # Which capability a command needs (docs/PROTOCOL.md 4.5); None = always available.
@@ -66,6 +70,9 @@ COMMAND_CAPABILITY: dict[str, str | None] = {
     "intercom_ring": "intercom_listen",
     "intercom_signal": "intercom_listen",
     "intercom_end": "intercom_listen",
+    # The caller's own frame, gated on the capability that says a build can be
+    # the calling end of a call the integration started (ADR 0037 decision 2).
+    "intercom_start": "intercom_caller",
 }
 
 
@@ -403,12 +410,63 @@ class MockDevice:
         self._intercom_state("ringing" if args["mode"] == "call" else "in_call")
 
     def _cmd_intercom_signal(self, args: dict[str, Any]) -> None:
-        """Relay one signal for the current call; the mock has no audio to set up."""
-        self._require_call(args["call_id"])
+        """Relay one signal for the current call; the mock has no audio to set up.
+
+        ``peer_device_id`` is the caller's name for one connection (ADR 0037
+        decision 3). A signal naming a device outside the call's peer list gets
+        ``invalid_args``, the same answer a signal for another call gets; a
+        two-device call's frames carry no such member and are still fine.
+        """
+        call = self._require_call(args["call_id"])
+        peer = args.get("peer_device_id")
+        if peer is not None and peer not in {p["device_id"] for p in call.get("peers") or []}:
+            raise CommandError("invalid_args", "peer_device_id is not in this call")
         if len(args["payload"].encode()) > INTERCOM_SIGNAL_MAX_BYTES:
             raise CommandError("invalid_args", "signal payload is over the size limit")
-        self.intercom_signals.append({"kind": args["kind"], "payload": args["payload"]})
+        signal: dict[str, Any] = {"kind": args["kind"], "payload": args["payload"]}
+        if peer is not None:
+            signal["peer_device_id"] = peer
+        self.intercom_signals.append(signal)
         self.intercom_call["last_signal_at"] = self.clock()
+
+    def _cmd_intercom_start(self, args: dict[str, Any]) -> None:
+        """Adopt or merge the call the integration says this device is calling.
+
+        The frame tells the caller the call id and, for an area or all-devices
+        request, the targets it resolved (ADR 0037 decision 2). A device with a
+        different call up answers ``busy``; one already in this call keeps the
+        id and reconciles its peer list - a peer it lacks is added, one the
+        list no longer names is dropped. The hard limit runs from now, because
+        preparing the caller is what puts it in the call.
+        """
+        peers = [dict(p) for p in args["peers"]]
+        mode = args["mode"]
+        if not 1 <= len(peers) <= INTERCOM_BROADCAST_MAX_TARGETS:
+            raise CommandError(
+                "invalid_args",
+                f"peers must be 1..{INTERCOM_BROADCAST_MAX_TARGETS} devices",
+            )
+        if mode == "call" and len(peers) != 1:
+            raise CommandError("invalid_args", "a call has exactly one peer")
+        call = self.intercom_call
+        if call is not None and call["call_id"] != args["call_id"]:
+            raise CommandError("busy", "already in a call")
+        if call is None:
+            self.intercom_call = {
+                "call_id": args["call_id"],
+                "mode": mode,
+                "role": "caller",
+                "peers": peers,
+                "ring_deadline": None,
+                "call_deadline": self.clock() + INTERCOM_CALL_LIMIT_S,
+            }
+        else:
+            call["mode"] = mode
+            call["role"] = "caller"
+            call["peers"] = peers
+            call["ring_deadline"] = None
+            call["call_deadline"] = self.clock() + INTERCOM_CALL_LIMIT_S
+        self._intercom_state("in_call" if mode == "call" else "broadcasting")
 
     def _cmd_intercom_end(self, args: dict[str, Any]) -> None:
         """End the call. A device not in that call answers ok and changes nothing."""
@@ -454,16 +512,28 @@ class MockDevice:
         if self.intercom_call is not None:
             self._end_intercom(reason)
 
-    def send_intercom_signal(self, kind: str, payload: str) -> None:
-        """Emit intercom_signal for the current call, the device's side of the relay."""
+    def send_intercom_signal(
+        self, kind: str, payload: str, peer_device_id: str | None = None
+    ) -> None:
+        """Emit intercom_signal for the current call, the device's side of the relay.
+
+        ``peer_device_id`` names the one connection this signal belongs to and
+        is emitted only when given (ADR 0037 decision 3): a two-device call
+        omits it, and a caller with several peers must pass it, because its
+        signal otherwise has no connection to go to and the integration drops
+        it. A receiver never sends it at all.
+        """
         call = self.intercom_call
         if call is None:
             raise CommandError("invalid_args", "no call is up")
         if len(payload.encode()) > INTERCOM_SIGNAL_MAX_BYTES:
             raise CommandError("invalid_args", "signal payload is over the size limit")
-        self.on_event(
-            "intercom_signal", {"call_id": call["call_id"], "kind": kind, "payload": payload}
-        )
+        if peer_device_id is None and len(call.get("peers") or []) > 1:
+            raise CommandError("invalid_args", "a caller with several peers must name the peer")
+        data: dict[str, Any] = {"call_id": call["call_id"], "kind": kind, "payload": payload}
+        if peer_device_id is not None:
+            data["peer_device_id"] = peer_device_id
+        self.on_event("intercom_signal", data)
 
     def start_intercom_call(
         self,

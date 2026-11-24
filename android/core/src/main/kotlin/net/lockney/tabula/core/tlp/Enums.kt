@@ -80,6 +80,9 @@ enum class Capability {
     // audio, talk can capture; a device with neither is left out of targets.
     @SerialName("intercom_listen") INTERCOM_LISTEN,
     @SerialName("intercom_talk") INTERCOM_TALK,
+    // P9.1b: the calling end of a call the integration started, a broadcast
+    // included (ADR 0037 decision 2).
+    @SerialName("intercom_caller") INTERCOM_CALLER,
 }
 
 /** Tabula error codes (command_result.error.code, docs/PROTOCOL.md 6). */

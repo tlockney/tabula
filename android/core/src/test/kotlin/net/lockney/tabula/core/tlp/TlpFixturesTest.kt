@@ -96,6 +96,8 @@ class TlpFixturesTest {
 
             "command_intercom_end" ->
                 typed(command.event.intercomEndArgs(Tlp.strict), IntercomEndArgs.serializer())
+            "command_intercom_start" ->
+                typed(command.event.intercomStartArgs(Tlp.strict), IntercomStartArgs.serializer())
             else -> error("unexpected command frame $frame")
         }
         assertTrue(args.canonical() == command.event.args.canonical(), "$frame args must round-trip typed")
@@ -220,6 +222,43 @@ class IntercomFixturesTest {
             .event
             .intercomSignalArgs(Tlp.strict)
         assertTrue(candidate.kind == IntercomSignalKind.CANDIDATE)
+    }
+
+    @Test
+    fun `the caller's fixtures carry the peers and the peer id`() {
+        val call = File(fixtures, "command_intercom_start.json")
+        val args = (Tlp.decodeFrame("command_intercom_start", call.readText()) as CommandFrame)
+            .event
+            .intercomStartArgs(Tlp.strict)
+        assertTrue(args.mode == IntercomMode.CALL)
+        assertTrue(args.peers.size == 1)
+        assertTrue(args.peers[0].name == "Kitchen Frame")
+
+        val broadcast = File(fixtures, "command_intercom_start.broadcast.json")
+        val many = (Tlp.decodeFrame("command_intercom_start", broadcast.readText()) as CommandFrame)
+            .event
+            .intercomStartArgs(Tlp.strict)
+        assertTrue(many.mode == IntercomMode.BROADCAST)
+        assertTrue(many.peers.size == 2)
+
+        // A labelled signal names the other end of one connection; the v1
+        // fixtures carry no such member (ADR 0037 decision 3).
+        val labelled = File(fixtures, "command_intercom_signal.peer.json")
+        val signal = (Tlp.decodeFrame("command_intercom_signal", labelled.readText()) as CommandFrame)
+            .event
+            .intercomSignalArgs(Tlp.strict)
+        assertTrue(signal.peerDeviceId == "7d1e2f3a-4b5c-4d6e-8f70-1a2b3c4d5e6f")
+
+        val plain = File(fixtures, "command_intercom_signal.offer.json")
+        val unlabelled = (Tlp.decodeFrame("command_intercom_signal", plain.readText()) as CommandFrame)
+            .event
+            .intercomSignalArgs(Tlp.strict)
+        assertTrue(unlabelled.peerDeviceId == null)
+
+        val event = File(fixtures, "event.intercom_signal.peer.json")
+        val data = (Tlp.decodeFrame("event", event.readText()) as EventFrame)
+            .eventData(Tlp.strict) as IntercomSignal
+        assertTrue(data.peerDeviceId == "7d1e2f3a-4b5c-4d6e-8f70-1a2b3c4d5e6f")
     }
 
     @Test

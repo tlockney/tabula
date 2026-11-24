@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
+import net.lockney.tabula.core.tlp.IntercomPeer
 import net.lockney.tabula.core.tlp.IntercomSignalKind
 import net.lockney.tabula.core.tlp.IntercomState
 
@@ -90,7 +91,20 @@ class CallMachine(
     )
     override val events: ReceiveChannel<EngineEvent> = _events
 
-    private var peer: CallPeer? = null
+    /**
+     * One connection per peer, keyed by the TLP device id of the other end
+     * (P9.1b, ADR 0037 decision 1): a callee holds one, a prepared caller one
+     * per receiver, and the key is the peer id its signals carry.
+     */
+    private val connections = LinkedHashMap<String, CallPeer>()
+
+    /**
+     * The peers HA resolved for this call, whether or not their connections are
+     * open yet: the label a caller's signal carries depends on how many peers
+     * the call has, not on how many connections happen to exist mid-prepare.
+     */
+    private var peerIds: Set<String> = emptySet()
+
     private var pendingOffer: String? = null
 
     /**
@@ -106,8 +120,12 @@ class CallMachine(
     private var connected = false
     private var closed = false
 
-    /** One answer per call: a relayed repeat is acknowledged and ignored. */
-    private var answerApplied = false
+    /**
+     * One answer per connection: a relayed repeat on the same connection is
+     * acknowledged and ignored, and a broadcast's second receiver still gets
+     * its own (review of #177, finding 1).
+     */
+    private val answeredKeys = mutableSetOf<String>()
 
     private var ringTimer: CallScheduler.Cancelable? = null
     private var answerTimer: CallScheduler.Cancelable? = null
@@ -164,10 +182,53 @@ class CallMachine(
         // The caller opens its side at once and HA rings the callee; the
         // callee's answer comes back as a relayed signal.
         val direction = if (request.mode == IntercomMode.BROADCAST) PeerDirection.SEND_ONLY else PeerDirection.SEND_RECEIVE
-        if (!openPeer(info, direction)) return StartOutcome.Unavailable
-        peer?.offer()
+        val key = info.peerDeviceId ?: ""
+        peerIds = setOf(key)
+        if (!openPeer(key, info, direction)) return StartOutcome.Unavailable
+        connections[key]?.offer()
         armCallLimit(info)
         return StartOutcome.Started(callId)
+    }
+
+    @Synchronized
+    override fun prepare(
+        callId: String,
+        mode: IntercomMode,
+        peers: List<IntercomPeer>,
+    ): PrepareOutcome {
+        if (closed) return PrepareOutcome.Busy
+        val held = _info.value
+        // A frame for a call this device already holds reconciles its peer
+        // list; one for a different call is refused `busy`, so a late frame can
+        // never move a live call (ADR 0037 decision 2)
+        if (held != null && held.callId != callId) return PrepareOutcome.Busy
+        val first = peers.first()
+        val capture = held?.usesMicrophone ?: canTalk()
+        val info = CallInfo(
+            callId = callId,
+            mode = mode,
+            direction = CallDirection.OUTGOING,
+            peerName = first.name,
+            peerDeviceId = first.deviceId,
+            startedAtMs = held?.startedAtMs ?: clockMs(),
+            usesMicrophone = capture,
+        )
+        begin(info, if (mode == IntercomMode.BROADCAST) IntercomState.BROADCASTING else IntercomState.IN_CALL)
+        // Reconcile: a peer the list no longer names is closed, one it lacks is
+        // opened and offered to
+        val wanted = peers.map { it.deviceId }
+        peerIds = wanted.toSet()
+        for (key in connections.keys - wanted.toSet()) {
+            connections.remove(key)?.let { dropped -> closeLater(dropped) }
+        }
+        val direction = if (capture) PeerDirection.SEND_RECEIVE else PeerDirection.RECEIVE_ONLY
+        for (peer in peers) {
+            if (connections.containsKey(peer.deviceId)) continue
+            if (!openPeer(peer.deviceId, info, direction)) return PrepareOutcome.Unavailable
+            connections[peer.deviceId]?.offer()
+        }
+        armCallLimit(info)
+        return PrepareOutcome.Prepared(callId)
     }
 
     @Synchronized
@@ -186,7 +247,7 @@ class CallMachine(
         if (request.mode == IntercomMode.BROADCAST) {
             // One-way and live: it plays at once and never opens the microphone
             begin(info, IntercomState.IN_CALL)
-            if (!openPeer(info, PeerDirection.RECEIVE_ONLY)) return true
+            if (!openPeer(request.callerDeviceId, info, PeerDirection.RECEIVE_ONLY)) return true
             armCallLimit(info)
         } else {
             begin(info, IntercomState.RINGING)
@@ -213,7 +274,7 @@ class CallMachine(
         // A listen-only device answers with a receive-only connection and the
         // record path closed (ADR 0028, "Listen-only")
         val direction = if (info.usesMicrophone) PeerDirection.SEND_RECEIVE else PeerDirection.RECEIVE_ONLY
-        if (!openPeer(info, direction)) return false
+        if (!openPeer(info.peerDeviceId ?: "", info, direction)) return false
         pendingOffer?.let { offer ->
             pendingOffer = null
             answerWith(offer)
@@ -248,16 +309,26 @@ class CallMachine(
     }
 
     @Synchronized
-    override fun signal(callId: String, kind: IntercomSignalKind, payload: String): Boolean {
+    override fun signal(
+        callId: String,
+        kind: IntercomSignalKind,
+        payload: String,
+        peerDeviceId: String?,
+    ): Boolean {
         val info = _info.value ?: return false
         if (info.callId != callId) return false
+        // A named connection that this call does not hold is refused
+        // `invalid_args`, as ADR 0037 decision 4 and the mock device both say;
+        // the call itself survives, so a stray id cannot end it
+        val connection = if (peerDeviceId != null) connections[peerDeviceId] else connections.values.singleOrNull()
+        if (peerDeviceId != null && connection == null) return false
         when (kind) {
             IntercomSignalKind.OFFER -> {
                 // Only the answerer takes an offer; the caller made it and
                 // ignores a second one (review of #171, finding 4)
                 if (info.direction != CallDirection.INCOMING) return true
                 when {
-                    peer == null -> pendingOffer = payload
+                    connection == null -> pendingOffer = payload
                     answeredOffer -> Unit
                     else -> answerWith(payload)
                 }
@@ -268,17 +339,16 @@ class CallMachine(
                 // side takes: acknowledge it rather than NACK a live call
                 // (review of #171, finding 4)
                 if (info.direction != CallDirection.OUTGOING) return true
-                if (answerApplied) return true
-                answerApplied = true
+                val key = peerDeviceId ?: connections.keys.singleOrNull() ?: return true
+                if (!answeredKeys.add(key)) return true
                 cancel(ringTimer)
                 ringTimer = null
-                peer?.answerReceived(payload)
+                connection?.answerReceived(payload)
                 // ADR 0002: the connect timeout runs from the answer
                 armConnectTimer(info)
             }
 
             IntercomSignalKind.CANDIDATE -> {
-                val connection = peer
                 if (connection != null) connection.candidate(payload) else pendingCandidates += payload
             }
         }
@@ -326,13 +396,13 @@ class CallMachine(
     }
 
     /** Returns false - the call is already over - when the connection cannot be made. */
-    private fun openPeer(info: CallInfo, direction: PeerDirection): Boolean {
-        val created = runCatching { peers.create(info, direction, listener()) }.getOrNull()
+    private fun openPeer(key: String, info: CallInfo, direction: PeerDirection): Boolean {
+        val created = runCatching { peers.create(info, direction, listener(key)) }.getOrNull()
         if (created == null) {
             finish(info, IntercomEndReason.ERROR, report = true)
             return false
         }
-        peer = created
+        connections[key] = created
         if (pendingCandidates.isNotEmpty()) {
             pendingCandidates.forEach { created.candidate(it) }
             pendingCandidates.clear()
@@ -340,9 +410,9 @@ class CallMachine(
         return true
     }
 
-    private fun listener(): CallPeer.Listener = object : CallPeer.Listener {
+    private fun listener(key: String): CallPeer.Listener = object : CallPeer.Listener {
         override fun onLocalSignal(kind: IntercomSignalKind, payload: String) {
-            onPeerSignal(kind, payload)
+            onPeerSignal(key, kind, payload)
         }
 
         override fun onConnected() {
@@ -359,7 +429,7 @@ class CallMachine(
     }
 
     @Synchronized
-    private fun onPeerSignal(kind: IntercomSignalKind, payload: String) {
+    private fun onPeerSignal(key: String, kind: IntercomSignalKind, payload: String) {
         val info = _info.value ?: return
         // One frame carries at most INTERCOM_SIGNAL_MAX_BYTES, and an over-long
         // one would throw in the frame builder and take the TLP session down
@@ -368,7 +438,11 @@ class CallMachine(
             finish(info, IntercomEndReason.ERROR, report = true)
             return
         }
-        emit(EngineEvent.Signal(info.callId, kind, payload))
+        // Only a caller with more than one peer says which connection a signal
+        // belongs to; a callee and a two-device call send v1 frames unchanged
+        // (ADR 0037 decision 3)
+        val label = if (info.direction == CallDirection.OUTGOING && peerIds.size > 1) key else null
+        emit(EngineEvent.Signal(info.callId, kind, payload, label))
     }
 
     @Synchronized
@@ -395,7 +469,7 @@ class CallMachine(
 
     private fun answerWith(offer: String) {
         val info = _info.value ?: return
-        val connection = peer ?: run {
+        val connection = connections.values.singleOrNull() ?: run {
             pendingOffer = offer
             return
         }
@@ -501,15 +575,16 @@ class CallMachine(
         connectTimer = null
         callTimer = null
         transportTimer = null
-        val connection = peer
-        peer = null
+        val closing = connections.values.toList()
+        connections.clear()
+        peerIds = emptySet()
         pendingOffer = null
         pendingCandidates.clear()
         answeredOffer = false
-        answerApplied = false
+        answeredKeys.clear()
         connected = false
         // closed outside this object's monitor, by the executor (finding 1)
-        if (connection != null) runCatching { closeExecutor.execute { connection.close() } }
+        closing.forEach { connection -> closeLater(connection) }
         _info.value = null
         _state.value = IntercomState.IDLE
         if (locksHeld) {
@@ -517,6 +592,10 @@ class CallMachine(
             locks.release()
         }
         if (report) emit(EngineEvent.Ended(info.callId, reason))
+    }
+
+    private fun closeLater(connection: CallPeer) {
+        runCatching { closeExecutor.execute { connection.close() } }
     }
 
     private fun emit(event: EngineEvent) {

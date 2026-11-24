@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
+import net.lockney.tabula.core.tlp.IntercomPeer
 import net.lockney.tabula.core.tlp.IntercomSignalKind
 import net.lockney.tabula.core.tlp.IntercomState
 
@@ -31,13 +32,29 @@ class FakeCallEngine : CallEngine {
     val answers = mutableListOf<String>()
     val declines = mutableListOf<String>()
     val ends = mutableListOf<Pair<String, IntercomEndReason>>()
-    val signals = mutableListOf<Triple<String, IntercomSignalKind, String>>()
+    val signals = mutableListOf<SignalCall>()
+    val prepares = mutableListOf<PrepareCall>()
     var transportUps = 0
         private set
     var transportDowns = 0
         private set
     var closes = 0
         private set
+
+    /** One relayed signal, as the wiring asked for it (P9.1b adds the peer). */
+    data class SignalCall(
+        val callId: String,
+        val kind: IntercomSignalKind,
+        val payload: String,
+        val peerDeviceId: String?,
+    )
+
+    /** One `intercom_start`, as the wiring passed it to the engine. */
+    data class PrepareCall(
+        val callId: String,
+        val mode: IntercomMode,
+        val peers: List<IntercomPeer>,
+    )
 
     private var sequence = 0
 
@@ -61,6 +78,29 @@ class FakeCallEngine : CallEngine {
             EngineEvent.StartRequested(callId, request.mode, request.targetDeviceId, request.targetAreaId),
         )
         return StartOutcome.Started(callId)
+    }
+
+    override fun prepare(
+        callId: String,
+        mode: IntercomMode,
+        peers: List<IntercomPeer>,
+    ): PrepareOutcome {
+        if (state.value != IntercomState.IDLE && info.value?.callId != callId) {
+            return PrepareOutcome.Busy
+        }
+        prepares += PrepareCall(callId, mode, peers)
+        info.value = CallInfo(
+            callId = callId,
+            mode = mode,
+            direction = CallDirection.OUTGOING,
+            peerName = peers.first().name,
+            peerDeviceId = peers.first().deviceId,
+            startedAtMs = 0,
+            usesMicrophone = canTalk,
+        )
+        state.value =
+            if (mode == IntercomMode.BROADCAST) IntercomState.BROADCASTING else IntercomState.IN_CALL
+        return PrepareOutcome.Prepared(callId)
     }
 
     override fun ring(request: RingRequest): Boolean {
@@ -109,9 +149,21 @@ class FakeCallEngine : CallEngine {
         return true
     }
 
-    override fun signal(callId: String, kind: IntercomSignalKind, payload: String): Boolean {
-        if (info.value?.callId != callId) return false
-        signals += Triple(callId, kind, payload)
+    override fun signal(
+        callId: String,
+        kind: IntercomSignalKind,
+        payload: String,
+        peerDeviceId: String?,
+    ): Boolean {
+        val current = info.value ?: return false
+        if (current.callId != callId) return false
+        // A label the call does not hold is refused, as the real machine does
+        if (peerDeviceId != null) {
+            val known = prepares.lastOrNull { it.callId == callId }?.peers?.map { it.deviceId }?.toSet()
+                ?: setOfNotNull(current.peerDeviceId)
+            if (peerDeviceId !in known) return false
+        }
+        signals += SignalCall(callId, kind, payload, peerDeviceId)
         return true
     }
 

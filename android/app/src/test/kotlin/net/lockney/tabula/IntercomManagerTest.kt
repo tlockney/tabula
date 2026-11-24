@@ -16,9 +16,11 @@ import net.lockney.tabula.core.tlp.EventName
 import net.lockney.tabula.core.tlp.IntercomEndArgs
 import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
+import net.lockney.tabula.core.tlp.IntercomPeer
 import net.lockney.tabula.core.tlp.IntercomRingArgs
 import net.lockney.tabula.core.tlp.IntercomSignalArgs
 import net.lockney.tabula.core.tlp.IntercomSignalKind
+import net.lockney.tabula.core.tlp.IntercomStartArgs
 import net.lockney.tabula.core.tlp.IntercomState
 import net.lockney.tabula.core.tlp.StateDelta
 import net.lockney.tabula.ha.CommandHandler
@@ -215,11 +217,64 @@ class IntercomManagerTest {
 
     @Test
     fun `the capabilities follow the microphone grant`() {
-        assertEquals(listOf("intercom_listen"), intercomCapabilities(canTalk = false))
+        // The caller capability is unconditional: this app can always be the
+        // calling end of a call HA started (P9.1b); only talk follows the grant.
+        assertEquals(listOf("intercom_listen", "intercom_caller"), intercomCapabilities(canTalk = false))
         assertEquals(
-            listOf("intercom_listen", "intercom_talk"),
+            listOf("intercom_listen", "intercom_talk", "intercom_caller"),
             intercomCapabilities(canTalk = true),
         )
+    }
+
+    // --- the caller's own frame and per-peer signaling (P9.1b) ----------------
+
+    private fun start(
+        callId: String = CALL,
+        mode: IntercomMode = IntercomMode.BROADCAST,
+        peers: List<IntercomPeer> = listOf(IntercomPeer(TARGET, "Kitchen Kiosk")),
+    ) = manager.start(IntercomStartArgs(callId, mode, peers))
+
+    @Test
+    fun `an intercom_start prepares the engine and is ok`() {
+        assertTrue(start() is CommandHandler.Reply.Ok)
+        assertEquals(1, engine.prepares.size)
+        assertEquals(listOf(TARGET), engine.prepares.single().peers.map { it.deviceId })
+        assertEquals(IntercomState.BROADCASTING, manager.state())
+    }
+
+    @Test
+    fun `an intercom_start for a call this device is not in is refused busy`() {
+        manager.ring(ring())
+        val reply = start(callId = "call-other", mode = IntercomMode.CALL)
+        assertEquals(ErrorCode.BUSY, (reply as CommandHandler.Reply.Error).code)
+        assertTrue(engine.prepares.isEmpty())
+    }
+
+    @Test
+    fun `a signal carries the peer id to the engine and out again`() {
+        start()
+        assertTrue(
+            manager.signal(IntercomSignalArgs(CALL, IntercomSignalKind.OFFER, "v=0 offer")) is
+                CommandHandler.Reply.Ok,
+        )
+        assertEquals(null, engine.signals.single().peerDeviceId)
+
+        engine.emit(EngineEvent.Signal(CALL, IntercomSignalKind.ANSWER, "v=0 answer", TARGET))
+        scope.runCurrent()
+        val frame = frames().last()
+        assertEquals(TARGET, text(frame, "peer_device_id"))
+        assertEquals("v=0 answer", text(frame, "payload"))
+    }
+
+    @Test
+    fun `a signal naming a peer the call does not hold is refused invalid_args`() {
+        // ADR 0037 decision 4: the same answer the mock device gives
+        start(peers = listOf(IntercomPeer(TARGET, "Kitchen Kiosk")))
+        val reply = manager.signal(
+            IntercomSignalArgs(CALL, IntercomSignalKind.ANSWER, "v=0 answer", CALLER),
+        )
+        assertEquals(ErrorCode.INVALID_ARGS, (reply as CommandHandler.Reply.Error).code)
+        assertTrue(engine.signals.isEmpty())
     }
 
     companion object {

@@ -118,10 +118,24 @@ async def test_every_command_fixture_is_answered(server, store, start):
         event = json.loads(path.read_text())["event"]
         # Fixtures must not depend on each other's order, so put the device in
         # the state the fixture assumes instead of relying on the glob order: a
-        # ring needs an idle device, and a signal belongs to a call that is up.
+        # ring and a start need an idle device, and a signal belongs to a call
+        # that is up.
         call_id = event["args"].get("call_id")
-        if event["command"] == "intercom_ring":
+        peer = event["args"].get("peer_device_id")
+        if event["command"] in {"intercom_ring", "intercom_start"}:
             device.hang_up()
+        elif peer is not None:
+            # A labeled signal belongs to one of a caller's connections: be the
+            # caller of that peer before the fixture arrives (ADR 0037).
+            device.hang_up()
+            await device.handle(
+                "intercom_start",
+                {
+                    "call_id": call_id,
+                    "mode": "broadcast",
+                    "peers": [{"device_id": peer, "name": "Peer"}],
+                },
+            )
         elif (
             event["command"] == "intercom_signal"
             and (device.intercom_call or {}).get("call_id") != call_id

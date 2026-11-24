@@ -34,6 +34,7 @@
     "command_intercom_ring",
     "command_intercom_signal",
     "command_intercom_end",
+    "command_intercom_start",
     "http_pair_request",
     "http_pair_response",
     "http_claim_request",
@@ -82,7 +83,8 @@
         "wake_word",
         "voice",
         "intercom_listen",
-        "intercom_talk"
+        "intercom_talk",
+        "intercom_caller"
       ]
     },
     "error_code": {
@@ -878,6 +880,10 @@
                     "minLength": 1,
                     "maxLength": 4096,
                     "description": "The session description or ICE candidate's text, unchanged. maxLength is the schema's character bound; senders enforce the byte bound INTERCOM_SIGNAL_MAX_BYTES, which the same value covers for the ASCII these payloads are."
+                  },
+                  "peer_device_id": {
+                    "$ref": "#/$defs/device_id",
+                    "description": "The device this one connection belongs to, present only in a caller's frames of a call with more than two devices (ADR 0037 decision 3). It names a different device and authenticates nothing; a receiver neither sees nor sends it."
                   }
                 },
                 "required": [
@@ -2369,6 +2375,10 @@
                   "minLength": 1,
                   "maxLength": 4096,
                   "description": "The device's own session description or ICE candidate, unchanged. maxLength is the schema's character bound; senders enforce the byte bound INTERCOM_SIGNAL_MAX_BYTES, which the same value covers for the ASCII these payloads are."
+                },
+                "peer_device_id": {
+                  "$ref": "#/$defs/device_id",
+                  "description": "The device this one connection belongs to, present only in a caller's frames of a call with more than two devices (ADR 0037 decision 3). A receiver never sends it and never sees it; the integration takes a callee's peer id from the authenticated sender."
                 }
               },
               "required": [
@@ -2446,6 +2456,118 @@
       ],
       "additionalProperties": false,
       "description": "End the call on this device, from any state (capability: intercom_listen). Every device in the call gets one; a device not in that call answers ok and changes nothing."
+    },
+    "intercom_peer": {
+      "type": "object",
+      "properties": {
+        "device_id": {
+          "$ref": "#/$defs/device_id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Display name for the screen, taken from the device's own label."
+        }
+      },
+      "required": [
+        "device_id",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "The other end of one peer connection, as this device should see it: device_id is the TLP device id, name (1-64 characters) is what the screen shows."
+    },
+    "command_intercom_start": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "#/$defs/command_id"
+            },
+            "command": {
+              "const": "intercom_start"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "call_id": {
+                  "$ref": "#/$defs/intercom_call_id"
+                },
+                "mode": {
+                  "$ref": "#/$defs/intercom_mode"
+                },
+                "peers": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "$ref": "#/$defs/intercom_peer"
+                  },
+                  "description": "The devices this device is calling; the caller's own id is not among them."
+                }
+              },
+              "required": [
+                "call_id",
+                "mode",
+                "peers"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "command_id",
+            "command",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "event"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "event": {
+            "properties": {
+              "args": {
+                "properties": {
+                  "mode": {
+                    "const": "call"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "args": {
+                "properties": {
+                  "peers": {
+                    "maxItems": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "Tell this device it is the calling end of a call (capability: intercom_caller). The integration sends it to the caller of every call it starts - after the targets are selected and their rings settled, before it relays any signal - so the caller learns the call id and, for an area or all-devices request, the resolved targets. peers is exactly one device when mode is call, 1-INTERCOM_BROADCAST_MAX_TARGETS otherwise. A device already in a different call answers busy."
     }
   }
 }

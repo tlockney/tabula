@@ -141,7 +141,13 @@ data class EventFrame(
         fun intercomDecline(id: Int, callId: String) =
             frame(id, EventName.INTERCOM_DECLINE, buildJsonObject { put("call_id", callId) })
 
-        fun intercomSignal(id: Int, callId: String, kind: IntercomSignalKind, payload: String) =
+        fun intercomSignal(
+            id: Int,
+            callId: String,
+            kind: IntercomSignalKind,
+            payload: String,
+            peerDeviceId: String? = null,
+        ) =
             frame(
                 id,
                 EventName.INTERCOM_SIGNAL,
@@ -149,6 +155,7 @@ data class EventFrame(
                     put("call_id", callId)
                     put("kind", wireName(kind))
                     put("payload", payload)
+                    peerDeviceId?.let { put("peer_device_id", it) }
                 },
             )
 
@@ -342,10 +349,12 @@ data class IntercomSignal(
     @SerialName("call_id") val callId: String,
     val kind: IntercomSignalKind,
     val payload: String,
+    @SerialName("peer_device_id") val peerDeviceId: String? = null,
 ) : EventData {
     init {
         Wire.requireCallId(callId)
         Wire.requireSignalPayload("event.payload", payload, Constants.INTERCOM_SIGNAL_MAX_BYTES)
+        peerDeviceId?.let { Wire.requireDeviceId(it) }
     }
 }
 
