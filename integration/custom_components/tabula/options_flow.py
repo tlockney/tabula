@@ -29,7 +29,8 @@ from homeassistant.const import CONF_DEVICE_ID
 from homeassistant.helpers import selector
 
 from . import TabulaHub
-from .const import DOMAIN
+from .const import DOMAIN, INTERCOM_PERSONS
+from .intents import PersonMapError, parse_persons, persons_to_text
 from .settings import (
     NO_DEFAULT,
     SettingsError,
@@ -176,12 +177,20 @@ def _form_errors(problems: list[str], schema: SettingsSchema) -> dict[str, str]:
 
 
 class TabulaOptionsFlow(OptionsFlow):
-    """Device picker, then a schema-generated per-device settings form."""
+    """A menu: per-tablet settings, or the intercom names (P9.6)."""
 
     def __init__(self) -> None:
         self._device_id: str | None = None
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Choose what to edit: a tablet's settings, or the spoken names."""
+        if TabulaHub.get(self.hass) is None:
+            return self.async_abort(reason="hub_not_loaded")
+        return self.async_show_menu(step_id="init", menu_options=["settings", "persons"])
+
+    async def async_step_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Pick which paired tablet to edit."""
         hub = TabulaHub.get(self.hass)
         if hub is None:
@@ -198,7 +207,7 @@ class TabulaOptionsFlow(OptionsFlow):
         if not hub.devices:
             return self.async_abort(reason="no_devices")
         return self.async_show_form(
-            step_id="init",
+            step_id="settings",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_DEVICE_ID): selector.DeviceSelector(
@@ -206,6 +215,57 @@ class TabulaOptionsFlow(OptionsFlow):
                     ),
                 }
             ),
+        )
+
+    async def async_step_persons(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The names an intercom request may speak: a person, an area or a tablet.
+
+        A name the household chooses, not one HA already knows: a person is not
+        an area and not a tablet, so an unrecognised "call Thomas" is answered
+        rather than guessed (ADR 0036). The editor is YAML, one entry per
+        person, and the whole map is replaced on submit; the intents read it
+        from the entry's options at the moment they run, so the next request
+        uses it without a reload.
+        """
+        if TabulaHub.get(self.hass) is None:
+            return self.async_abort(reason="hub_not_loaded")
+        stored = self.config_entry.options.get(INTERCOM_PERSONS) or []
+        current = persons_to_text(stored) if isinstance(stored, list) else ""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="persons",
+                data_schema=vol.Schema(
+                    {
+                        vol.Optional("persons", default=current): selector.TextSelector(
+                            {"multiline": True}
+                        )
+                    }
+                ),
+                description_placeholders={"problems": ""},
+            )
+        try:
+            persons = parse_persons(user_input.get("persons", ""))
+        except PersonMapError as err:
+            return self.async_show_form(
+                step_id="persons",
+                data_schema=vol.Schema(
+                    {
+                        vol.Optional(
+                            "persons", default=str(user_input.get("persons", ""))
+                        ): selector.TextSelector({"multiline": True})
+                    }
+                ),
+                errors={"persons": "invalid_persons"},
+                # Every problem is listed under the editor, not just the first
+                # (ADR 0036 decision 6): a refused save says what to fix.
+                description_placeholders={
+                    "problems": "\n\n" + "\n".join(f"- {p}" for p in err.problems)
+                },
+            )
+        return self.async_create_entry(
+            title="", data={**self.config_entry.options, INTERCOM_PERSONS: persons}
         )
 
     async def async_step_device(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

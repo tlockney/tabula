@@ -25,6 +25,14 @@
   "options": {
     "step": {
       "init": {
+        "title": "Tabula",
+        "description": "Choose what to edit.",
+        "menu_options": {
+          "settings": "Tablet settings",
+          "persons": "Intercom names"
+        }
+      },
+      "settings": {
         "title": "Tabula devices",
         "description": "Choose the tablet whose settings you want to edit."
       },
@@ -133,10 +141,18 @@
           "schedule_enabled": "Enable schedule",
           "schedule_slots": "Schedule slots (YAML list of objects)"
         }
+      },
+      "persons": {
+        "title": "Intercom names",
+        "description": "The names that can start an intercom call by voice, one entry per name in YAML, each with a name and either an area or a tablet. For example:\n\n```yaml\n- name: Thomas\n  area: Kitchen\n- name: Study\n  device: Study tablet\n```\n\nA name you say is looked up here first, then among area names, then among tablet names. Leave it empty to keep plain room names such as \"call the kitchen\".{problems}",
+        "data": {
+          "persons": "Intercom names (YAML)"
+        }
       }
     },
     "error": {
-      "invalid_settings": "A value is invalid. Check the highlighted field."
+      "invalid_settings": "A value is invalid. Check the highlighted field.",
+      "invalid_persons": "That is not a usable list of names. Each entry needs a name and exactly one of area or device, and no name may appear twice."
     },
     "abort": {
       "no_devices": "No tablets are paired yet. Pair one from the Tabula app on the tablet.",
