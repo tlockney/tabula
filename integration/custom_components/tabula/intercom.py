@@ -39,7 +39,11 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.ulid import ulid_now
 
 from .const import (
+    CAP_CALLER,
+    CAP_LISTEN,
+    CAP_TALK,
     DOMAIN,
+    INTERCOM_BROADCAST_MAX_TARGETS,
     INTERCOM_CALL_LIMIT_S,
     INTERCOM_CONNECT_TIMEOUT_S,
     INTERCOM_RING_LIMIT_S,
@@ -72,9 +76,8 @@ MODE_CALL = "call"
 MODE_BROADCAST = "broadcast"
 
 # A device takes part in a call if it can hear, and starts a two-way call only
-# if it can also speak (PROTOCOL.md 4.5, ADR 0025 decision 7).
-CAP_LISTEN = "intercom_listen"
-CAP_TALK = "intercom_talk"
+# if it can also speak (PROTOCOL.md 4.5, ADR 0025 decision 7). The capabilities
+# themselves live in const.py, where the command gate reads them.
 
 # Timers a call can have running, keyed with the call id.
 TIMER_RING = "ring"
@@ -108,6 +111,11 @@ class IntercomCall:
     caller_ha_id: str
     callee_ha_ids: list[str] = field(default_factory=list)
     answered_by: str | None = None
+    # False until the caller has been given the call (ADR 0037 decision 5):
+    # nothing is relayed to any device before then, and a caller's early
+    # signals wait here. The hold ends with the `intercom_start` result.
+    ready: bool = False
+    pending_signals: list[tuple[DeviceRecord, dict[str, Any]]] = field(default_factory=list)
 
     @property
     def devices(self) -> list[str]:
@@ -160,7 +168,12 @@ class IntercomManager:
         """
         if mode not in (MODE_CALL, MODE_BROADCAST):
             raise _invalid("intercom_bad_mode", mode=mode)
-        self._check_caller(caller, mode)
+        # Whose id this is decides whether the caller needs `intercom_start`:
+        # the integration mints it, or the device already knows its own call.
+        started_by_integration = call_id is None
+        self._check_caller(
+            caller, mode, started_by_integration=started_by_integration
+        )
         if self.call_for_device(caller.device_id) is not None:
             raise _invalid("intercom_caller_busy", device=_label(caller))
         targets = self._select_targets(caller, callees, mode)
@@ -197,7 +210,9 @@ class IntercomManager:
             *(self.hub.async_command(target, "intercom_ring", args) for target in targets),
             return_exceptions=True,
         )
-        return await self._settle_rings(call, targets, results)
+        call = await self._settle_rings(call, targets, results)
+        await self._async_prepare_caller(call, caller, started_by_integration)
+        return call
 
     async def _settle_rings(
         self, call: IntercomCall, targets: list[DeviceRecord], results: list[Any]
@@ -231,11 +246,71 @@ class IntercomManager:
             _LOGGER.info("Intercom: %s busy, left out of %s", ", ".join(busy), call.call_id)
         return call
 
-    def _check_caller(self, caller: DeviceRecord, mode: str) -> None:
-        """The caller must be able to take part and to be reached right now."""
-        needed = {CAP_TALK} | ({CAP_LISTEN} if mode == MODE_CALL else set())
-        if not needed <= set(caller.capabilities):
+    async def _async_prepare_caller(
+        self, call: IntercomCall, caller: DeviceRecord, started_by_integration: bool
+    ) -> None:
+        """Give the caller its own call: the id and the settled peer list (ADR 0037).
+
+        The frame is needed whenever the integration started the call or the
+        mode is a broadcast (`_needs_start_frame`); a call a device started
+        that named its one target needs nothing, because that device already
+        holds the id. A NACK to it means there is no caller side, so the call
+        ends and the failure is raised (decision 9) — never a ringing callee
+        with nothing to connect to.
+        """
+        if self._needs_start_frame(call.mode, started_by_integration):
+            peers = [
+                {"device_id": device_id, "name": _label(record)[:64]}
+                for device_id in call.callees
+                if (record := self.hub.devices.get(device_id)) is not None
+            ]
+            try:
+                await self.hub.async_command(
+                    caller,
+                    "intercom_start",
+                    {"call_id": call.call_id, "mode": call.mode, "peers": peers},
+                )
+            except DeviceCommandError as err:
+                busy = err.code == "busy"
+                await self._async_end(call, "busy" if busy else "error")
+                if busy:
+                    raise _invalid("intercom_busy", devices=_label(caller)) from err
+                raise _invalid("intercom_start_failed", device=_label(caller)) from err
+            except HomeAssistantError as err:
+                await self._async_end(call, "error")
+                raise _invalid("intercom_start_failed", device=_label(caller)) from err
+        call.ready = True
+        await self._async_flush_pending(call)
+
+    @staticmethod
+    def _needs_start_frame(mode: str, started_by_integration: bool) -> bool:
+        """Whether the caller must be sent `intercom_start` (ADR 0037 decisions 2 and 8).
+
+        It is needed whenever the integration started the call — only that
+        frame tells the device the id — or the mode is a broadcast, because a
+        device that asked for a room or an area named a target set it cannot
+        enumerate. It is not needed only for a call a device started from its
+        own screen that named its one target, which that device already holds.
+        """
+        return started_by_integration or mode == MODE_BROADCAST
+
+    def _check_caller(
+        self, caller: DeviceRecord, mode: str, *, started_by_integration: bool
+    ) -> None:
+        """The caller must be able to take part, to be reached, and to be prepared.
+
+        A caller of any call declares both `intercom_listen` and
+        `intercom_talk`: a caller that cannot receive `intercom_signal` has no
+        return path for the answer and the candidates (ADR 0037 decision 2), so
+        this is a conjunction here and never a second member of the any-of
+        gate in `COMMAND_CAPABILITIES`.
+        """
+        if not {CAP_LISTEN, CAP_TALK} <= set(caller.capabilities):
             raise _invalid("intercom_caller_cannot_call", device=_label(caller))
+        if self._needs_start_frame(
+            mode, started_by_integration
+        ) and CAP_CALLER not in caller.capabilities:
+            raise _invalid("intercom_caller_unsupported", device=_label(caller))
         if not caller.connected:
             raise _invalid("intercom_caller_offline", device=_label(caller))
 
@@ -269,6 +344,15 @@ class IntercomManager:
             if capable:
                 raise _invalid("intercom_busy", devices=", ".join(_label(r) for r in capable))
             raise _invalid("intercom_no_capable_targets", caller=_label(caller))
+        if mode == MODE_BROADCAST and len(free) > INTERCOM_BROADCAST_MAX_TARGETS:
+            # A broadcast that quietly lost a receiver is the failure nobody
+            # sees, so an oversize one is refused and never trimmed (ADR 0037
+            # decision 7).
+            raise _invalid(
+                "intercom_broadcast_too_many",
+                devices=", ".join(_label(r) for r in free),
+                max=str(INTERCOM_BROADCAST_MAX_TARGETS),
+            )
         if mode == MODE_CALL and len(free) != 1:
             # A two-way call has two peers (ADR 0025 decision 1); a target that
             # resolves to several devices is ambiguous, and rings all of them.
@@ -327,35 +411,83 @@ class IntercomManager:
         await self._async_end(call, "decline")
 
     async def _async_signal(self, record: DeviceRecord, data: dict[str, Any]) -> None:
-        """Pass one offer, answer or candidate to the other peer, unchanged."""
+        """Route one offer, answer or candidate to the one peer that owns it.
+
+        Nothing is relayed to a device before it has the call (ADR 0037
+        decision 5): a caller's signal that arrives while the call is still
+        being prepared waits on the record and is flushed when it is ready.
+        Only the caller can arrive early — a receiver has no answer to send
+        before it has the caller's offer.
+        """
         call = self.calls.get(data["call_id"])
         if call is None or record.device_id not in call.devices:
             _LOGGER.debug("Intercom: signal for %s from a device not in it", data["call_id"])
             return
-        if call.mode == MODE_BROADCAST:
-            # One-way and live: a receiver's microphone is closed, so there is
-            # no return path to set up (ADR 0025 decision 2).
+        if not call.ready:
+            call.pending_signals.append((record, data))
             return
+        await self._async_route_signal(call, record, data)
+
+    async def _async_flush_pending(self, call: IntercomCall) -> None:
+        """Relay the caller's held signals, in the order they arrived."""
+        pending, call.pending_signals = call.pending_signals, []
+        for record, data in pending:
+            if self.calls.get(call.call_id) is not call:
+                return
+            await self._async_route_signal(call, record, data)
+
+    async def _async_route_signal(
+        self, call: IntercomCall, sender: DeviceRecord, data: dict[str, Any]
+    ) -> None:
+        """Relay by peer, star-shaped at the caller (ADR 0037 decision 4).
+
+        A caller's signal goes to the one peer it names, or to the other
+        device in a two-device call. A callee's signal goes to the caller
+        alone, labelled with the sender's own id when the caller declared
+        `intercom_caller` and the call has more than two devices — a receiver
+        never sends that member, and this is where it comes from.
+        """
         if call.state == STATE_CONNECTING:
             # The peers are talking to each other now; the connect timeout is
             # about silence, not about a state the devices report.
             call.state = STATE_IN_CALL
             self._cancel_timer(call, TIMER_CONNECT)
-        await self._async_relay(call, record, data)
-
-    async def _async_relay(
-        self, call: IntercomCall, sender: DeviceRecord, data: dict[str, Any]
-    ) -> None:
         args = {
             "call_id": call.call_id,
             "kind": data["kind"],
             "payload": data["payload"],
         }
-        peers = [
-            self.hub.devices.get(device_id)
-            for device_id in call.devices
-            if device_id != sender.device_id
-        ]
+        if sender.device_id == call.caller:
+            if len(call.callees) == 1:
+                peers = list(call.callees)
+            else:
+                peer = data.get("peer_device_id")
+                if peer is None or peer not in call.callees:
+                    # An event has no result to NACK: log it, drop it, and let
+                    # the call live (decision 4).
+                    _LOGGER.warning(
+                        "Intercom: %s's %s for %s names no receiver of that call; dropped",
+                        _label(sender),
+                        data["kind"],
+                        call.call_id,
+                    )
+                    return
+                peers = [peer]
+        else:
+            peers = [call.caller]
+            caller_record = self.hub.devices.get(call.caller)
+            if (
+                caller_record is not None
+                and CAP_CALLER in caller_record.capabilities
+                and len(call.devices) > 2
+            ):
+                args["peer_device_id"] = sender.device_id
+        await self._async_relay(call, peers, args)
+
+    async def _async_relay(
+        self, call: IntercomCall, peer_ids: list[str], args: dict[str, Any]
+    ) -> None:
+        peers = [record for device_id in peer_ids if (record := self.hub.devices.get(device_id))]
         results = await asyncio.gather(
             *(
                 self.hub.async_command(peer, "intercom_signal", args)
@@ -368,7 +500,7 @@ class IntercomManager:
             if isinstance(result, BaseException):
                 _LOGGER.warning(
                     "Intercom: could not relay a %s for %s: %s",
-                    data["kind"],
+                    args["kind"],
                     call.call_id,
                     result,
                 )
@@ -386,21 +518,47 @@ class IntercomManager:
         Resolving the target is the same code path the service uses; only the
         target arrives as ids instead of a HA target. Starting a call means
         capturing one, so the device must declare the microphone capability
-        (PROTOCOL.md 4.5). A refusal is logged: an event has no result to NACK.
+        (PROTOCOL.md 4.5). Every refusal ends what the device already started
+        (ADR 0037 decision 10): it has minted the id and entered the call
+        before this handler sees the request, and an event has no result to
+        NACK, so `intercom_end` reason `command` is the only thing that stops
+        it sitting in a call nothing carries.
         """
+        call_id = data["call_id"]
         if CAP_TALK not in record.capabilities:
-            _LOGGER.warning(
-                "Intercom: %s asked to start a call without %s", _label(record), CAP_TALK
+            await self._async_refuse_started(
+                record, call_id, f"it does not declare {CAP_TALK}"
             )
             return
         callees = self._resolve_event_target(data)
         if data["mode"] == MODE_CALL and not callees:
-            _LOGGER.warning("Intercom: %s asked to call a target HA does not know", _label(record))
+            await self._async_refuse_started(record, call_id, "its target is not a known tablet")
             return
         try:
-            await self.async_start_call(record, callees, data["mode"], call_id=data["call_id"])
+            await self.async_start_call(record, callees, data["mode"], call_id=call_id)
         except (HomeAssistantError, ServiceValidationError) as err:
-            _LOGGER.warning("Intercom: %s could not start a call: %s", _label(record), err)
+            await self._async_refuse_started(record, call_id, str(err))
+
+    async def _async_refuse_started(
+        self, record: DeviceRecord, call_id: str, why: str
+    ) -> None:
+        """End the call a device started that the integration refused.
+
+        The device is in the call it minted, so it gets `intercom_end` on that
+        id; a device that is not in it answers `ok` and nothing happens. The
+        end is sent before the refusal is logged, so the log is the last word
+        and not a substitute for stopping the tablet.
+        """
+        if record.connected:
+            try:
+                await self.hub.async_command(
+                    record, "intercom_end", {"call_id": call_id, "reason": "command"}
+                )
+            except HomeAssistantError as err:
+                _LOGGER.warning(
+                    "Intercom: %s did not take the end of %s: %s", _label(record), call_id, err
+                )
+        _LOGGER.warning("Intercom: %s could not start %s: %s", _label(record), call_id, why)
 
     def _resolve_event_target(self, data: dict[str, Any]) -> list[DeviceRecord] | None:
         """The devices an `intercom_start_request` names (PROTOCOL.md 4.7).
@@ -540,6 +698,7 @@ class IntercomManager:
         if self.calls.pop(call.call_id, None) is None:
             return
         self._cancel_timers(call)
+        call.pending_signals.clear()
         targets = [
             record
             for device_id in call.devices

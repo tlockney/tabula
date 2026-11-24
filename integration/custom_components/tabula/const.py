@@ -38,6 +38,13 @@ SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024
 # spoken reply before it returns to idle anyway (ADR 0002).
 VOICE_REPLY_TIMEOUT = 60.0  # s
 
+# The capabilities an intercom call is built from (PROTOCOL.md 4.5): listen can
+# hear one, talk can capture one, and caller can be the calling end of a call
+# the integration started (ADR 0037 decision 2).
+CAP_LISTEN = "intercom_listen"
+CAP_TALK = "intercom_talk"
+CAP_CALLER = "intercom_caller"
+
 # Command -> capabilities, any of which allows it (PROTOCOL.md 4.5); empty means
 # always allowed. The integration never sends a command the device did not declare.
 COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -56,9 +63,14 @@ COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
     "screenshot": frozenset({"screenshot"}),
     # Intercom commands need a device that can hear a call (PROTOCOL.md 4.5,
     # ADR 0025 decision 7); the relay and the end reach every device in a call.
-    "intercom_ring": frozenset({"intercom_listen"}),
-    "intercom_signal": frozenset({"intercom_listen"}),
-    "intercom_end": frozenset({"intercom_listen"}),
+    "intercom_ring": frozenset({CAP_LISTEN}),
+    "intercom_signal": frozenset({CAP_LISTEN}),
+    "intercom_end": frozenset({CAP_LISTEN}),
+    # The caller's own frame, gated on the capability that says a build can be
+    # the calling end of a call HA started (ADR 0037 decision 2). It is an
+    # any-of gate, so a caller's further requirements are a conjunction in
+    # intercom._check_caller and never a second member here.
+    "intercom_start": frozenset({CAP_CALLER}),
     # P7.2: voice turns carry their audio as binary frames on this socket (4.10).
     "voice_start": frozenset({"voice"}),
     "voice_stop": frozenset({"voice"}),
@@ -71,6 +83,10 @@ COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
 INTERCOM_RING_LIMIT_S = 45.0
 INTERCOM_CONNECT_TIMEOUT_S = 10.0
 INTERCOM_CALL_LIMIT_S = 300.0
+# One broadcast's receivers, provisional until a broadcast is measured on
+# hardware (ADR 0037 decision 7). A resolved set larger than this is refused,
+# never trimmed.
+INTERCOM_BROADCAST_MAX_TARGETS = 8
 
 # Voice-started calls (P9.6, ADR 0036). A name, not a tunable: the hub entry
 # option that maps a person's name onto an area or a tablet. Empty by default,

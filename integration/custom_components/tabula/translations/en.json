@@ -405,6 +405,15 @@
     "intercom_call_id_in_use": {
       "message": "The call id {call_id} is already in use, so this call was not started."
     },
+    "intercom_caller_unsupported": {
+      "message": "The tablet {device} cannot be the calling end of this call: its app needs updating before it can be told about a call Home Assistant started."
+    },
+    "intercom_broadcast_too_many": {
+      "message": "This broadcast would reach {devices}, and one broadcast reaches {max} tablets at most. Broadcast to fewer tablets at once."
+    },
+    "intercom_start_failed": {
+      "message": "The tablet {device} could not be prepared as the caller, so nobody was rung."
+    },
     "profile_unknown": {
       "message": "No profile is named '{profile}'. Name one of the profiles in the Tabularium, or the built-in Empty profile."
     },
