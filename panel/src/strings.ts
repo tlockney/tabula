@@ -12,6 +12,66 @@ export const STRINGS = {
   retry: "Try again",
   devicesRoute: "Devices",
   devicesPlaceholder: "The device list arrives in a later release.",
+
+  // P5.2: the device list and the device page shell.
+  devicesLoading: "Loading the paired devices…",
+  devicesErrorTitle: "The device list could not be loaded",
+  filterPlaceholder: "Filter by name or area",
+  emptyTitle: "No tablets are paired yet",
+  emptyBody:
+    "Pair a tablet from Home Assistant's Tabula integration page; it appears here once it registers.",
+  noMatch: "No device matches that filter.",
+  columnDevice: "Device",
+  columnArea: "Area",
+  columnConnection: "Connection",
+  columnApp: "App",
+  columnSettings: "Settings",
+  online: "Online",
+  offline: "Offline",
+  neverSeen: "Offline · never connected",
+  lastSeen: "last seen",
+  noArea: "No area",
+  snapshotTaken: "Snapshot taken",
+  settingsInSync: "In sync",
+  settingsPending: "Update pending",
+  settingsBehind: "Device behind",
+  settingsUnknown: "Unknown",
+  notFoundTitle: "Device not found",
+  notFoundBody: "No paired tablet has that id. It may have been removed from Home Assistant.",
+  backToList: "All devices",
+  tabOverview: "Overview",
+  tabSettings: "Settings",
+  tabLogs: "Logs",
+  tabActivity: "Activity",
+  tabPending: "This tab arrives in a later release.",
+  overview: {
+    identity: "Identity",
+    link: "Link",
+    versions: "Versions",
+    state: "Reported state",
+    settings: "Settings",
+    entities: "Entities",
+    deviceId: "Device id",
+    haDeviceId: "HA device id",
+    model: "Model",
+    area: "Area",
+    appVersion: "App version",
+    osVersion: "OS version",
+    protocolVersion: "Protocol version",
+    settingsSchema: "Settings schema",
+    connected: "Connection",
+    lastSeen: "Last seen",
+    currentPage: "Current page",
+    screenOn: "Screen on",
+    brightness: "Brightness",
+    screensaver: "Screensaver",
+    haRevision: "HA revision",
+    deviceRevision: "Device revision",
+    pending: "Push pending",
+    none: "None reported",
+    yes: "Yes",
+    no: "No",
+  },
 } as const;
 
 /** The hub status line: integration, protocol and schema versions, device count. */
@@ -23,7 +83,7 @@ export function statusLine(info: PanelInfo): string {
   );
 }
 
-/** The reason a failed `tabula/panel_info` call is shown, kept to one line. */
+/** The reason a failed call is shown, kept to one line. */
 export function errorLine(reason: unknown): string {
   if (reason instanceof Error && reason.message) {
     return reason.message;

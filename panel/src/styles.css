@@ -79,3 +79,164 @@ button:hover {
   background: var(--primary-color, #03a9f4);
   color: var(--text-primary-color, #ffffff);
 }
+
+/* P5.2: the device list and the device page. */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.toolbar h2 {
+  margin: 0;
+}
+
+.toolbar input {
+  flex: 0 1 240px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--primary-background-color, #fafafa);
+  color: var(--primary-text-color, #212121);
+  font: inherit;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--divider-color, #e0e0e0);
+}
+
+th {
+  font-weight: 500;
+  color: var(--secondary-text-color, #727272);
+}
+
+tr.offline td {
+  color: var(--secondary-text-color, #727272);
+}
+
+td a {
+  color: var(--primary-color, #03a9f4);
+}
+
+.model,
+.last-seen,
+.meta,
+.snapshot {
+  display: block;
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.85rem;
+}
+
+.snapshot {
+  margin: 12px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid var(--divider-color, #e0e0e0);
+}
+
+.badge.online,
+.badge.in-sync {
+  border-color: var(--success-color, #4caf50);
+  color: var(--success-color, #4caf50);
+}
+
+.badge.offline,
+.badge.device-behind {
+  border-color: var(--warning-color, #ff9800);
+  color: var(--warning-color, #ff9800);
+}
+
+.badge.update-pending {
+  border-color: var(--primary-color, #03a9f4);
+  color: var(--primary-color, #03a9f4);
+}
+
+.empty,
+.empty-note {
+  padding: 8px 0;
+}
+
+.empty h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.empty a,
+.back {
+  color: var(--primary-color, #03a9f4);
+}
+
+.device .back {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.tabs .tab {
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+
+.tabs .tab.selected {
+  background: var(--primary-color, #03a9f4);
+  color: var(--text-primary-color, #ffffff);
+}
+
+.overview {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.overview h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.overview dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+}
+
+.overview dt {
+  color: var(--secondary-text-color, #727272);
+}
+
+.overview dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tab-body {
+  padding: 8px 0;
+}

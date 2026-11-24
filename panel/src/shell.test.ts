@@ -1,44 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import "./panel";
-import type { TabulaPanel } from "./shell";
 import { LANDING_ROUTE, routeOf } from "./shell";
-import type { HomeAssistant, PanelInfo } from "./types";
-
-const INFO: PanelInfo = {
-  version: "0.1.0",
-  protocol_version: 1,
-  schema_version: 3,
-  devices: 2,
-};
-
-function fakeHass(
-  callWS: (msg: { type: string; [key: string]: unknown }) => Promise<unknown>,
-): HomeAssistant {
-  return {
-    callWS: <T>(msg: { type: string; [key: string]: unknown }) => callWS(msg) as Promise<T>,
-  };
-}
-
-/** Let the element's pending request and re-render settle. */
-async function settle(element: TabulaPanel): Promise<void> {
-  for (let i = 0; i < 5; i += 1) {
-    await Promise.resolve();
-    await element.updateComplete;
-  }
-}
-
-/** Mount the element with a fake hass and wait for the panel_info round trip. */
-async function mount(hass: HomeAssistant): Promise<TabulaPanel> {
-  const element = document.createElement("tabula-panel") as TabulaPanel;
-  element.hass = hass;
-  document.body.append(element);
-  await customElements.whenDefined("tabula-panel");
-  await settle(element);
-  return element;
-}
+import { INFO, fakeHass, mount, settle } from "./test-helpers";
 
 afterEach(() => {
   document.body.replaceChildren();
+  window.location.hash = "";
 });
 
 describe("tabula-panel shell", () => {
@@ -47,25 +13,31 @@ describe("tabula-panel shell", () => {
     const element = await mount(
       fakeHass(async (msg) => {
         asked.push(msg.type);
-        return INFO;
+        return msg.type === "tabula/panel_info" ? INFO : [];
       }),
     );
 
-    expect(asked).toEqual(["tabula/panel_info"]);
+    expect(asked).toContain("tabula/panel_info");
+    expect(asked).toContain("tabula/panel_devices");
     const text = element.shadowRoot?.textContent ?? "";
     expect(text).toContain("Tabularium");
     expect(text).toContain("Tabula 0.1.0 · protocol 1 · settings schema 3 · 2 devices");
   });
 
   it("counts one device in the singular", async () => {
-    const element = await mount(fakeHass(async () => ({ ...INFO, devices: 1 })));
+    const element = await mount(
+      fakeHass(async (msg) => (msg.type === "tabula/panel_info" ? { ...INFO, devices: 1 } : [])),
+    );
     expect(element.shadowRoot?.textContent ?? "").toContain("1 device");
   });
 
   it("shows a visible error state when panel_info fails", async () => {
     const element = await mount(
-      fakeHass(async () => {
-        throw new Error("unauthorized");
+      fakeHass(async (msg) => {
+        if (msg.type === "tabula/panel_info") {
+          throw new Error("unauthorized");
+        }
+        return [];
       }),
     );
 
@@ -77,7 +49,10 @@ describe("tabula-panel shell", () => {
   it("asks again when the error action is used", async () => {
     let calls = 0;
     const element = await mount(
-      fakeHass(async () => {
+      fakeHass(async (msg) => {
+        if (msg.type !== "tabula/panel_info") {
+          return [];
+        }
         calls += 1;
         if (calls === 1) {
           throw new Error("network down");
@@ -87,7 +62,7 @@ describe("tabula-panel shell", () => {
     );
     expect(calls).toBe(1);
 
-    const button = element.shadowRoot?.querySelector("button");
+    const button = element.shadowRoot?.querySelector("[role='alert'] button") as HTMLElement | null;
     expect(button).not.toBeNull();
     button?.click();
     await settle(element);
