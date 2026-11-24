@@ -63,6 +63,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Phase 1 platforms (plan 5.5); entities are created from declared capabilities.
 PLATFORMS: list[Platform] = [
+    Platform.ASSIST_SATELLITE,
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.EVENT,

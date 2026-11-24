@@ -61,6 +61,28 @@ uv venv --clear --python "$python" "$leg/venv"
 uv pip install --python "$leg/venv" --prerelease=allow \
   -r "$leg/requirements.txt" --overrides "$leg/override.txt" --editable ./mockdevice
 
+# The assist satellite platform imports HA's conversation and audio-pipeline
+# code. These are homeassistant dependencies that the wheel does not declare
+# (they are in HA's requirements.txt, generated from package_constraints.txt),
+# and their pins move with the HA release, so each is taken from the leg's own
+# constraint file rather than from a single pin that would break the other legs.
+constraints=$(echo "$leg"/venv/lib/python*/site-packages/homeassistant/package_constraints.txt)
+[ -f "$constraints" ] || { echo "ha_matrix: package_constraints.txt not found" >&2; exit 2; }
+for package in hassil home-assistant-intents pymicro-vad pyspeex-noise; do
+  version=$(sed -n "s/^${package}==\\(.*\\)$/\\1/p" "$constraints")
+  [ -n "$version" ] || { echo "ha_matrix: $package pin not found in $constraints" >&2; exit 2; }
+  uv pip install --python "$leg/venv" --prerelease=allow "${package}==${version}"
+  echo "ha_matrix: $package $version"
+done
+# Newer releases reach more of HA's conversation code. An optional dependency
+# exists only on the legs whose package_constraints.txt lists it, so it is
+# installed when the leg has a pin and skipped when it does not.
+version=$(sed -n 's/^gazetteer-matcher==\(.*\)$/\1/p' "$constraints")
+if [ -n "$version" ]; then
+  uv pip install --python "$leg/venv" --prerelease=allow "gazetteer-matcher==$version"
+  echo "ha_matrix: gazetteer-matcher $version"
+fi
+
 ha=$("$leg/venv/bin/python" -c 'import homeassistant.const; print(homeassistant.const.__version__)')
 echo "== integration tests: pytest-homeassistant-custom-component $phacc, HA $ha, Python $python =="
 "$leg/venv/bin/pytest" integration/tests

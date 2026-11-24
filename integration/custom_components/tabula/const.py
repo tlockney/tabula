@@ -34,6 +34,9 @@ COMMAND_TIMEOUT = 10.0  # s; awaiting a command's tabula/result (PROTOCOL.md 4.6
 SCREENSHOT_TIMEOUT = 30.0  # s
 # PROTOCOL.md 5: the upload body's cap; the view refuses more with 413.
 SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024
+# P7.3: how long the satellite waits for the device to report the end of a
+# spoken reply before it returns to idle anyway (ADR 0002).
+VOICE_REPLY_TIMEOUT = 60.0  # s
 
 # Command -> capabilities, any of which allows it (PROTOCOL.md 4.5); empty means
 # always allowed. The integration never sends a command the device did not declare.

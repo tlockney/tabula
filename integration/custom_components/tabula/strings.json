@@ -272,6 +272,11 @@
         "name": "Speaker"
       }
     },
+    "assist_satellite": {
+      "satellite": {
+        "name": "Voice satellite"
+      }
+    },
     "notify": {
       "notifications": {
         "name": "Notifications"
@@ -304,6 +309,9 @@
     },
     "command_failed": {
       "message": "The tablet refused the {command} command ({code}): {message}"
+    },
+    "wake_word_not_configurable": {
+      "message": "This tablet detects its own wake word; the phrase cannot be chosen from Home Assistant."
     },
     "no_target_devices": {
       "message": "The action did not target any paired Tabula tablet."
