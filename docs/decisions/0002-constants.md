@@ -301,6 +301,14 @@ The device→HA PCM channel of ADR 0024 item 2, as defined in PROTOCOL.md 4.10. 
 | `VOICE_FRAME_INTERVAL` | 10 ms | One chunk per `VOICE_CHUNK_BYTES` = 10 ms of audio: send pacing must match the audio clock or the stream drifts against HA's real-time consumer. Frames are scheduled against absolute deadlines (`turn start + k × interval`), never `send + interval`, so the cost of a send cannot leave the stream behind its audio clock. |
 | `VOICE_TURN_MAX_S` | 300 s | `DEFAULT_PIPELINE_TIMEOUT` in `assist_pipeline/const.py`. The device stops on its own at the same second HA abandons the run, so a lost `voice_stop` cannot stream forever and both ends agree on when the turn is over. It is also far longer than any utterance and shorter than a forgotten open microphone. |
 
+### Voice satellite (P7.3)
+
+The integration's own bound. Everything else a turn uses comes from HA's satellite base class (`WAKE_WORD_COOLDOWN` 2 s, the pipeline stages) or from the device (the turn limit above).
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `VOICE_REPLY_TIMEOUT` | 60 s | How long the satellite entity waits for the device to report that a spoken reply finished (a `media_finished` event, or `media_state` leaving `playing`) before it returns to idle anyway. The device owns playback, so the integration cannot compute a reply's length; without a bound a lost event would leave the entity `responding` indefinitely. A TTS reply to one utterance is a sentence or two, so a minute is generous for the media path while staying well inside the 300 s turn limit; when it fires the entity is stale only in its state, not in anything it sends. |
+
 ### Phase 1–2 behavior defaults
 
 Defaults for the settings schema (P0.5) and the device's behavior before HA has sent any settings.
