@@ -16,6 +16,7 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 if TYPE_CHECKING:
@@ -51,6 +52,8 @@ from .const import DOMAIN
 SERVICE_NOTIFY = "notify"
 SERVICE_NAVIGATE = "navigate"
 SERVICE_SCREENSAVER = "screensaver"
+SERVICE_INTERCOM_CALL = "intercom_call"
+SERVICE_INTERCOM_END = "intercom_end"
 
 # Field limits mirror the TLP schema (command_notify, command_navigate,
 # command_screensaver); the command is validated strictly again before sending.
@@ -84,11 +87,41 @@ SCREENSAVER_SCHEMA = vol.Schema(
     }
 )
 
+# Intercom (P9.2, ADR 0025 decision 5). `caller` is an HA device registry id,
+# restricted to a paired tablet by the services.yaml device selector, and the
+# call id's bounds mirror the schema's call_id (the same form as command_id,
+# ADR 0002).
+INTERCOM_CALL_SCHEMA = vol.Schema(
+    {
+        **cv.ENTITY_SERVICE_FIELDS,
+        vol.Required("caller"): vol.All(cv.string, vol.Length(min=1, max=64)),
+        vol.Optional("mode", default="call"): vol.In(["call", "broadcast"]),
+    }
+)
+
+INTERCOM_END_SCHEMA = vol.Schema(
+    {
+        **cv.ENTITY_SERVICE_FIELDS,
+        vol.Optional("call_id"): vol.All(cv.string, vol.Length(min=8, max=64)),
+    }
+)
+
 TARGET_KEYS = set(cv.ENTITY_SERVICE_FIELDS)
 
 
+def _targeted(call: ServiceCall) -> bool:
+    """Whether this call names any target at all."""
+    return any(call.data.get(key) for key in TARGET_KEYS)
+
+
 def target_records(hass: HomeAssistant, hub: TabulaHub, call: ServiceCall) -> list[DeviceRecord]:
-    """The paired tablets a service call targets; raises when it names none."""
+    """The paired tablets a service call targets; raises when it names none.
+
+    Devices are used directly, and entities, areas, floors and labels resolve
+    to the Tabula devices they belong to (ADR 0010 item 3). An area reaches its
+    tablets through the device registry, so a tablet whose entities are all
+    disabled still resolves.
+    """
     selected = _referenced_entity_ids(hass, call)
     ha_devices = set(selected.referenced_devices)
     registry = er.async_get(hass)
@@ -96,6 +129,11 @@ def target_records(hass: HomeAssistant, hub: TabulaHub, call: ServiceCall) -> li
         entry = registry.async_get(entity_id)
         if entry is not None and entry.platform == DOMAIN and entry.device_id:
             ha_devices.add(entry.device_id)
+    # SelectedEntities carries referenced_areas on every supported HA release
+    # (ADR 0001 item 8); getattr keeps the floor leg honest if one lacks it.
+    devices = dr.async_get(hass)
+    for area_id in getattr(selected, "referenced_areas", set()):
+        ha_devices.update(entry.id for entry in dr.async_entries_for_area(devices, area_id))
     records = [r for r in hub.devices.values() if r.ha_device_id in ha_devices]
     if not records:
         raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_target_devices")
@@ -146,8 +184,64 @@ def async_register(hass: HomeAssistant) -> None:
                 )
         await _send_all(hass, call, "screensaver", args)
 
+    async def intercom_call(call: ServiceCall) -> None:
+        """Ring one tablet, or start a broadcast (P9.2, ADR 0025 decision 5).
+
+        A two-way call names one device (or an area holding exactly one), and
+        a broadcast with no target reaches every tablet that can hear, except
+        the caller. The call itself, its relay and its timers live in
+        `intercom.IntercomManager`; this resolves the caller and the target.
+        """
+        hub = TabulaHub.get(hass)
+        if hub is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="hub_not_loaded"
+            )
+        caller = hub.record_for_ha_device(call.data.get("caller"))
+        if caller is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="intercom_caller_unknown",
+                translation_placeholders={"device": str(call.data.get("caller"))},
+            )
+        callees = target_records(hass, hub, call) if _targeted(call) else None
+        await hub.intercom.async_start_call(caller, callees, call.data.get("mode", "call"))
+
+    async def intercom_end(call: ServiceCall) -> None:
+        """End a call by id, or whatever call the targeted tablets are in.
+
+        Reaches every device in the call in every call state (ADR 0028 guard
+        3), and raising when there is nothing to end keeps it from failing
+        silently (`tabula.notify`'s rule, ADR 0010 item 3).
+        """
+        hub = TabulaHub.get(hass)
+        if hub is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="hub_not_loaded"
+            )
+        call_id = call.data.get("call_id")
+        targeted = _targeted(call)
+        if call_id and targeted:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="intercom_end_one_of"
+            )
+        if call_id:
+            await hub.intercom.async_end_call(call_id)
+        elif targeted:
+            await hub.intercom.async_end_device_calls(target_records(hass, hub, call))
+        else:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="intercom_end_needs_target"
+            )
+
     hass.services.async_register(DOMAIN, SERVICE_NOTIFY, notify, schema=NOTIFY_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_NAVIGATE, navigate, schema=NAVIGATE_SCHEMA)
     hass.services.async_register(
         DOMAIN, SERVICE_SCREENSAVER, screensaver, schema=SCREENSAVER_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_INTERCOM_CALL, intercom_call, schema=INTERCOM_CALL_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_INTERCOM_END, intercom_end, schema=INTERCOM_END_SCHEMA
     )

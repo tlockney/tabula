@@ -257,6 +257,15 @@
       },
       "last_wake_word": {
         "name": "Last wake word"
+      },
+      "intercom_state": {
+        "name": "Intercom",
+        "state": {
+          "idle": "Idle",
+          "ringing": "Ringing",
+          "in_call": "In a call",
+          "broadcasting": "Broadcasting"
+        }
       }
     },
     "image": {
@@ -326,6 +335,51 @@
     },
     "command_too_large": {
       "message": "The {command} command is too large to send to the tablet."
+    },
+    "intercom_caller_unknown": {
+      "message": "The caller is not a paired Tabula tablet: {device}."
+    },
+    "intercom_caller_cannot_call": {
+      "message": "The tablet {device} cannot start this call: it does not report the intercom capability the call needs."
+    },
+    "intercom_caller_offline": {
+      "message": "The tablet {device} is not connected, so it cannot start a call."
+    },
+    "intercom_caller_busy": {
+      "message": "The tablet {device} is already in a call."
+    },
+    "intercom_no_target_devices": {
+      "message": "The action did not target any paired Tabula tablet."
+    },
+    "intercom_no_capable_targets": {
+      "message": "None of the tablets named can take part in an intercom call from {caller}."
+    },
+    "intercom_one_callee": {
+      "message": "A two-way call rings one tablet, and this target is {devices}. Name one device, or use broadcast."
+    },
+    "intercom_same_area": {
+      "message": "The tablet {device} is in the same area as the caller, and two tablets in one room feed back. Move one to another area, or use broadcast."
+    },
+    "intercom_busy": {
+      "message": "Already in a call: {devices}."
+    },
+    "intercom_bad_mode": {
+      "message": "Unknown intercom mode {mode}. Use call or broadcast."
+    },
+    "intercom_unknown_call": {
+      "message": "There is no call with id {call_id}."
+    },
+    "intercom_not_in_call": {
+      "message": "Not in a call: {devices}."
+    },
+    "intercom_end_one_of": {
+      "message": "End a call by call_id or by target, not both."
+    },
+    "intercom_end_needs_target": {
+      "message": "Name the call to end: give call_id, or target a tablet that is in one."
+    },
+    "intercom_call_id_in_use": {
+      "message": "The call id {call_id} is already in use, so this call was not started."
     }
   },
   "services": {
@@ -386,6 +440,30 @@
           "description": "Screensaver to show when starting; omit to use the tablet's setting."
         }
       }
+    },
+    "intercom_call": {
+      "name": "Intercom call",
+      "description": "Rings a tablet for a two-way intercom call, or starts a live one-way broadcast on the targeted tablets.",
+      "fields": {
+        "caller": {
+          "name": "Caller",
+          "description": "The tablet the person speaks from: its microphone carries the call."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Call rings the target for a two-way call. Broadcast plays straight away on the targets and keeps their microphones closed."
+        }
+      }
+    },
+    "intercom_end": {
+      "name": "End intercom call",
+      "description": "Ends a call, or whatever call the targeted tablets are in, in every call state.",
+      "fields": {
+        "call_id": {
+          "name": "Call id",
+          "description": "The call to end, as given to the tabula_intercom_started event. Omit it and target a tablet instead."
+        }
+      }
     }
   },
   "selector": {
@@ -407,6 +485,12 @@
         "calendar": "Calendar",
         "dim": "Dim",
         "black": "Black"
+      }
+    },
+    "intercom_mode": {
+      "options": {
+        "call": "Call",
+        "broadcast": "Broadcast"
       }
     }
   }
