@@ -91,6 +91,20 @@ object TabulaStatus {
      */
     val notifications = MutableStateFlow<List<net.lockney.tabula.core.notifications.NotificationCards.Card>>(emptyList())
 
+    /**
+     * The screensaver's live HA entity states (P3.5's subscription, F-AAG-04).
+     * Written by the service from [net.lockney.tabula.ha.EntityDataConnection];
+     * the At a Glance row reads them (F-AAG-03, P3.6).
+     */
+    val entityStates = MutableStateFlow<Map<String, net.lockney.tabula.ha.EntityState>>(emptyMap())
+
+    /**
+     * HA's display data for those entities - icons, translated state text and
+     * display precision (F-AAG-03). Written by the service; the row's feed
+     * formats its values from it.
+     */
+    val entityDisplay = MutableStateFlow(net.lockney.tabula.ha.DisplayData())
+
     /** A card was tapped; the service dismisses that card only (F-NTF-08). */
     val cardDismiss = MutableSharedFlow<String>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 

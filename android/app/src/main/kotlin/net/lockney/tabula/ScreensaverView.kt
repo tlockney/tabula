@@ -18,11 +18,13 @@ import android.widget.TextView
 import java.io.File
 import java.time.LocalDateTime
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.screensaver.FadeRule
+import net.lockney.tabula.core.screensaver.NightState
 import net.lockney.tabula.core.screensaver.PixelShift
 import net.lockney.tabula.core.screensaver.clock.AnalogHands
 import net.lockney.tabula.core.screensaver.clock.analogHands
@@ -30,8 +32,14 @@ import net.lockney.tabula.core.screensaver.clock.analogTexts
 import net.lockney.tabula.core.screensaver.clock.dateLocale
 import net.lockney.tabula.core.screensaver.clock.digitalFace
 import net.lockney.tabula.core.screensaver.clock.isUrl
+import net.lockney.tabula.core.screensaver.glance.AtAGlanceRow
+import net.lockney.tabula.core.screensaver.glance.GlancePlacement
+import net.lockney.tabula.core.screensaver.glance.GlanceRow
+import net.lockney.tabula.core.screensaver.glance.GlanceValue
+import net.lockney.tabula.core.settings.AtAGlance
 import net.lockney.tabula.core.settings.ScreensaverClock
 import net.lockney.tabula.core.settings.ScreensaverClockFace
+import net.lockney.tabula.core.settings.ScreensaverNightMode
 import net.lockney.tabula.core.tlp.ScreensaverMode
 import net.lockney.tabula.ha.MediaFetcher
 
@@ -73,6 +81,7 @@ class ScreensaverView(
     private val scope: CoroutineScope,
     private val pixelShift: () -> PixelShift = { PixelShift() },
     private val fade: () -> FadeRule = { FadeRule() },
+    private val nightState: NightState = NightState.NEVER,
 ) : FrameLayout(context) {
     /** The background image (F-SSV-09), cropped to cover the panel. */
     private val background = ImageView(context).apply {
@@ -91,6 +100,28 @@ class ScreensaverView(
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
     }
+
+    /** The At a Glance row (F-AAG-01, packet P3.6), drawn over the mode on screen. */
+    private val glance = AtAGlanceView(context)
+
+    /** Measures row text with the size it is about to be drawn at (ADR 0031 item 1). */
+    private val glancePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glancePlanner = AtAGlanceRow { text, sizePx ->
+        glancePaint.textSize = sizePx
+        glancePaint.measureText(text)
+    }
+
+    /** The row's inputs: its settings, the night-mode options and the live values. */
+    private var glanceSettings: AtAGlance? = null
+    private var glanceNight: ScreensaverNightMode? = null
+    private var glanceValues: List<GlanceValue> = emptyList()
+    private var removeNightListener: (() -> Unit)? = null
+
+    /** Where the row last drew, and the offset under the date line it rests at (ADR 0031 item 4). */
+    private var glancePlacement: GlancePlacement? = null
+    private var glanceBaseY = 0f
+    private var glanceShiftX = 0f
+    private var glanceShiftY = 0f
 
     private var settings: ScreensaverClock? = null
     private var dial: AnalogClockView? = null
@@ -129,6 +160,8 @@ class ScreensaverView(
         addView(background, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(darken, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(face, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        // the row draws over the face and the background image (F-AAG-01)
+        addView(glance, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         visibility = View.GONE
         isClickable = true
         isFocusable = false
@@ -160,6 +193,10 @@ class ScreensaverView(
             // the dismissal fade is the started run's own (ADR 0022's cadence)
             val fadingOut = shownMode?.let(fadeRule::onDismiss) == true
             shownMode = null
+            // the row goes with the run: nothing to re-render for, and no night listener left behind
+            clearNightListener()
+            glancePlacement = null
+            glance.visibility = View.GONE
             if (fadingOut) {
                 Log.i(TAG, "fade out")
                 animate()
@@ -204,6 +241,129 @@ class ScreensaverView(
             animate().alpha(1f).setDuration(Constants.SCREENSAVER_FADE_MS)
         }
         startShift(mode)
+        // the row re-renders when night mode changes instead of re-reading the flag per frame (F-SSV-10)
+        ensureNightListener()
+        renderGlance()
+    }
+
+    /**
+     * The At a Glance row's inputs (F-AAG-01 to F-AAG-03, F-AAG-04): the
+     * appearance settings, the night-mode options whose hide-overlays decides
+     * whether night hides the row, and the live values from the screensaver's
+     * subscription. Called on every start, settings write and entity update.
+     */
+    fun applyGlance(settings: AtAGlance, nightMode: ScreensaverNightMode, values: List<GlanceValue>) {
+        glanceSettings = settings
+        glanceNight = nightMode
+        glanceValues = values
+        renderGlance()
+    }
+
+    /**
+     * Plan and draw the row for the mode on screen (F-AAG-01, ADR 0031). The
+     * plan decides visibility, placement, wrapping, the shrink and the night
+     * scheme; this method only feeds it the panel's width, the night flag and
+     * the settings, and logs what it drew - one line per chip, which is the
+     * hardware check's evidence that a state change reached the row
+     * (check_p36.sh).
+     */
+    @Synchronized
+    private fun renderGlance() {
+        val settings = glanceSettings
+        val mode = shownMode
+        if (settings == null || mode == null) {
+            glancePlacement = null
+            glance.visibility = View.GONE
+            return
+        }
+        val metrics = resources.displayMetrics
+        val panelWidth = (if (width > 0) width else metrics.widthPixels).toFloat()
+        val panelHeight = (if (height > 0) height else metrics.heightPixels).toFloat()
+        val edge = Constants.GLANCE_ROW_EDGE_SP * metrics.density
+        val row = glancePlanner.plan(
+            settings = settings,
+            values = glanceValues,
+            mode = mode,
+            night = nightState.isNight,
+            hideAtNight = glanceNight?.hideOverlays ?: true,
+            portrait = panelHeight > panelWidth,
+            widthPx = (panelWidth - 2 * edge).coerceAtLeast(1f),
+            density = metrics.density,
+        )
+        glancePlacement = if (row.visible) row.placement else null
+        glance.render(row, settings)
+        placeGlance()
+        if (!row.visible) {
+            Log.i(GLANCE_TAG, "row: hidden (mode=$mode, night=${nightState.isNight}, values=${glanceValues.size})")
+            return
+        }
+        val percent = (row.textScale * 100).roundToInt()
+        Log.i(
+            GLANCE_TAG,
+            "row: ${row.chips.size} chips on ${row.lines.size} line(s), placement=${row.placement}, " +
+                "night=${row.night}, scale=$percent%, truncated=${row.truncateNames}, omitted=${row.omitted}",
+        )
+        for (chip in row.chips) {
+            Log.i(GLANCE_TAG, "chip ${chip.entityId}: ${chip.value} (${if (chip.active) "active" else "inactive"})")
+        }
+    }
+
+    /** Set the row's gravity and margins for its placement (F-AAG-01, ADR 0031 item 4). */
+    private fun placeGlance() {
+        val placement = glancePlacement ?: return
+        val edge = (Constants.GLANCE_ROW_EDGE_SP * resources.displayMetrics.density).roundToInt()
+        val bottom = if (placement == GlancePlacement.Bottom) edge else 0
+        val gravity = if (placement == GlancePlacement.Bottom) {
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        } else {
+            Gravity.CENTER
+        }
+        val lp = glance.layoutParams as LayoutParams
+        if (lp.gravity != gravity || lp.bottomMargin != bottom || lp.leftMargin != edge) {
+            lp.gravity = gravity
+            lp.setMargins(edge, 0, edge, bottom)
+            glance.layoutParams = lp
+        }
+        applyGlanceOffset()
+    }
+
+    /**
+     * The row's resting offset: centered on black, under the clock's date line
+     * otherwise, plus the run's pixel shift so the row moves with the face
+     * (F-SSV-22, ADR 0031 item 4).
+     */
+    private fun applyGlanceOffset() {
+        glance.translationX = glanceShiftX
+        if (glancePlacement != GlancePlacement.UnderDate || face.visibility != View.VISIBLE) {
+            glanceBaseY = 0f
+            glance.translationY = glanceShiftY
+            return
+        }
+        val gap = Constants.GLANCE_ROW_GAP_SP * resources.displayMetrics.density
+        glanceBaseY = (face.top + face.height + gap) - glance.top
+        glance.translationY = glanceBaseY + glanceShiftY
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        applyGlanceOffset()
+    }
+
+    /** Register for night-mode transitions while a run shows (F-SSV-10, ADR 0002's NightState). */
+    private fun ensureNightListener() {
+        if (removeNightListener != null) return
+        removeNightListener = nightState.addListener { isNight ->
+            // the listener fires on the thread that made the change; the row draws on this one
+            post {
+                Log.i(GLANCE_TAG, "night: $isNight")
+                renderGlance()
+            }
+        }
+    }
+
+    private fun clearNightListener() {
+        removeNightListener?.invoke()
+        removeNightListener = null
     }
 
     /**
@@ -401,6 +561,9 @@ class ScreensaverView(
         background.translationX = 0f
         background.translationY = 0f
         setBackgroundInset(0)
+        glanceShiftX = 0f
+        glanceShiftY = 0f
+        applyGlanceOffset()
     }
 
     private fun stepShift() {
@@ -412,6 +575,10 @@ class ScreensaverView(
         face.translationY = offset.y.toFloat()
         background.translationX = offset.x.toFloat()
         background.translationY = offset.y.toFloat()
+        // the row moves with the face, so the whole overlay steps together (F-SSV-22)
+        glanceShiftX = offset.x.toFloat()
+        glanceShiftY = offset.y.toFloat()
+        applyGlanceOffset()
         Log.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
         postDelayed(shiftTick, shift.intervalMs)
     }
@@ -522,6 +689,9 @@ class ScreensaverView(
 
         /** The clock-background evidence the P3.3 hardware check greps (check_p33.sh, DEVICE.md). */
         const val CLOCK_TAG = "TabulaClock"
+
+        /** The At a Glance evidence the P3.6 hardware check greps (check_p36.sh, DEVICE.md). */
+        const val GLANCE_TAG = "TabulaGlance"
         const val SECOND_MS = 1_000L
         const val MINUTE_MS = 60_000L
     }

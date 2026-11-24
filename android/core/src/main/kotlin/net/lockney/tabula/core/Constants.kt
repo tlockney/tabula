@@ -210,6 +210,9 @@ object Constants {
     /** GLANCE_ELLIPSIS: the marker a name truncated at the shrink floor ends with (P3.6). */
     const val GLANCE_ELLIPSIS = "…"
 
+    /** GLANCE_VALUE_LARGE_SCALE: how much larger a value is drawn when names are hidden (F-AAG-02, P3.6). */
+    const val GLANCE_VALUE_LARGE_SCALE = 1.25f
+
     /**
      * GLANCE_PILL_BG: the chip pill's body, ARGB (P3.6, F-AAG-02). Half-opaque
      * black so the white text and the icon keep contrast over any clock
