@@ -377,6 +377,14 @@ The row's sizes, colors and fitting bounds (F-AAG-01 to F-AAG-03, F-SSV-10). Sam
 | `GLANCE_NIGHT_PILL_BG` | 0xCC000000 | A near-opaque black pill at night, so the row does not pick up a photo's brightness behind it (F-SSV-10 hides the background image by default). |
 | `GLANCE_INACTIVE_STATES` | off, unknown, unavailable, locked, closed, not_home, idle, standby, disconnected, disarmed | The states HA's tiles draw as inactive (ADR 0032 item 3). `locked`, `closed` and `disarmed` are the settled, safe states; `unlocked`, `open`, `on` and every numeric sensor value are active, so the chips someone glances for are the ones that stand out. |
 
+### Tabularium panel (P5.5)
+
+The panel's own timings. They live in the browser, not in the integration, and exist so a page never implies progress it cannot see.
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `PRESS_PENDING_TIMEOUT_S` | 20 s | How long an Activity tab press may stay unacknowledged before the panel says "still running" instead of "capturing". Longer than `COMMAND_TIMEOUT` (10 s) so a real command error from HA almost always arrives first and is shown as HA's own text; shorter than `SCREENSHOT_TIMEOUT` (30 s) so a slow capture reports in before HA's own timeout would. |
+
 ### Settings bounds in the settings schema
 
 These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen here, so P2.0's generated Kotlin can use `Int` everywhere:

@@ -73,6 +73,41 @@ export const STRINGS = {
     no: "No",
   },
 
+  // P5.5: the Activity tab - the latest capture and the command buttons.
+  activity: {
+    title: "Latest screenshot",
+    capture: "Capture screenshot",
+    capturing: "Capturing…",
+    stillRunning: "Still running…",
+    captured: "Capture finished: Home Assistant reports the capture complete.",
+    running: "Running…",
+    done: "Done.",
+    alt: "Latest screenshot of the tablet's screen",
+    lastCapture: "Last capture",
+    never: "Never captured",
+    caption: "Reported state",
+    noState: "The tablet has not reported its screen state.",
+    screenOn: "Screen on",
+    screenOff: "Screen off",
+    noScreensaver: "No screensaver",
+    screensaver: "Screensaver",
+    page: "Page",
+    placeholderNote:
+      "No image is stored, so the tablet's placeholder is shown: the screen was off when the capture ran.",
+    noneNote: "Nothing has been captured yet, so the tablet's placeholder is shown.",
+    unavailableNote: "The image entity is unavailable in Home Assistant.",
+    fromLastConnection: "From the last connection.",
+    unsupported:
+      "This tablet does not declare the screenshot capability, so there is no image to show.",
+    commandsTitle: "Commands",
+    configuration: "Configuration",
+    configurationNote: "These change how the dashboard runs on the tablet, unlike the ones above.",
+    clearCacheNote: "Clear cache removes the dashboard's stored data on the tablet.",
+    noCommands: "This tablet exposes no command buttons.",
+    offlineReason: "The tablet is offline, so Home Assistant would refuse the command.",
+    unavailableReason: "The entity is unavailable in Home Assistant.",
+  },
+
   // P5.3: the per-device settings editor. Every visible string lives here; the
   // labels map is keyed by schema path, with a humanized fallback in settings.ts.
   settings: {
@@ -286,4 +321,15 @@ export function errorLine(reason: unknown): string {
     return reason.message;
   }
   return String(reason ?? "Unknown error");
+}
+
+/**
+ * The still-running note under a press that has not finished (P5.5): the panel
+ * stops implying progress and says who will report the outcome.
+ */
+export function stillRunningLine(seconds: number): string {
+  return (
+    `Still running after ${seconds} seconds: the tablet has not answered yet. ` +
+    "Home Assistant reports the outcome when it does."
+  );
 }

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { LANDING_ROUTE, routeOf } from "./shell";
-import { INFO, fakeHass, mount, settle } from "./test-helpers";
+import { INFO, activityDevice, device, fakeHass, mount, settle } from "./test-helpers";
+
+const DEVICE_ID = "abcdef0123456789abcdef0123456789";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -90,5 +92,28 @@ describe("hash routes", () => {
     expect(LANDING_ROUTE).toBe("#/devices");
     expect(routeOf("")).toBe(LANDING_ROUTE);
     expect(routeOf("#something")).toBe(LANDING_ROUTE);
+  });
+});
+
+describe("the device page's Activity tab", () => {
+  it("mounts the Activity tab from the device route and the payload", async () => {
+    const panel = device({ ha_device_id: DEVICE_ID, entities: activityDevice().entities });
+    const element = await mount(
+      fakeHass(async (msg) => (msg.type === "tabula/panel_info" ? INFO : [panel])),
+      `#/device/${DEVICE_ID}`,
+    );
+    const activityTab = [...(element.shadowRoot?.querySelectorAll("[role='tab']") ?? [])].find(
+      (tab) => tab.textContent?.trim() === "Activity",
+    ) as HTMLElement | undefined;
+    expect(activityTab).toBeDefined();
+    activityTab?.click();
+    await settle(element);
+
+    const activity = element.shadowRoot?.querySelector("tabula-activity");
+    expect(activity).not.toBeNull();
+    const text = activity?.shadowRoot?.textContent ?? "";
+    expect(text).toContain("Latest screenshot");
+    expect(text).toContain("Capture screenshot");
+    expect(text).toContain("Restart app");
   });
 });

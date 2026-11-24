@@ -24,6 +24,7 @@ import {
   tabLabel,
   type DeviceTab,
 } from "./devices";
+import "./activity";
 import "./logs";
 import { STRINGS, errorLine, statusLine } from "./strings";
 import type { HomeAssistant, PanelDevice, PanelInfo, UnsubscribeFunc } from "./types";
@@ -437,17 +438,25 @@ export class TabulaPanel extends LitElement {
             `,
           )}
         </div>
-        ${
-          this.tab === "overview"
-            ? this.renderOverview(device)
-            : this.tab === "logs"
-              ? html`<tabula-logs .hass=${this.hass} .device=${device}></tabula-logs>`
-              : this.tab === "settings"
-                ? this.renderSettings(device)
-                : html`<p class="tab-body">${STRINGS.tabPending}</p>`
-        }
+        ${this.renderTab(device)}
       </section>
     `;
+  }
+
+  /** The tab body, one case per tab in DEVICE_TABS. */
+  private renderTab(device: PanelDevice): TemplateResult {
+    switch (this.tab) {
+      case "overview":
+        return this.renderOverview(device);
+      case "settings":
+        return this.renderSettings(device);
+      case "logs":
+        return html`<tabula-logs .hass=${this.hass} .device=${device}></tabula-logs>`;
+      case "activity":
+        return html`<tabula-activity .hass=${this.hass} .device=${device}></tabula-activity>`;
+      default:
+        return html`<p class="tab-body">${STRINGS.tabPending}</p>`;
+    }
   }
 
   /** The Settings tab: the schema-driven editor (P5.3), keyed by device id. */

@@ -4,6 +4,7 @@
  * nothing here ships; the Vitest include pattern runs only `*.test.ts`.
  */
 import "./panel";
+import type { TabulaActivity } from "./activity";
 import "./settings-editor";
 import { SETTINGS_DEFAULTS } from "./generated/settings";
 import type { TabulaSettingsEditor } from "./settings-editor";
@@ -118,6 +119,114 @@ export function device(overrides: Partial<PanelDevice> = {}): PanelDevice {
     },
     ...overrides,
   };
+}
+
+/** `hass.states` from `{entity_id: state}` (null is HA's "unknown"). */
+export function statesFrom(
+  entries: Record<string, string | null>,
+  pictures: Record<string, string> = {},
+): HassStates {
+  return Object.fromEntries(
+    Object.entries(entries).map(([entityId, state]) => {
+      const attributes: Record<string, unknown> = {};
+      if (pictures[entityId] !== undefined) {
+        attributes.entity_picture = pictures[entityId];
+      }
+      return [entityId, { entity_id: entityId, state: state ?? "unknown", attributes }];
+    }),
+  );
+}
+
+export interface ServiceCall {
+  domain: string;
+  service: string;
+  data: Record<string, unknown>;
+}
+
+/** A recording `hass.callService`, optionally failing like HA does. */
+export function fakeCallService(
+  handler: (call: ServiceCall) => Promise<unknown> = async () => undefined,
+): { calls: ServiceCall[]; callService: NonNullable<HomeAssistant["callService"]> } {
+  const calls: ServiceCall[] = [];
+  return {
+    calls,
+    callService: async (domain, service, data = {}) => {
+      const call = { domain, service, data };
+      calls.push(call);
+      return handler(call);
+    },
+  };
+}
+
+/** A device with the Activity tab's entities, as P5.2's payload carries them. */
+export function activityDevice(overrides: Partial<PanelDevice> = {}): PanelDevice {
+  return device({
+    capabilities: ["screen", "navigation", "screenshot"],
+    entities: {
+      button: [
+        {
+          entity_id: "button.office_kiosk_capture_screenshot",
+          name: "Capture screenshot",
+          state: "unknown",
+        },
+        {
+          entity_id: "button.office_kiosk_clear_cache",
+          name: "Clear cache",
+          state: "unknown",
+        },
+        {
+          entity_id: "button.office_kiosk_go_to_start_page",
+          name: "Go to start page",
+          state: "unknown",
+        },
+        {
+          entity_id: "button.office_kiosk_reload_dashboard",
+          name: "Reload dashboard",
+          state: "unknown",
+        },
+        {
+          entity_id: "button.office_kiosk_restart_app",
+          name: "Restart app",
+          state: "unknown",
+        },
+      ],
+      image: [
+        {
+          entity_id: "image.office_kiosk_screenshot",
+          name: "Screenshot",
+          state: "2026-11-24T10:00:00+00:00",
+        },
+      ],
+      sensor: [
+        {
+          entity_id: "sensor.office_kiosk_last_capture",
+          name: "Last capture",
+          state: "2026-11-24T10:00:00+00:00",
+        },
+      ],
+    },
+    ...overrides,
+  });
+}
+
+/** Mount the Activity tab with a fake hass, after its first render. */
+export async function mountActivity(
+  hass: HomeAssistant,
+  panelDevice: PanelDevice,
+): Promise<TabulaActivity> {
+  const element = document.createElement("tabula-activity") as TabulaActivity;
+  element.device = panelDevice;
+  element.hass = hass;
+  document.body.append(element);
+  await customElements.whenDefined("tabula-activity");
+  await settle(element);
+  return element;
+}
+
+/** Hand the tab a new `hass`, as HA does on every state change. */
+export async function updateHass(element: TabulaActivity, hass: HomeAssistant): Promise<void> {
+  element.hass = hass;
+  await settle(element);
 }
 
 /** A document with every schema default filled in, as a fresh copy. */

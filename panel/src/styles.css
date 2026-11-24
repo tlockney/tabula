@@ -241,6 +241,113 @@ td a {
   padding: 8px 0;
 }
 
+/* P5.5: the Activity tab. */
+.activity {
+  display: grid;
+  gap: 20px;
+  padding: 8px 0;
+}
+
+.activity h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.activity h4 {
+  margin: 12px 0 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.screenshot figure {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.screenshot .capture {
+  max-width: 100%;
+  border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: #000;
+}
+
+.caption {
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.9rem;
+}
+
+.caption-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+}
+
+.last-capture,
+.note {
+  margin: 6px 0 0;
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.9rem;
+}
+
+.command-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.command {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+
+.command button,
+.screenshot .command button {
+  padding: 6px 14px;
+  border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.2));
+  border-radius: 6px;
+  background: var(--card-background-color, #ffffff);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.command button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.command .reason {
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.8rem;
+  max-width: 18rem;
+}
+
+.configuration {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
+  border-left: 3px solid var(--warning-color, #ff9800);
+  border-radius: 6px;
+}
+
+.outcome {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.outcome.ok {
+  color: var(--success-color, #4caf50);
+}
+
+.outcome.error {
+  color: var(--error-color, #db4437);
+}
+
 /* P5.3: the settings editor. Controls use HA's own custom properties so the
    form matches the frontend's theme instead of shipping its own palette. */
 .settings-status {
