@@ -274,9 +274,21 @@ export class TabulaLogs extends LitElement {
     if (this.streaming) {
       void this.stopStream();
     } else {
-      void this.startStream();
+      void this.restartStream();
     }
   };
+
+  /**
+   * Ask for the stream again after a device drop ended it (P5.4).
+   *
+   * A drop leaves HA's subscription open, so the view still holds its own
+   * unsubscribe: [startStream] would return on it and the button would do
+   * nothing. Dropping it first lets the device hear `enabled: true` again.
+   */
+  private async restartStream(): Promise<void> {
+    await this.stopStream();
+    await this.startStream();
+  }
 
   /** Resuming releases what arrived while paused. */
   private readonly togglePause = (): void => {

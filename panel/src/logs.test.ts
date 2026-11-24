@@ -119,15 +119,25 @@ async function mountLogs(
   return { element, snapshot: snapshot(overrides) };
 }
 
+/** A stream message, as `tabula/panel_logs_subscribe` sends it. */
+type Push = {
+  lines?: PanelLogLine[];
+  subscription?: { active: boolean; expires_at: string | null };
+};
+
 /** A fake hass whose panel calls answer with one snapshot and a live stream. */
-function fakeHass(snapshotValue: PanelLogs, pushes: { lines?: PanelLogLine[] }[] = []) {
+function fakeHass(snapshotValue: PanelLogs, pushes: Push[] = []) {
   const calls: { type: string }[] = [];
-  let sink: ((message: { lines?: PanelLogLine[] }) => void) | undefined;
+  let sink: ((message: Push) => void) | undefined;
   return {
     calls,
     /** Fire one stream message at the mounted view, as HA would. */
-    push(lines: PanelLogLine[]) {
-      sink?.({ lines });
+    push(message: Push) {
+      sink?.(message);
+    },
+    /** How many stream commands the view has sent, one per open stream. */
+    streamCount(): number {
+      return calls.filter((call) => call.type === "tabula/panel_logs_subscribe").length;
     },
     callWS: async <T>(msg: { type: string }) => {
       calls.push(msg);
@@ -187,7 +197,7 @@ describe("the logs view", () => {
     expect(element.shadowRoot?.querySelector(".log-note")?.textContent).toContain("Paused");
 
     // A line that arrives while paused is held, not shown.
-    hass.push([logLine({ message: "while paused" })]);
+    hass.push({ lines: [logLine({ message: "while paused" })] });
     await element.updateComplete;
     expect(element.lines.map((line) => line.message)).not.toContain("while paused");
 
@@ -195,6 +205,29 @@ describe("the logs view", () => {
     await element.updateComplete;
     expect(element.paused).toBe(false);
     expect(element.lines.map((line) => line.message)).toContain("while paused");
+  });
+
+  it("reopens the stream after the device's drop ended it", async () => {
+    const hass = fakeHass(snapshot());
+    const { element } = await mountLogs(hass);
+    expect(hass.streamCount()).toBe(1);
+
+    // The device's connection ended: HA reports the subscription as off while
+    // the view's own HA subscription is still open.
+    hass.push({ subscription: { active: false, expires_at: null } });
+    await element.updateComplete;
+    expect(element.streaming).toBe(false);
+
+    element.shadowRoot?.querySelector<HTMLButtonElement>(".log-status button")?.click();
+    for (let i = 0; i < 8; i += 1) {
+      await Promise.resolve();
+      await element.updateComplete;
+    }
+
+    // The old stream is dropped and a new one asked for: without the drop the
+    // view would still hold its unsubscribe and send nothing.
+    expect(hass.streamCount()).toBe(2);
+    expect(element.streaming).toBe(true);
   });
 
   it("clears the view without touching the buffer it was built from", async () => {
