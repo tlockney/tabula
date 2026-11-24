@@ -217,15 +217,20 @@ describe("device page", () => {
     const tabs = [...(element.shadowRoot?.querySelectorAll("[role='tab']") ?? [])];
     expect(tabs).toHaveLength(4);
 
-    // The settings tab has no view yet; the logs tab is P5.4's own element.
+    // Overview, settings (P5.3's editor), logs (P5.4's element), and activity,
+    // which is the one with no view yet.
     (tabs[1] as HTMLElement).click();
     await settle(element);
-    expect(text(element)).toContain("This tab arrives in a later release.");
+    expect(element.shadowRoot?.querySelector("tabula-settings-editor")).toBeTruthy();
     expect(text(element)).not.toContain("Current page");
 
     (tabs[2] as HTMLElement).click();
     await settle(element);
     expect(element.shadowRoot?.querySelector("tabula-logs")).toBeTruthy();
+
+    (tabs[3] as HTMLElement).click();
+    await settle(element);
+    expect(text(element)).toContain("This tab arrives in a later release.");
 
     (tabs[0] as HTMLElement).click();
     await settle(element);
