@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  * Same value as the schema's x-tabula-schema-version; the integration and
  * the device compare it via register and set_settings (PROTOCOL 4.2, 4.5).
  */
-const val SCHEMA_VERSION: Int = 3
+const val SCHEMA_VERSION: Int = 4
 
 /** Schema pattern for ConnectionHaUrlPattern: ^https?://[^/@\s?#]+(/[^\s?#]*)?$ */
 private val ConnectionHaUrlPattern: Regex = Regex("^https?://[^/@\\s?#]+(/[^\\s?#]*)?\$")
@@ -27,6 +27,9 @@ private val ScreensaverWeatherEntityIdPattern: Regex = Regex("^(?:\$|[a-z_][a-z0
 
 /** Schema pattern for ScreensaverPhotosImageUrlPattern: ^(?:$|https?://\S+)$ */
 private val ScreensaverPhotosImageUrlPattern: Regex = Regex("^(?:\$|https?://\\S+)\$")
+
+/** Schema pattern for IntercomAutoAnswerFromPattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ */
+private val IntercomAutoAnswerFromPattern: Regex = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\$")
 
 /** Schema pattern for AtAGlanceEntitiesPattern: ^[a-z_][a-z0-9_]*\.[a-z0-9_]+$ */
 private val AtAGlanceEntitiesPattern: Regex = Regex("^[a-z_][a-z0-9_]*\\.[a-z0-9_]+\$")
@@ -95,6 +98,14 @@ enum class NotificationsDefaultLevel {
 @Serializable
 enum class AudioAnnounceVolumeBoost {
     @SerialName("none") None,
+}
+
+/** Schema enum for intercom.auto_answer. */
+@Serializable
+enum class IntercomAutoAnswer {
+    @SerialName("off") Off,
+    @SerialName("listed") Listed,
+    @SerialName("all") All,
 }
 
 /** Schema enum for at_a_glance.style. */
@@ -460,6 +471,20 @@ data class Voice(
     @SerialName("wake_word_enabled") val wakeWordEnabled: Boolean = false
 )
 
+/** Intercom auto-answer (ADR 0025 decision 1, ADR 0028 guard 1). Off by default: answering opens a microphone with no tap, so a household opts in per device and only for callers it names. A ring always plays a short tone on the communication stream before the microphone opens. */
+@Serializable
+data class Intercom(
+    /** Which calls this device answers without a tap: none, only the devices in auto_answer_from, or every Tabula device on the hub. A device without a usable microphone never answers automatically; it still rings. Default per ADR 0002 (settings v4). */
+    @SerialName("auto_answer") val autoAnswer: IntercomAutoAnswer = IntercomAutoAnswer.Off,
+    /** The Tabula device ids this device auto-answers when auto_answer is 'listed' (the ids a ring carries as caller_device_id; PROTOCOL 4.5). Empty with 'listed' answers nobody, which is the fail-safe reading. Default per ADR 0002 (settings v4). */
+    @SerialName("auto_answer_from") val autoAnswerFrom: List<String> = emptyList()
+) {
+    init {
+        require(autoAnswerFrom.size <= 16) { "intercom.auto_answer_from. must have at most 16 items" }
+        require(autoAnswerFrom.all { IntercomAutoAnswerFromPattern.matches(it) }) { "intercom.auto_answer_from.[] items do not match the schema pattern" }
+    }
+}
+
 /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
 @Serializable
 data class AtAGlance(
@@ -668,6 +693,8 @@ data class Settings(
     val audio: Audio = Audio(),
     /** Microphone behavior (ADR 0030). Off by default: a kiosk whose microphone is always open is a different product from one that is not, so a household opts in per device. */
     val voice: Voice = Voice(),
+    /** Intercom auto-answer (ADR 0025 decision 1, ADR 0028 guard 1). Off by default: answering opens a microphone with no tap, so a household opts in per device and only for callers it names. A ring always plays a short tone on the communication stream before the microphone opens. */
+    val intercom: Intercom = Intercom(),
     /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
     @SerialName("at_a_glance") val atAGlance: AtAGlance = AtAGlance(),
     /** Corner widgets (F-WGT-01): overlays anchored to the four screen corners, at most one per corner, each individually disabled without losing its corner. */

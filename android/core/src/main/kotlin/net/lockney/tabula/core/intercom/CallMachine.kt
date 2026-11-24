@@ -43,6 +43,14 @@ class CallMachine(
     private val newCallId: () -> String = CallIdMint::random,
     private val timings: Timings = Timings(),
     /**
+     * Whether a ring from this caller is answered with no tap (P9.5). False by
+     * default, which is the `off` setting: a machine with no policy reads every
+     * ring as a ring. Called once per ring, on the monitor.
+     */
+    private val autoAnswer: (callerDeviceId: String) -> Boolean = { false },
+    /** The tone before an auto-answer's microphone opens; silence by default. */
+    private val tone: CallTone = CallTone.None,
+    /**
      * Where a finished call's connection is closed. Off this object's monitor:
      * the WebRTC teardown blocks until its signaling thread drains, and that
      * thread calls back into the monitor (review of #171, finding 1). Tests pass
@@ -62,6 +70,12 @@ class CallMachine(
          * is what keeps guard 3 true while the link is down.
          */
         val transportGraceMs: Long = Constants.PONG_TIMEOUT_S.toLong() * 1000L,
+        /**
+         * How long after an auto-answer's tone starts the answer - and with it
+         * the microphone - opens (P9.5). `TONE_PROP_BEEP` cannot report that it
+         * finished, so this covers the beep plus the speaker's tail.
+         */
+        val answerToneMs: Long = Constants.INTERCOM_ANSWER_TONE_MS.toLong(),
     )
 
     private val _state = MutableStateFlow(IntercomState.IDLE)
@@ -96,6 +110,13 @@ class CallMachine(
     private var answerApplied = false
 
     private var ringTimer: CallScheduler.Cancelable? = null
+    private var answerTimer: CallScheduler.Cancelable? = null
+
+    /**
+     * False while the TLP session is gone. A ring can only arrive over a live
+     * session, so this starts up (P9.5).
+     */
+    private var transportDown = false
     private var connectTimer: CallScheduler.Cancelable? = null
     private var callTimer: CallScheduler.Cancelable? = null
     private var transportTimer: CallScheduler.Cancelable? = null
@@ -170,6 +191,10 @@ class CallMachine(
         } else {
             begin(info, IntercomState.RINGING)
             armNoAnswerTimer(info)
+            // Only a device that can capture answers itself: a listen-only
+            // device still rings, and the tone is never played over a ring
+            // nobody will answer (P9.5)
+            if (capture && autoAnswer(request.callerDeviceId)) beginAutoAnswer(info)
         }
         return true
     }
@@ -180,6 +205,10 @@ class CallMachine(
         if (_state.value != IntercomState.RINGING) return false
         cancel(ringTimer)
         ringTimer = null
+        // A tap during the tone's run-up answers now, and the timer must not
+        // answer a second time (P9.5)
+        cancel(answerTimer)
+        answerTimer = null
         _state.value = IntercomState.IN_CALL
         // A listen-only device answers with a receive-only connection and the
         // record path closed (ADR 0028, "Listen-only")
@@ -258,13 +287,19 @@ class CallMachine(
 
     @Synchronized
     override fun onTransportUp() {
+        transportDown = false
         cancel(transportTimer)
         transportTimer = null
     }
 
     @Synchronized
     override fun onTransportDown() {
+        transportDown = true
         if (_state.value == IntercomState.IDLE) return
+        // A link that dies in the tone's run-up must not open a microphone:
+        // HA cannot end a call it cannot reach (guard 3, P9.5)
+        cancel(answerTimer)
+        answerTimer = null
         // HA cannot send intercom_end over a dead link, so the call may not
         // outlive it (guard 3): the grace is one PONG_TIMEOUT_S
         if (transportTimer != null) return
@@ -371,6 +406,31 @@ class CallMachine(
     }
 
     /**
+     * Plays the tone and schedules the answer the household asked for (P9.5).
+     *
+     * The tone comes first and the microphone opens [Timings.answerToneMs]
+     * later, so the far end hears the beep rather than the capture it is
+     * meant to announce (ADR 0028 guard 1). A decline, an end from HA, the
+     * ring limit or a lost link cancels the pending answer, and
+     * [onAnswerTone] re-checks the state it was armed in anyway, so a timer
+     * that fired before its cancel still answers nothing.
+     */
+    private fun beginAutoAnswer(info: CallInfo) {
+        runCatching { tone.play() }
+        answerTimer = scheduler.schedule(timings.answerToneMs) { onAnswerTone(info.callId) }
+    }
+
+    @Synchronized
+    private fun onAnswerTone(callId: String) {
+        answerTimer = null
+        val info = _info.value ?: return
+        if (info.callId != callId || _state.value != IntercomState.RINGING) return
+        // A link that died in the window: HA could not end the call it opened
+        if (transportDown) return
+        answer()
+    }
+
+    /**
      * How long this side waits for the other: a callee for someone to answer,
      * a caller for the answer to arrive. `INTERCOM_RING_LIMIT_S` is the same
      * window HA gives the callee, and HA ends a call it created first, so the
@@ -432,10 +492,12 @@ class CallMachine(
      */
     private fun finish(info: CallInfo, reason: IntercomEndReason, report: Boolean) {
         cancel(ringTimer)
+        cancel(answerTimer)
         cancel(connectTimer)
         cancel(callTimer)
         cancel(transportTimer)
         ringTimer = null
+        answerTimer = null
         connectTimer = null
         callTimer = null
         transportTimer = null

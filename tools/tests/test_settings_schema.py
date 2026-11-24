@@ -4,9 +4,9 @@ schema/settings.schema.json is the single source of truth for per-device
 settings (plan 5.6). These tests pin what the packets require:
 
 - the schema is valid draft 2020-12 and declares the current settings schema
-  version (3 since P7.1, when the `voice` group joined it);
-- the v3 defaults fixture validates and equals the schema's own defaults, and
-  the v2 and v1 fixtures still validate: every bump so far is additive
+  version (4 since P9.5, when the `intercom` group joined it);
+- the v4 defaults fixture validates and equals the schema's own defaults, and
+  the v3, v2 and v1 fixtures still validate: every bump so far is additive
   (plan 5.4), which is what lets a stored older document load as the current
   one (SettingsStore) and what the
   down-translation depends on;
@@ -36,10 +36,12 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "schema" / "settings.schema.json"
 V1_SCHEMA_PATH = ROOT / "schema" / "settings.schema.v1.json"
 V2_SCHEMA_PATH = ROOT / "schema" / "settings.schema.v2.json"
+V3_SCHEMA_PATH = ROOT / "schema" / "settings.schema.v3.json"
 FIXTURES = ROOT / "schema" / "fixtures" / "settings"
 V1_FIXTURES = FIXTURES / "v1"
 V2_FIXTURES = FIXTURES / "v2"
-CURRENT_FIXTURES = FIXTURES / "v3"  # the fixtures of the current schema version
+V3_FIXTURES = FIXTURES / "v3"
+CURRENT_FIXTURES = FIXTURES / "v4"  # the fixtures of the current schema version
 
 ROLES = {"identity", "connection", "hardware", "shared"}
 
@@ -118,6 +120,8 @@ LEAF_SPEC: dict[tuple[str, ...], tuple[str, Any]] = {
     ("audio", "chime_volume"): ("shared", 100),
     ("audio", "announce_volume_boost"): ("shared", "none"),
     ("voice", "wake_word_enabled"): ("shared", False),
+    ("intercom", "auto_answer"): ("shared", "off"),
+    ("intercom", "auto_answer_from"): ("shared", []),
     ("at_a_glance", "entities"): ("shared", []),
     ("at_a_glance", "style"): ("shared", "pill"),
     ("at_a_glance", "hide_names"): ("shared", False),
@@ -215,16 +219,18 @@ def nested_defaults() -> dict[str, Any]:
 
 
 def test_schema_is_valid_and_declares_the_current_version() -> None:
-    assert schema()["x-tabula-schema-version"] == 3
+    assert schema()["x-tabula-schema-version"] == 4
     assert schema()["x-tabula-roles"] == ["identity", "connection", "hardware", "shared"]
 
 
 def test_frozen_schemas_declare_their_own_versions() -> None:
-    """Each frozen copy keeps the version number it was frozen at (P7.1)."""
+    """Each frozen copy keeps the version number it was frozen at (P7.1, P9.5)."""
     v1 = json.loads(V1_SCHEMA_PATH.read_text(encoding="utf-8"))
     v2 = json.loads(V2_SCHEMA_PATH.read_text(encoding="utf-8"))
+    v3 = json.loads(V3_SCHEMA_PATH.read_text(encoding="utf-8"))
     assert v1["x-tabula-schema-version"] == 1
     assert v2["x-tabula-schema-version"] == 2
+    assert v3["x-tabula-schema-version"] == 3
 
 
 def test_leaf_set_matches_spec() -> None:
@@ -333,6 +339,21 @@ def test_v3_is_additive_over_the_frozen_v2_schema() -> None:
     assert not list(validator().iter_errors(full))
 
 
+def test_v4_is_additive_over_the_frozen_v3_schema() -> None:
+    """P9.5 only adds the `intercom` group; every v3 leaf keeps its shape."""
+    v3 = json.loads(V3_SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert v3["x-tabula-schema-version"] == 3
+
+    v3_leaves = dict(leaves(v3))
+    for path, prop in leaves(schema()):
+        if path in v3_leaves:
+            assert prop == v3_leaves[path], f"{'/'.join(path)} changed under v4"
+
+    # and a full v3 document validates under v4 unchanged
+    full = json.loads((V3_FIXTURES / "full.json").read_text(encoding="utf-8"))
+    assert not list(validator().iter_errors(full))
+
+
 # --- Fixtures ---
 
 
@@ -363,9 +384,24 @@ def test_defaults_fixture_is_exactly_the_schema_defaults() -> None:
     assert doc == nested_defaults()
 
 
+@pytest.mark.parametrize("path", sorted(V3_FIXTURES.glob("*.json")), ids=lambda p: p.name)
+def test_v3_fixture_still_validates(path: Path) -> None:
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    errors = list(validator().iter_errors(doc))
+    assert not errors, [e.message for e in errors]
+
+
+def test_v3_defaults_fixture_is_the_v4_defaults_without_intercom() -> None:
+    """The two golden documents differ only by the group P9.5 added."""
+    v4 = json.loads((CURRENT_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
+    v3 = json.loads((V3_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
+    assert v4.pop("intercom") == {"auto_answer": "off", "auto_answer_from": []}
+    assert v4 == v3
+
+
 def test_v2_defaults_fixture_is_the_v3_defaults_without_voice() -> None:
     """The two golden documents differ only by the group P7.1 added."""
-    v3 = json.loads((CURRENT_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
+    v3 = json.loads((V3_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
     v2 = json.loads((V2_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
     assert v3.pop("voice") == {"wake_word_enabled": False}
     assert v3 == v2

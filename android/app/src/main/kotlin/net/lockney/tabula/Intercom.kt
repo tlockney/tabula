@@ -1,12 +1,15 @@
 package net.lockney.tabula
 
 import android.content.Context
+import android.media.AudioManager
 import android.media.MediaRecorder
+import android.media.ToneGenerator
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.intercom.CallEngine
 import net.lockney.tabula.core.intercom.CallIdMint
 import net.lockney.tabula.core.intercom.CallInfo
@@ -15,6 +18,7 @@ import net.lockney.tabula.core.intercom.CallMachine
 import net.lockney.tabula.core.intercom.CallPeer
 import net.lockney.tabula.core.intercom.CallPeerFactory
 import net.lockney.tabula.core.intercom.CallScheduler
+import net.lockney.tabula.core.intercom.CallTone
 import net.lockney.tabula.core.intercom.PeerDirection
 import net.lockney.tabula.core.tlp.IntercomSignalKind
 import org.json.JSONObject
@@ -48,6 +52,9 @@ class WebRtcCallEngine(
     locks: CallLocks = AndroidCallLocks(context),
     timings: CallMachine.Timings = CallMachine.Timings(),
     newCallId: () -> String = CallIdMint::random,
+    /** The household's auto-answer setting, read afresh for each ring (P9.5). */
+    autoAnswer: (callerDeviceId: String) -> Boolean = { false },
+    tone: CallTone = AndroidCallTone(),
 ) : CallEngine by CallMachine(
     peers = WebRtcPeerFactory(context.applicationContext),
     scheduler = AndroidCallScheduler(),
@@ -56,7 +63,39 @@ class WebRtcCallEngine(
     locks = locks,
     newCallId = newCallId,
     timings = timings,
+    autoAnswer = autoAnswer,
+    tone = tone,
 )
+
+/**
+ * The tone an auto-answer plays before its microphone opens (P9.5, ADR 0028
+ * guard 1), on the communication stream where a call's audio will be.
+ *
+ * `TONE_PROP_BEEP` reports nothing when it ends, so the generator is released
+ * a couple of the machine's own tone windows later: long enough that releasing
+ * cannot cut the beep short, short enough that a ringing device holds one
+ * generator at a time. The volume is 100 of the stream's own level - the room's
+ * volume is the household's business, not this class's.
+ */
+class AndroidCallTone(
+    private val stream: Int = AudioManager.STREAM_VOICE_CALL,
+    private val handler: Handler = Handler(Looper.getMainLooper()),
+) : CallTone {
+    override fun play() {
+        val generator = runCatching { ToneGenerator(stream, TONE_VOLUME) }.getOrNull() ?: return
+        runCatching { generator.startTone(ToneGenerator.TONE_PROP_BEEP) }
+            .onFailure { runCatching { generator.release() } }
+        handler.postDelayed(
+            { runCatching { generator.release() } },
+            Constants.INTERCOM_ANSWER_TONE_MS * 2L,
+        )
+    }
+
+    private companion object {
+        /** Full volume on the chosen stream; the stream's own level decides. */
+        const val TONE_VOLUME = 100
+    }
+}
 
 /**
  * The intercom capabilities this device declares (PROTOCOL 4.2 and 4.5, ADR

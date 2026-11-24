@@ -1,0 +1,1091 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tabula.lockney.net/schema/settings.schema.json",
+  "title": "Tabula device settings (v3)",
+  "description": "Single source of truth for per-device settings. HA is authoritative (plan 5.6): the integration validates and stores settings, pushes them with set_settings (docs/PROTOCOL.md 4.5) and the device caches them. This file covers what Phases 1-3 use: identity, connection, screen, screensaver (with the Phase 3 clock, night mode, weather, photos, website, dim, pixel-shift and fade keys), notifications, audio, At a Glance, corner widgets and the schedule. Every property carries a role tag (x-tabula-role); profiles may manage only 'shared' keys (F-MGT-03, F-MGT-04). No property carries the 'hardware' role yet — codegen must not assume every role in x-tabula-roles has members. Every leaf property names its behavior in x-tabula-feature (a docs/FEATURES.md item ID, or 'independent design' with the ADR). Defaults come only from docs/decisions/0002-constants.md. A key HA does not send keeps the device default (PROTOCOL 4.5); settings.schema.json versions independently of the protocol (schema_version in set_settings).",
+  "x-tabula-schema-version": 3,
+  "x-tabula-roles": [
+    "identity",
+    "connection",
+    "hardware",
+    "shared"
+  ],
+  "type": "object",
+  "properties": {
+    "identity": {
+      "type": "object",
+      "description": "Who the device is. Never shared by profiles (F-MGT-03).",
+      "x-tabula-role": "identity",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "x-tabula-role": "identity",
+          "x-tabula-feature": "F-MGT-03",
+          "description": "Display name of the device in HA. Set at pairing or from the settings editor; unique per device. Length bound per ADR 0002 (identifiers and labels). No default: an unset name falls back to the model or device ID."
+        }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "description": "How the device reaches HA. The only keys the recovery paths may change (F-MGT-11); never shared by profiles.",
+      "x-tabula-role": "connection",
+      "additionalProperties": false,
+      "properties": {
+        "ha_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://[^/@\\s?#]+(/[^\\s?#]*)?$",
+          "x-tabula-role": "connection",
+          "x-tabula-feature": "F-MGT-11",
+          "description": "Base URL of the HA server: http or https scheme, host, optional port and optional path only — no userinfo, query or fragment. Credentials in the URL would be stored, cached and exported with settings, and a query or fragment breaks resolving relative navigate/play_media paths (PROTOCOL 4.5). No default: the device keeps the address it paired with."
+        }
+      }
+    },
+    "screen": {
+      "type": "object",
+      "description": "Panel brightness and power behavior (FEATURES F-SCR). Brightness levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04).",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "brightness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 60,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SCR-04",
+          "description": "Stored base brightness, percent, applied by the screen light entity (F-SCR-04) and the screen command. Default per ADR 0002."
+        },
+        "adaptive_brightness": {
+          "type": "boolean",
+          "default": false,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SCR-05",
+          "description": "Brightness follows room light through a curve (F-SCR-05). Off until the curve is tuned on real hardware; default per ADR 0002."
+        },
+        "keep_screen_on": {
+          "type": "boolean",
+          "default": true,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SCR-01",
+          "description": "Stop the OS display timeout from turning the panel off while the app is in the foreground (F-SCR-01); the screensaver handles idling. Default per ADR 0002."
+        }
+      }
+    },
+    "dashboard": {
+      "type": "object",
+      "description": "The dashboard's start target and return-after-idle rule (FEATURES F-DSH-02, F-DSH-15). Shared keys.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "start_path": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 2048,
+          "pattern": "^(?:$|/(?![/\\\\])[^\\s\\\\?]*$)",
+          "default": "",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-DSH-02",
+          "description": "The page the app opens on launch, after a crash or restart, and on go home: an HA frontend path with a single leading slash, an optional URL fragment, and no query string; empty is HA's default page. A frontend path, not a catalog entry, until the page catalog exists (F-DSH-03, ADR 0021). Bounds per ADR 0002."
+        },
+        "return_home_after": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400,
+          "default": 0,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-DSH-15",
+          "description": "Seconds without touch before the dashboard returns to its start target; 0 never returns. The timer keeps running behind a screensaver, so a covered panel resets without lighting. Bounds and the never default per ADR 0002."
+        }
+      }
+    },
+    "screensaver": {
+      "type": "object",
+      "description": "Idle screensaver (FEATURES F-SSV): the engine keys and one nested group per mode.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-01",
+          "description": "Master switch for the idle screensaver (F-SSV-01). Default per ADR 0002."
+        },
+        "idle_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "default": 300,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-01",
+          "description": "Seconds without interaction before the screensaver starts (F-SSV-01). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002."
+        },
+        "mode": {
+          "enum": [
+            "clock",
+            "weather",
+            "photos",
+            "website",
+            "dashboard",
+            "calendar",
+            "dim",
+            "black"
+          ],
+          "default": "clock",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-05",
+          "description": "The screensaver mode used next time it starts (F-SSV-05). Values match the screensaver_mode state key (PROTOCOL 4.4). Default per ADR 0002."
+        },
+        "brightness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 20,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-17",
+          "description": "Separate backlight level, percent, while the screensaver shows (F-SSV-17); the previous level returns on dismissal. Dim and black have their own levels (dim_brightness; black is always lowest). Default per ADR 0002."
+        },
+        "brightness_enabled": {
+          "type": "boolean",
+          "default": true,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-17",
+          "description": "Whether the separate screensaver backlight level (brightness) applies (F-SSV-17). Off: the screensaver shows at the panel's current level. Dim and black keep their own levels either way. Default per ADR 0002 (settings v2)."
+        },
+        "dim_brightness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 10,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-07",
+          "description": "Dim mode's own backlight level, percent (F-SSV-07): the dashboard stays visible at a low level. Dim no longer borrows screensaver.brightness (ADR 0013 item 4). Default per ADR 0002 (settings v2)."
+        },
+        "clock": {
+          "type": "object",
+          "description": "Clock mode (F-SSV-08, F-SSV-09): face, typography, layout, colors and the optional background image. Fonts name system families only; nothing is bundled in this phase.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "face": {
+              "enum": ["digital", "analog"],
+              "default": "digital",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "The clock face (F-SSV-08). Default per ADR 0002 (settings v2)."
+            },
+            "font_family": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "default": "sans-serif",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "System font family name (F-SSV-08); the device falls back to its default family when the name does not resolve. Default per ADR 0002 (settings v2)."
+            },
+            "font_weight": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 900,
+              "default": 400,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "Font weight on Android's 100-900 axis (F-SSV-08); 400 is the system's normal. Default per ADR 0002 (settings v2)."
+            },
+            "hour_24": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "24-hour time when true, 12-hour with the AM/PM marker when false (F-SSV-08). Default per ADR 0002 (settings v2)."
+            },
+            "show_seconds": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "Show a seconds display (F-SSV-08). Default per ADR 0002 (settings v2)."
+            },
+            "show_am_pm": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "Show the AM/PM marker in 12-hour time (F-SSV-08). Default per ADR 0002 (settings v2)."
+            },
+            "show_date": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "Show a date line under the time, in the app language (F-SSV-08). Default per ADR 0002 (settings v2)."
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 25,
+              "maximum": 400,
+              "default": 100,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "Clock size, percent of the mode's base size (F-SSV-08). Default per ADR 0002 (settings v2)."
+            },
+            "text_color": {
+              "type": "string",
+              "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+              "default": "#FFFFFFFF",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "Clock text color, #RRGGBB or #AARRGGBB (Android order). Default per ADR 0002 (settings v2)."
+            },
+            "background_color": {
+              "type": "string",
+              "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+              "default": "#FF000000",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-08",
+              "description": "Solid background color when no background image is set, #RRGGBB or #AARRGGBB. Default per ADR 0002 (settings v2)."
+            },
+            "background_source": {
+              "type": "string",
+              "maxLength": 2048,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-09",
+              "description": "Background image source (F-SSV-09): empty for none, a local file path on the device, or a URL the tablet downloads directly. Every write triggers a fresh load, identical value or not (F-SSV-09). Default per ADR 0002 (settings v2)."
+            },
+            "background_refresh": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400,
+              "default": 0,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-09",
+              "description": "Seconds between re-fetches of a URL background (F-SSV-09); 0 never re-fetches. Default per ADR 0002 (settings v2)."
+            },
+            "background_darken": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 40,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-09",
+              "description": "Darkening strength, percent, of the readability layer over the background image (F-SSV-09). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "night_mode": {
+          "type": "object",
+          "description": "Clock night mode (F-SSV-10): a dark color scheme below a light threshold, from the tablet's own light sensor only (an HA illuminance entity is never used here).",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-10",
+              "description": "Night mode is off unless the device has a light sensor and the user opts in (F-SSV-10). Default per ADR 0002 (settings v2)."
+            },
+            "light_threshold": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000,
+              "default": 10,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-10",
+              "description": "Below this ambient light, lux, the clock switches to the night scheme (F-SSV-10). Default per ADR 0002 (settings v2)."
+            },
+            "hysteresis_lux": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000,
+              "default": 2,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-10",
+              "description": "Lux above the threshold the light must rise before night mode ends (F-SSV-10). Default per ADR 0002 (settings v2)."
+            },
+            "hide_background": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-10",
+              "description": "Hide the background image at night so the scheme's dark background shows (F-SSV-10). Default per ADR 0002 (settings v2)."
+            },
+            "hide_overlays": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-10",
+              "description": "Hide the corner widgets and the At a Glance row at night (F-SSV-10). Default per ADR 0002 (settings v2)."
+            },
+            "power_off_delay": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "default": 0,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-10",
+              "description": "Minutes of night mode before the panel powers off, 0 = never (F-SSV-10). The countdown is F-SSV-19's, later phase: until it ships the key no-ops. Default per ADR 0002 (settings v2)."
+            },
+            "black_screen_alternative": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-10",
+              "description": "Show a plain black screen instead of powering the panel off, for sensors that stop reporting while the panel is off (F-SSV-10). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "weather": {
+          "type": "object",
+          "description": "Weather scene mode (F-SSV-11): an animated sky following one HA weather entity.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "entity_id": {
+              "type": "string",
+              "pattern": "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-11",
+              "description": "The HA weather entity the scene follows (F-SSV-11); empty shows the mode's pick-an-entity prompt. Default per ADR 0002 (settings v2)."
+            },
+            "place_name": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-11",
+              "description": "Optional place name in the info bar (F-SSV-11). Default per ADR 0002 (settings v2)."
+            },
+            "clock_overlay": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-11",
+              "description": "Draw a clock over the scene (F-SSV-11). Default per ADR 0002 (settings v2)."
+            },
+            "info_bar": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-11",
+              "description": "Draw the weather information bar: temperature, condition, daily high/low, humidity, wind, visibility, apparent temperature (F-SSV-11). Default per ADR 0002 (settings v2)."
+            },
+            "lightning": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-11",
+              "description": "Lightning effect for storm conditions (F-SSV-11). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "photos": {
+          "type": "object",
+          "description": "Photo slideshow modes (F-SSV-12). media_browser is a source value now so adding its device side (P3.9) needs no schema change.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "enum": ["folder", "picker", "url", "media_browser"],
+              "default": "folder",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Where photos come from (F-SSV-12): a folder on the device, photos picked with the system picker, a single image URL, or HA's media browser. Default per ADR 0002 (settings v2)."
+            },
+            "folder_path": {
+              "type": "string",
+              "maxLength": 2048,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Device folder for the folder source (F-SSV-12). Default per ADR 0002 (settings v2)."
+            },
+            "image_url": {
+              "type": "string",
+              "pattern": "^(?:$|https?://\\S+)$",
+              "maxLength": 4096,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "The single image URL for the URL source (F-SSV-12), fetched fresh for each slide; the previous photo stays until the next loads. Default per ADR 0002 (settings v2)."
+            },
+            "slide_interval": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 3600,
+              "default": 300,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Seconds each photo shows (F-SSV-12). Default per ADR 0002 (settings v2)."
+            },
+            "transition": {
+              "enum": ["none", "crossfade", "slide", "zoom", "pan_zoom", "random"],
+              "default": "crossfade",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Transition between slides (F-SSV-12): none, crossfade, slide, zoom, slow pan-and-zoom (stills only), or random per slide. Default per ADR 0002 (settings v2)."
+            },
+            "fit": {
+              "enum": ["letterbox", "smart_fill", "fill"],
+              "default": "smart_fill",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "How a photo fits the panel (F-SSV-12): letterbox, smart fill (crop a little when shapes nearly match, else fill the bars with a blurred, darkened enlargement), or always fill. Default per ADR 0002 (settings v2)."
+            },
+            "shuffle": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Shuffle the playlist for folder sources (F-SSV-12). Default per ADR 0002 (settings v2)."
+            },
+            "include_subfolders": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Include subfolders for folder sources (F-SSV-12). Default per ADR 0002 (settings v2)."
+            },
+            "edge_taps": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Edge zones: tapping near a side edge steps one slide and restarts the interval; a tap elsewhere dismisses (F-SSV-12). Default per ADR 0002 (settings v2)."
+            },
+            "exif_details": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-12",
+              "description": "Photo details overlay from EXIF: date taken, camera details; no location lookup (F-SSV-12). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "website": {
+          "type": "object",
+          "description": "Website mode (F-SSV-13, F-SSV-14): a full-screen web view of any URL.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^(?:$|https?://\\S+)$",
+              "maxLength": 4096,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-13",
+              "description": "The page to show (F-SSV-13); empty leaves the mode without content. Default per ADR 0002 (settings v2)."
+            },
+            "zoom": {
+              "type": "integer",
+              "minimum": 25,
+              "maximum": 500,
+              "default": 100,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-13",
+              "description": "Zoom level, percent, of the website view (F-SSV-13). Default per ADR 0002 (settings v2)."
+            },
+            "double_tap_dismiss": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-14",
+              "description": "Require a double tap to dismiss so single taps reach the page (F-SSV-14). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "pixel_shift": {
+          "type": "object",
+          "description": "Pixel shift (F-SSV-22): periodic small shifts of screensaver content to avoid image retention. Not applied in black mode.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-22",
+              "description": "Shift screensaver content periodically (F-SSV-22). Default per ADR 0002 (settings v2)."
+            },
+            "interval": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 86400,
+              "default": 300,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-22",
+              "description": "Seconds between shifts (F-SSV-22). Default per ADR 0002 (settings v2)."
+            },
+            "amplitude": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "default": 4,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-22",
+              "description": "Shift distance, pixels (F-SSV-22). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "fade": {
+          "type": "object",
+          "description": "Fade in and out (F-SSV-23). Modes that show the live page itself (dim, HA dashboard view) and web content switch without a fade.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-SSV-23",
+              "description": "Fade the screensaver in and out (F-SSV-23). Default per ADR 0002 (settings v2)."
+            }
+          }
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Defaults for on-screen notification cards (FEATURES F-NTF). Per-card fields override these (F-NTF-01).",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "default_duration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600,
+          "default": 10,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-05",
+          "description": "Card lifetime in seconds when the notify command sends no duration; 0 means until dismissed. Bounds match the notify command's duration (ADR 0002); default per ADR 0002."
+        },
+        "default_level": {
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "error"
+          ],
+          "default": "info",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-02",
+          "description": "Severity used when a card's level is missing or unknown (F-NTF-02). Values match the notify command's level (PROTOCOL 4.5). Default per ADR 0002."
+        },
+        "chime_by_level": {
+          "type": "object",
+          "description": "Whether a card chimes, per severity (F-NTF-09): sound only for what needs attention. Defaults per ADR 0002: chime for warning and error, silent otherwise.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "info": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            },
+            "success": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            },
+            "warning": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            },
+            "error": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-NTF-09"
+            }
+          }
+        },
+        "max_visible": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-07",
+          "description": "Cards shown at once; overflow evicts the oldest (F-NTF-07). Bounds per ADR 0002 (Settings bounds in the settings schema); default per ADR 0002."
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "description": "Volume levels (FEATURES F-TTS). Volume levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04).",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "media_volume": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 50,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-TTS-07",
+          "description": "Media channel volume, percent; the level the HA media_player controls (F-TTS-07). Default per ADR 0002."
+        },
+        "chime_volume": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 100,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-NTF-09",
+          "description": "Notification chime loudness, percent of the media volume: the chime plays on the media stream, so the OS silent mode does not mute it, and 100 matches the media volume (F-NTF-09, ADR 0027). Default per ADR 0002."
+        },
+        "announce_volume_boost": {
+          "enum": [
+            "none"
+          ],
+          "default": "none",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "independent design (ADR 0002)",
+          "description": "Announcements play at the current volume; no hidden volume jumps. 'none' is the only v1 value (ADR 0002); a boost level, if ever designed, is added with its own ADR and bumps nothing else."
+        }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "description": "Microphone behavior (ADR 0030). Off by default: a kiosk whose microphone is always open is a different product from one that is not, so a household opts in per device.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "wake_word_enabled": {
+          "type": "boolean",
+          "default": false,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "independent design (ADR 0030)",
+          "description": "Run on-device wake-word detection while the foreground service is up and RECORD_AUDIO is granted. Detection is suspended while the device plays (ADR 0029 item 3). Default per ADR 0002."
+        }
+      }
+    },
+    "at_a_glance": {
+      "type": "object",
+      "description": "At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "entities": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*\\.[a-z0-9_]+$"
+          },
+          "default": [],
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-AAG-01",
+          "description": "The entities in the row, in display order (F-AAG-01); the bound is per ADR 0002 (settings v2). Default per ADR 0002 (settings v2)."
+        },
+        "style": {
+          "enum": ["pill", "plain"],
+          "default": "pill",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-AAG-02",
+          "description": "Contrasting pill per entity, or plain floating text (F-AAG-02). Default per ADR 0002 (settings v2)."
+        },
+        "hide_names": {
+          "type": "boolean",
+          "default": false,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-AAG-02",
+          "description": "Hide entity names for larger values (F-AAG-02). Default per ADR 0002 (settings v2)."
+        },
+        "monochrome_icons": {
+          "type": "boolean",
+          "default": false,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-AAG-02",
+          "description": "Render icons in one color instead of HA's state colors (F-AAG-02). Default per ADR 0002 (settings v2)."
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 200,
+          "default": 100,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-AAG-02",
+          "description": "Row scale, percent (F-AAG-02). Default per ADR 0002 (settings v2)."
+        },
+        "font": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "default": "sans-serif",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-AAG-02",
+          "description": "System font family for the row (F-AAG-02). Default per ADR 0002 (settings v2)."
+        }
+      }
+    },
+    "widgets": {
+      "type": "object",
+      "description": "Corner widgets (F-WGT-01): overlays anchored to the four screen corners, at most one per corner, each individually disabled without losing its corner.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "shown": {
+          "type": "boolean",
+          "default": true,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-WGT-01",
+          "description": "Global switch: hide or show all widgets (F-WGT-01). Default per ADR 0002 (settings v2)."
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 200,
+          "default": 100,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-WGT-01",
+          "description": "Global widget scale, percent (F-WGT-01). Default per ADR 0002 (settings v2)."
+        },
+        "font": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "default": "sans-serif",
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-WGT-01",
+          "description": "Global system font family (F-WGT-01). Default per ADR 0002 (settings v2)."
+        },
+        "vignette": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 0,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-WGT-01",
+          "description": "Dark vignette strength, percent, behind widgets for legibility (F-WGT-01). Default per ADR 0002 (settings v2)."
+        },
+        "small_clock": {
+          "type": "object",
+          "description": "Small clock widget (F-WGT-03): time with optional date; never shown over the clock mode.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2)."
+            },
+            "corner": {
+              "enum": ["tl", "tr", "bl", "br"],
+              "default": "tl",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2)."
+            },
+            "show_date": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-03",
+              "description": "Show the date under the time (F-WGT-03). Default per ADR 0002 (settings v2)."
+            },
+            "hour_24": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-03",
+              "description": "24-hour time when true, 12-hour when false (F-WGT-03). Default per ADR 0002 (settings v2)."
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+              "default": "#FFFFFFFF",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-03",
+              "description": "Text color, #RRGGBB or #AARRGGBB (F-WGT-03). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "weather": {
+          "type": "object",
+          "description": "Weather widget (F-WGT-04): from an HA weather entity; hidden until an entity is chosen.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2)."
+            },
+            "corner": {
+              "enum": ["tl", "tr", "bl", "br"],
+              "default": "tr",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2)."
+            },
+            "entity_id": {
+              "type": "string",
+              "pattern": "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-04",
+              "description": "The HA weather entity (F-WGT-04); empty hides the widget. Default per ADR 0002 (settings v2)."
+            },
+            "place_name": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-04",
+              "description": "Optional place name line (F-WGT-04). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "forecast": {
+          "type": "object",
+          "description": "Forecast widget (F-WGT-05): one row per day from an HA weather entity's daily forecast.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2)."
+            },
+            "corner": {
+              "enum": ["tl", "tr", "bl", "br"],
+              "default": "br",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2)."
+            },
+            "entity_id": {
+              "type": "string",
+              "pattern": "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-05",
+              "description": "The HA weather entity whose daily forecast is shown (F-WGT-05); the widget shows nothing without a daily forecast. Default per ADR 0002 (settings v2)."
+            },
+            "days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 5,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-05",
+              "description": "How many days to show (F-WGT-05). Default per ADR 0002 (settings v2)."
+            },
+            "include_today": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-05",
+              "description": "Include today's forecast (F-WGT-05). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "battery": {
+          "type": "object",
+          "description": "Battery widget (F-WGT-06): from the device directly (works offline); hidden on devices without a battery.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2)."
+            },
+            "corner": {
+              "enum": ["tl", "tr", "bl", "br"],
+              "default": "bl",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2)."
+            },
+            "show_percent": {
+              "type": "boolean",
+              "default": true,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-06",
+              "description": "Show the battery percentage (F-WGT-06). Default per ADR 0002 (settings v2)."
+            },
+            "only_when_low": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-06",
+              "description": "Show only when the battery is low; hidden while charging (F-WGT-06). Default per ADR 0002 (settings v2)."
+            }
+          }
+        },
+        "entity": {
+          "type": "object",
+          "description": "Entity widget (F-WGT-09): one HA entity's icon and value.",
+          "x-tabula-role": "shared",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "Show this widget (F-WGT-01); a disabled widget keeps its corner. Default per ADR 0002 (settings v2)."
+            },
+            "corner": {
+              "enum": ["tl", "tr", "bl", "br"],
+              "default": "tr",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-01",
+              "description": "The corner this widget anchors to (F-WGT-01). Default per ADR 0002 (settings v2)."
+            },
+            "entity_id": {
+              "type": "string",
+              "pattern": "^(?:$|[a-z_][a-z0-9_]*\\.[a-z0-9_]+)$",
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-09",
+              "description": "The entity shown (F-WGT-09); empty hides the widget. Default per ADR 0002 (settings v2)."
+            },
+            "attribute": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-09",
+              "description": "Show this attribute's value instead of the state (F-WGT-09); empty means the state. Default per ADR 0002 (settings v2)."
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "",
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-09",
+              "description": "Custom name for the widget (F-WGT-09); empty uses the entity's name. Default per ADR 0002 (settings v2)."
+            },
+            "visible_values": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "default": [],
+              "x-tabula-role": "shared",
+              "x-tabula-feature": "F-WGT-09",
+              "description": "Show the widget only for these values, case-insensitive, matching the displayed or raw value (F-WGT-09); empty shows always. Default per ADR 0002 (settings v2)."
+            }
+          }
+        }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "description": "Screensaver schedule (F-SSV-18): daily time slots; a slot lasts until the next starts and the last wraps past midnight. A slot's overrides can only turn off overlays that are configured globally, never invent them.",
+      "x-tabula-role": "shared",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-18",
+          "description": "Turn the schedule on or off (F-SSV-18). Default per ADR 0002 (settings v2)."
+        },
+        "slots": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start"],
+            "properties": {
+              "start": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                "x-tabula-role": "shared",
+                "x-tabula-feature": "F-SSV-18",
+                "description": "Local start time, HH:MM 24-hour (F-SSV-18). Required: a slot without a start is meaningless."
+              },
+              "mode": {
+                "enum": [
+                  "clock",
+                  "weather",
+                  "photos",
+                  "website",
+                  "dashboard",
+                  "calendar",
+                  "dim",
+                  "black"
+                ],
+                "default": "clock",
+                "x-tabula-role": "shared",
+                "x-tabula-feature": "F-SSV-18",
+                "description": "The mode this slot starts (F-SSV-18); same values as screensaver.mode. Default per ADR 0002 (settings v2)."
+              },
+              "brightness": {
+                "type": ["integer", "null"],
+                "minimum": 0,
+                "maximum": 100,
+                "default": null,
+                "x-tabula-role": "shared",
+                "x-tabula-feature": "F-SSV-18",
+                "description": "Fixed backlight level for this slot, percent; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)."
+              },
+              "power_off_delay": {
+                "type": ["integer", "null"],
+                "minimum": 0,
+                "maximum": 1440,
+                "default": null,
+                "x-tabula-role": "shared",
+                "x-tabula-feature": "F-SSV-18",
+                "description": "Panel power-off delay for this slot, minutes, 0 = never; null inherits the global value (F-SSV-18). Carried now; the countdown is F-SSV-19's and the key no-ops until it ships. Default per ADR 0002 (settings v2)."
+              },
+              "presence_dismiss": {
+                "type": ["boolean", "null"],
+                "default": null,
+                "x-tabula-role": "shared",
+                "x-tabula-feature": "F-SSV-18",
+                "description": "Presence-sensor dismissal for this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)."
+              },
+              "widgets": {
+                "type": ["boolean", "null"],
+                "default": null,
+                "x-tabula-role": "shared",
+                "x-tabula-feature": "F-SSV-18",
+                "description": "Corner widgets during this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)."
+              },
+              "at_a_glance": {
+                "type": ["boolean", "null"],
+                "default": null,
+                "x-tabula-role": "shared",
+                "x-tabula-feature": "F-SSV-18",
+                "description": "At a Glance row during this slot; null inherits the global value (F-SSV-18). Default per ADR 0002 (settings v2)."
+              }
+            }
+          },
+          "default": [],
+          "x-tabula-role": "shared",
+          "x-tabula-feature": "F-SSV-18",
+          "description": "The schedule's slots in start-time order (F-SSV-18); the bound is per ADR 0002 (settings v2). Default per ADR 0002 (settings v2)."
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
