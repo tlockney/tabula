@@ -31,7 +31,7 @@ tabula-mockdevice = { workspace = true }
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-extend-exclude = ["build", "website/node_modules"]
+extend-exclude = ["build", "website/node_modules", "panel/node_modules"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
