@@ -110,12 +110,16 @@ class LogStreams:
         viewers = self.viewers(record)
         first = viewers.count == 0
         viewers.listeners[id(connection)] = _listener(connection, msg_id)
-        if level != viewers.level:
-            viewers.level = level
-        if first or level is not None:
-            # A new level needs the device anyway; a first viewer needs both the
-            # command and the TTL refresh.
-            await self._async_enable(record, level if level is not None else viewers.level)
+        # The device holds one level per subscription, so a second viewer whose
+        # level differs (widening back to everything included) needs the command
+        # again: otherwise the device would keep filtering at the older floor
+        # while this stream reports the new one.
+        changed = level != viewers.level
+        viewers.level = level
+        if first or changed:
+            # A first viewer needs both the command and the TTL refresh; a new
+            # level needs the command, and keeps the refresh already running.
+            await self._async_enable(record, level)
         self._schedule_refresh(record)
         return {
             "level": viewers.level,

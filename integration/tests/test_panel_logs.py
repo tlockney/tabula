@@ -296,6 +296,37 @@ async def test_a_level_filter_travels_to_the_device(hass_setup, server, hub, ses
         await device.close()
 
 
+async def test_a_second_viewer_changing_the_level_retells_the_device(
+    hass_setup, server, hub, session, paired
+):
+    """A second viewer asking for everything re-sends the command, level and all.
+
+    The device holds one floor per subscription, so a viewer that widens the
+    filter back to everything would otherwise be told the stream carries
+    everything while the device still dropped the lines below the first
+    viewer's level.
+    """
+    device = await online_device(session, server, paired)
+    narrow = await admin_client(hass_setup, server, session)
+    wide = await admin_client(hass_setup, server, session)
+    try:
+        assert (await subscribe(narrow, device, paired.device_id, level="error"))["success"]
+
+        pending = asyncio.create_task(
+            panel(wide, SUBSCRIBE, device_id=paired.device_id, enabled=True)
+        )
+        command = await next_command(device)
+        reply = await pending
+        assert command["args"] == {"enabled": True}, command["args"]
+        assert reply["success"] is True, reply
+        assert reply["result"]["level"] is None
+        assert reply["result"]["viewers"] == 2
+    finally:
+        await wide.close()
+        await narrow.close()
+        await device.close()
+
+
 async def test_an_offline_device_refuses_a_stream(hass_setup, server, hub, session, paired):
     """Streaming an offline device is an error the panel turns into a note."""
     admin = await admin_client(hass_setup, server, session)
