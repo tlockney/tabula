@@ -56,6 +56,9 @@ COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
     "intercom_ring": frozenset({"intercom_listen"}),
     "intercom_signal": frozenset({"intercom_listen"}),
     "intercom_end": frozenset({"intercom_listen"}),
+    # P7.2: voice turns carry their audio as binary frames on this socket (4.10).
+    "voice_start": frozenset({"voice"}),
+    "voice_stop": frozenset({"voice"}),
 }
 
 # Intercom (P9.2; values chosen in ADR 0002, "Intercom"). The integration owns

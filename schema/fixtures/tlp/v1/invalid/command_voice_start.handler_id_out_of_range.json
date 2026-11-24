@@ -1,0 +1,13 @@
+{
+  "id": 24,
+  "type": "event",
+  "event": {
+    "command_id": "01JCVOICE0000000000000000A",
+    "command": "voice_start",
+    "args": {
+      "turn_id": "01JCVTURN00000000000000AA",
+      "handler_id": 256,
+      "start_stage": "stt"
+    }
+  }
+}

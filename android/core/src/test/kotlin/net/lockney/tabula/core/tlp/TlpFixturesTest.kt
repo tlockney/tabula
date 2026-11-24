@@ -81,6 +81,13 @@ class TlpFixturesTest {
                 typed(command.event.logSubscriptionArgs(Tlp.strict), LogSubscriptionArgs.serializer())
 
             "command_screenshot" -> typed(command.event.screenshotArgs(Tlp.strict), ScreenshotArgs.serializer())
+
+            "command_voice_start" ->
+                typed(command.event.voiceStartArgs(Tlp.strict), VoiceStartArgs.serializer())
+
+            "command_voice_stop" ->
+                typed(command.event.voiceStopArgs(Tlp.strict), VoiceStopArgs.serializer())
+
             "command_intercom_ring" ->
                 typed(command.event.intercomRingArgs(Tlp.strict), IntercomRingArgs.serializer())
 
@@ -112,6 +119,8 @@ class TlpFixturesTest {
                 is MediaFinished -> typed(data, MediaFinished.serializer())
                 is PageChanged -> typed(data, PageChanged.serializer())
                 is WakeWordDetected -> typed(data, WakeWordDetected.serializer())
+                is VoiceTurnStarted -> typed(data, VoiceTurnStarted.serializer())
+                is VoiceTurnEnded -> typed(data, VoiceTurnEnded.serializer())
                 is IntercomAnswer -> typed(data, IntercomAnswer.serializer())
                 is IntercomDecline -> typed(data, IntercomDecline.serializer())
                 is IntercomSignal -> typed(data, IntercomSignal.serializer())

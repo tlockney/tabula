@@ -1,0 +1,14 @@
+{
+  "id": 25,
+  "type": "event",
+  "event": {
+    "command_id": "01JCVOICE0000000000000000A",
+    "command": "voice_start",
+    "args": {
+      "turn_id": "01JCVTURN00000000000000AB",
+      "handler_id": 7,
+      "start_stage": "wake_word",
+      "wake_word_phrase": "okay_nabu"
+    }
+  }
+}
