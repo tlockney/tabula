@@ -67,6 +67,8 @@ sealed interface IntercomScreen {
         val cannotTalkBack: Boolean,
         /** A broadcast's receiver places a two-way call back (ADR 0025 decision 2). */
         val canReply: Boolean,
+        /** Why the last button press was refused, if it was. */
+        val note: String? = null,
     ) : IntercomScreen
 }
 
@@ -201,7 +203,10 @@ class IntercomUi(
 
             IntercomAction.Broadcast -> start(StartRequest(mode = IntercomMode.BROADCAST))
 
-            IntercomAction.Answer -> engine.answer()
+            IntercomAction.Answer -> {
+                note = null
+                engine.answer()
+            }
 
             IntercomAction.Decline -> {
                 engine.decline()
@@ -210,6 +215,9 @@ class IntercomUi(
             }
 
             IntercomAction.HangUp -> {
+                // The note is not cleared here: a refusal that a person has not
+                // seen yet (a fixed-target call that found a call already up)
+                // still explains itself when the list comes back.
                 call()?.let { engine.end(it.callId, IntercomEndReason.HANGUP) }
             }
 
@@ -284,6 +292,7 @@ class IntercomUi(
                 canReply = info.mode == IntercomMode.BROADCAST &&
                     info.direction == CallDirection.INCOMING &&
                     talkBack,
+                note = note,
             )
         }
     }
