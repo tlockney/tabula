@@ -49,6 +49,7 @@ from .const import (
     USER_NAME_PREFIX,
 )
 from .exceptions import DeviceCommandError
+from .intents import IntercomVoiceIntents
 from .intercom import IntercomManager
 from .pairing import (
     PendingPairing,
@@ -236,6 +237,8 @@ class TabulaHub:
         self.by_user: dict[str, str] = {}
         # Intercom calls, the signaling relay and the call timers (P9.2).
         self.intercom = IntercomManager(self)
+        # Voice-started calls: the intents, their gate and their sentences (P9.6).
+        self.voice = IntercomVoiceIntents(self)
         # Per-device settings documents and revisions (settings.py, plan 5.6).
         self.settings = SettingsStore(hass)
         # Named profiles, assignments and per-device overrides (P5.6, ADR 0035).
@@ -772,6 +775,7 @@ class TabulaHub:
     def teardown(self) -> None:
         """Close every device socket (#97, ADR 0019), then drop listeners and timers."""
         self.intercom.shutdown()
+        self.voice.shutdown()
         self.logs.shutdown()
         for session in list(self.sessions.values()):
             _close_device_socket(session.connection)
@@ -818,6 +822,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hub.sweep_orphans()
     hub.listen_device_registry()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # The intercom intents follow the tablets' capabilities, and the sentences
+    # they need are written before anything can ask for them (P9.6).
+    await hub.voice.async_setup()
     # The Tabularium is a view over the hub, so it exists while the hub does
     # (P5.1); a missing bundle logs and leaves the hub usable.
     await panel.async_register_panel(hass)
@@ -830,6 +837,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     credentials stay for a reload."""
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
+    hub = hass.data.get(DOMAIN)
+    if hub is not None:
+        # Drop the intents and their sentence file before the hub goes (P9.6):
+        # a removed hub must not leave "call the kitchen" matching nothing.
+        await hub.voice.async_shutdown()
     panel.async_remove_panel(hass)
     hub = hass.data.pop(DOMAIN, None)
     if hub is not None:

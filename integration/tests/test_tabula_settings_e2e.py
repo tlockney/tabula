@@ -175,6 +175,10 @@ async def test_options_flow_save_reaches_the_device(
     device, client, task = await _connect(hass_setup, server, paired, tmp_path)
 
     flow = await hass_setup.config_entries.options.async_init(hub.entry_id)
+    assert flow["type"] == "menu", flow  # the per-tablet settings sit behind the menu
+    flow = await hass_setup.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "settings"}
+    )
     flow = await hass_setup.config_entries.options.async_configure(
         flow["flow_id"], {"device_id": paired.ha_device_id}
     )
