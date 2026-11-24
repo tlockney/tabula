@@ -9,6 +9,8 @@ import {
 import styles from "./styles.css?inline";
 // Registers <tabula-settings-editor>; the Settings tab mounts it (P5.3).
 import "./settings-editor";
+// Registers <tabula-profiles> and <tabula-profile-assign> (P5.6).
+import "./profiles-view";
 import {
   DEVICE_TABS,
   TABULA_EVENT_TYPES,
@@ -31,6 +33,9 @@ import type { HomeAssistant, PanelDevice, PanelInfo, UnsubscribeFunc } from "./t
 
 /** Hash route the panel lands on: the device list. */
 export const LANDING_ROUTE = "#/devices";
+
+/** The Profiles section's route (P5.6). */
+export const PROFILES_ROUTE = "#/profiles";
 
 /** A hash route, falling back to the landing route for anything else. */
 export function routeOf(hash: string): string {
@@ -283,6 +288,9 @@ export class TabulaPanel extends LitElement {
   }
 
   private renderRoute(): TemplateResult | typeof nothing {
+    if (this.route === PROFILES_ROUTE) {
+      return html`<tabula-profiles .hass=${this.hass}></tabula-profiles>`;
+    }
     const deviceId = deviceIdFromRoute(this.route);
     return deviceId === null ? this.renderDevices() : this.renderDeviceRoute(deviceId);
   }
@@ -303,6 +311,7 @@ export class TabulaPanel extends LitElement {
       <section class="route">
         <div class="toolbar">
           <h2>${STRINGS.devicesRoute}</h2>
+          <a class="toolbar-link" href=${PROFILES_ROUTE}>${STRINGS.profiles.link}</a>
           <input
             type="search"
             aria-label=${STRINGS.filterPlaceholder}
@@ -548,6 +557,10 @@ export class TabulaPanel extends LitElement {
             ${row(overview.pending, settingsLabel(badge))}
           </dl>
         </section>
+        <tabula-profile-assign
+          .hass=${this.hass}
+          .deviceId=${device.device_id}
+        ></tabula-profile-assign>
         <section>
           <h3>${overview.entities}</h3>
           ${

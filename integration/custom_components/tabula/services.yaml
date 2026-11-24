@@ -115,3 +115,33 @@ intercom_end:
       example: "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
       selector:
         text:
+
+assign_profile:
+  target:
+    device:
+      integration: tabula
+    entity:
+      integration: tabula
+    area:
+      integration: tabula
+  fields:
+    profile:
+      required: true
+      example: "Kitchen"
+      selector:
+        text:
+
+sync_profile:
+  target:
+    device:
+      integration: tabula
+    entity:
+      integration: tabula
+    area:
+      integration: tabula
+  fields:
+    profile:
+      required: true
+      example: "Kitchen"
+      selector:
+        text:

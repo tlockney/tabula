@@ -388,6 +388,12 @@
     },
     "intercom_call_id_in_use": {
       "message": "The call id {call_id} is already in use, so this call was not started."
+    },
+    "profile_unknown": {
+      "message": "No profile is named '{profile}'. Name one of the profiles in the Tabularium, or the built-in Empty profile."
+    },
+    "profile_invalid": {
+      "message": "The profile could not be applied: {reason}"
     }
   },
   "services": {
@@ -470,6 +476,26 @@
         "call_id": {
           "name": "Call id",
           "description": "The call to end, as given to the tabula_intercom_started event. Omit it and target a tablet instead."
+        }
+      }
+    },
+    "assign_profile": {
+      "name": "Assign profile",
+      "description": "Puts the targeted tablets in a shared profile and applies its values.",
+      "fields": {
+        "profile": {
+          "name": "Profile",
+          "description": "The profile's name or id. The built-in empty profile is named Empty."
+        }
+      }
+    },
+    "sync_profile": {
+      "name": "Sync profile",
+      "description": "Applies a profile's values now, to its members or to the targeted tablets.",
+      "fields": {
+        "profile": {
+          "name": "Profile",
+          "description": "The profile's name or id. Leave the target empty to reach every member."
         }
       }
     }

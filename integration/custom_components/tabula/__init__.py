@@ -55,6 +55,7 @@ from .pairing import (
     PendingPairings,
     RateLimiter,
 )
+from .profiles import ProfileStore
 from .screenshots import ScreenshotStore
 from .settings import SettingsStore
 from .tlp import TLPValidator
@@ -177,6 +178,11 @@ class DeviceRecord:
     # offline device shows when it was last connected across an HA restart.
     # Not a state key and not a setting: the device never reports it.
     last_seen: str | None = None
+    # P5.6: the settings revision the device last reported, kept when its
+    # session ends so an offline member can still be compared with HA's copy
+    # (ADR 0035 item 7: drift is revision-based, and an offline device has no
+    # session to ask). Persisted like last_seen.
+    last_settings_revision: int | None = None
 
     @property
     def connected(self) -> bool:
@@ -213,6 +219,9 @@ class DeviceRecord:
             # When the device was last connected (P5.2); the Tabularium shows
             # it for an offline device.
             "last_seen": self.last_seen,
+            # The settings revision it last reported (P5.6): drift needs it
+            # while the device is offline.
+            "last_settings_revision": self.last_settings_revision,
         }
 
 
@@ -229,6 +238,8 @@ class TabulaHub:
         self.intercom = IntercomManager(self)
         # Per-device settings documents and revisions (settings.py, plan 5.6).
         self.settings = SettingsStore(hass)
+        # Named profiles, assignments and per-device overrides (P5.6, ADR 0035).
+        self.profiles = ProfileStore(self)
         # The panel's log streams and the device subscriptions behind them (P5.4).
         # Imported here: logs.py reads this module's DeviceRecord and TabulaHub.
         from .logs import LogStreams
@@ -305,6 +316,7 @@ class TabulaHub:
                 schema_version=info.get("schema_version"),
                 last_capture=info.get("last_capture"),
                 last_seen=info.get("last_seen"),
+                last_settings_revision=info.get("last_settings_revision"),
             )
             self.devices[record.device_id] = record
             self.by_user[record.user_id] = record.device_id
@@ -361,6 +373,7 @@ class TabulaHub:
         device's live WebSocket (HA registers a revoke callback per connection)."""
         await self._revoke_user(record.user_id)
         await self.settings.async_remove(record.device_id)
+        await self.profiles.async_remove_device(record.device_id)
         self.devices.pop(record.device_id, None)
         self.by_user.pop(record.user_id, None)
         ir.async_delete_issue(
@@ -502,6 +515,7 @@ class TabulaHub:
         record.current = session
         session.registered = True
         session.reported_settings_revision = frame["settings_revision"]
+        record.last_settings_revision = frame["settings_revision"]
         # Superseded sessions stay in place: every frame they send answers
         # "superseded" until the socket closes (PROTOCOL.md 4.9). The close
         # itself runs the cleanup registered under the register's msg id, so
@@ -583,6 +597,8 @@ class TabulaHub:
                 # offline device shows it across an HA restart (F-MGT-06 leaves
                 # all other health to diagnostics).
                 record.last_seen = _utc_now()
+                if session.reported_settings_revision is not None:
+                    record.last_settings_revision = session.reported_settings_revision
                 self._persist()
                 # A device that drops out of a call ends it for the other side
                 # instead of leaving someone talking to nobody (P9.2, guard 4).
@@ -798,6 +814,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = hub
     hub.load_records()
     await hub.settings.async_load()
+    await hub.profiles.async_load()
     await hub.sweep_orphans()
     hub.listen_device_registry()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -47,13 +47,16 @@ else:
 
 
 from . import DeviceRecord, TabulaHub
-from .const import DOMAIN
+from .const import DOMAIN, PROFILE_NAME_MAX
+from .profiles import Profile, ProfileError
 
 SERVICE_NOTIFY = "notify"
 SERVICE_NAVIGATE = "navigate"
 SERVICE_SCREENSAVER = "screensaver"
 SERVICE_INTERCOM_CALL = "intercom_call"
 SERVICE_INTERCOM_END = "intercom_end"
+SERVICE_ASSIGN_PROFILE = "assign_profile"
+SERVICE_SYNC_PROFILE = "sync_profile"
 
 # Field limits mirror the TLP schema (command_notify, command_navigate,
 # command_screensaver); the command is validated strictly again before sending.
@@ -107,6 +110,24 @@ INTERCOM_END_SCHEMA = vol.Schema(
 )
 
 TARGET_KEYS = set(cv.ENTITY_SERVICE_FIELDS)
+
+# Profiles (P5.6, F-MGT-02, ADR 0035). A profile is named by its id or its
+# name, the same two forms the panel offers.
+PROFILE_FIELD = vol.All(cv.string, vol.Length(min=1, max=PROFILE_NAME_MAX))
+
+ASSIGN_PROFILE_SCHEMA = vol.Schema(
+    {
+        **cv.ENTITY_SERVICE_FIELDS,
+        vol.Required("profile"): PROFILE_FIELD,
+    }
+)
+
+SYNC_PROFILE_SCHEMA = vol.Schema(
+    {
+        **cv.ENTITY_SERVICE_FIELDS,
+        vol.Required("profile"): PROFILE_FIELD,
+    }
+)
 
 
 def _targeted(call: ServiceCall) -> bool:
@@ -234,6 +255,50 @@ def async_register(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN, translation_key="intercom_end_needs_target"
             )
 
+    def _profile(hub: TabulaHub, name: str) -> Profile:
+        """The profile a service call names, by id or by name (F-MGT-02)."""
+        profile = hub.profiles.resolve(name)
+        if profile is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="profile_unknown",
+                translation_placeholders={"profile": name},
+            )
+        return profile
+
+    async def assign_profile(call: ServiceCall) -> None:
+        """Put every targeted tablet in a profile (F-MGT-02, ADR 0035)."""
+        hub = TabulaHub.get(hass)
+        if hub is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="hub_not_loaded"
+            )
+        profile = _profile(hub, call.data["profile"])
+        for record in target_records(hass, hub, call):
+            try:
+                await hub.profiles.async_assign(record.device_id, profile.profile_id)
+            except ProfileError as e:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="profile_invalid",
+                    translation_placeholders={"reason": str(e)},
+                ) from e
+
+    async def sync_profile(call: ServiceCall) -> None:
+        """Apply a profile now, to every member or to the targeted ones."""
+        hub = TabulaHub.get(hass)
+        if hub is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="hub_not_loaded"
+            )
+        profile = _profile(hub, call.data["profile"])
+        device_ids = (
+            [record.device_id for record in target_records(hass, hub, call)]
+            if _targeted(call)
+            else None
+        )
+        await hub.profiles.async_apply_profile(profile.profile_id, device_ids)
+
     hass.services.async_register(DOMAIN, SERVICE_NOTIFY, notify, schema=NOTIFY_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_NAVIGATE, navigate, schema=NAVIGATE_SCHEMA)
     hass.services.async_register(
@@ -244,4 +309,10 @@ def async_register(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_INTERCOM_END, intercom_end, schema=INTERCOM_END_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_ASSIGN_PROFILE, assign_profile, schema=ASSIGN_PROFILE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SYNC_PROFILE, sync_profile, schema=SYNC_PROFILE_SCHEMA
     )

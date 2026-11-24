@@ -304,6 +304,109 @@ export const STRINGS = {
       unknownProperty: (name: string) => `"${name}" is not part of this list.`,
     },
   },
+
+  // P5.6: the Profiles section and the device page's assignment control.
+  profiles: {
+    route: "Profiles",
+    link: "Profiles",
+    title: "Profiles",
+    subtitle:
+      "A profile is a named set of shared settings. Devices in a profile receive its values; identity, connection and hardware keys never travel.",
+    loading: "Loading the profiles…",
+    loadError: "The profiles could not be loaded",
+    newProfile: "New profile",
+    empty:
+      "No profiles yet. A profile shares the settings you choose with the tablets you put in it.",
+    columnName: "Profile",
+    columnMembers: "Devices",
+    columnActions: "Actions",
+    builtin: "Built-in",
+    builtinNote: "Covers no keys; a device in it keeps its own settings.",
+    noMembers: "No devices",
+    memberCount: (count: number) => (count === 1 ? "1 device" : `${count} devices`),
+    keyCount: (count: number) => (count === 1 ? "1 key" : `${count} keys`),
+    edit: "Edit",
+    sync: "Sync now",
+    delete: "Delete",
+    deleteNote:
+      "Deleting a profile does not change its devices' settings: they become unassigned and keep the values they have.",
+    confirmDelete: (name: string) =>
+      `Delete the profile "${name}"? Its devices keep their settings.`,
+    editorTitle: "New profile",
+    editorTitleEdit: (name: string) => `Edit ${name}`,
+    name: "Name",
+    namePlaceholder: "Kitchen tablets",
+    nameRequired: "A profile needs a name.",
+    nameTooLong: "A profile name is at most 64 characters.",
+    nameReserved: "The built-in profile's name is reserved.",
+    nameTaken: (name: string) => `Another profile is already named "${name}".`,
+    keysTitle: "Settings this profile covers",
+    keysNote:
+      "A new profile starts with no keys. Tick a group to share all of it, or single keys inside it. Room- and panel-specific keys are best added by hand.",
+    groupAll: "Share the whole group",
+    noKeys: "This profile covers no keys yet.",
+    value: "Value",
+    notJson: "Enter JSON for this list setting.",
+    unset: "Not set",
+    emptyList: "Empty list",
+    preview: "Preview changes",
+    previewTitle: "What saving would change",
+    previewNone: "Every member is already at these values.",
+    previewLine: (changing: number, overridden: number) =>
+      `${changing} value${changing === 1 ? "" : "s"} would change` +
+      (overridden ? `; ${overridden} overridden and left alone` : "."),
+    columnDevice: "Device",
+    columnKey: "Setting",
+    columnProfileValue: "Profile",
+    columnDeviceValue: "Device",
+    columnChange: "Change",
+    willChange: "Changes",
+    unchanged: "Unchanged",
+    overridden: "Overridden",
+    save: "Save profile",
+    saving: "Saving…",
+    saved: (applied: number, revision: number | null) =>
+      revision === null
+        ? "Saved; every member was already current."
+        : `Saved and pushed to ${applied} device${applied === 1 ? "" : "s"} at revision ${revision}.`,
+    rejected: (count: number) =>
+      `${count} key${count === 1 ? " was" : "s were"} refused and not saved.`,
+    cancel: "Cancel",
+    syncDone: (updated: number, offline: number) =>
+      `${updated} device${updated === 1 ? "" : "s"} updated` +
+      (offline ? `; ${offline} offline and will catch up when they reconnect.` : "."),
+    driftTitle: "Drift report",
+    driftNote:
+      "Drift compares revisions, not values: the tablet never uploads its settings, so Home Assistant knows only which revision it applied.",
+    driftNone: "No device disagrees with its profile.",
+    driftRevision: "Revision differs",
+    driftBehind: (count: number) =>
+      count > 0 ? `${count} revision${count === 1 ? "" : "s"} behind` : `${-count} revisions ahead`,
+    driftOverride: (count: number) => `${count} override${count === 1 ? "" : "s"}`,
+    driftSchema: (count: number) => `${count} key${count === 1 ? "" : "s"} too new for the app`,
+    driftProfile: "Profile",
+    driftDevice: "Device",
+    driftState: "State",
+    driftWhy: "Why",
+    driftNeverReported: "Never reported a revision",
+    retry: "Try again",
+  },
+
+  profileAssign: {
+    title: "Profile",
+    loading: "Loading…",
+    none: "No profile (this device keeps its own settings).",
+    assign: "Assign",
+    sync: "Sync now",
+    overrides: "Overridden for this device",
+    clear: "Clear",
+    clearNote: "Clearing an override applies the profile's value.",
+    changed: (count: number) =>
+      count === 0 ? "Already current." : `${count} value${count === 1 ? "" : "s"} applied.`,
+    noKeys: "This profile covers no keys, so nothing changes.",
+    sharedKeys: (count: number) => `Shares ${count} key${count === 1 ? "" : "s"}.`,
+    error: "The profile could not be applied",
+  },
 } as const;
 
 /** The hub status line: integration, protocol and schema versions, device count. */
