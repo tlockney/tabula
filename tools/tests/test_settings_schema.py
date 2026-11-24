@@ -3,10 +3,12 @@
 schema/settings.schema.json is the single source of truth for per-device
 settings (plan 5.6). These tests pin what the packets require:
 
-- the schema is valid draft 2020-12 and declares settings schema version 2;
-- the v2 defaults fixture validates and equals the schema's own defaults;
-- the v1 fixtures still validate: the v2 bump is additive (plan 5.4), which
-  is what lets a stored v1 document load as v2 (SettingsStore) and what the
+- the schema is valid draft 2020-12 and declares the current settings schema
+  version (3 since P7.1, when the `voice` group joined it);
+- the v3 defaults fixture validates and equals the schema's own defaults, and
+  the v2 and v1 fixtures still validate: every bump so far is additive
+  (plan 5.4), which is what lets a stored older document load as the current
+  one (SettingsStore) and what the
   down-translation depends on;
 - every other valid fixture validates; every known-bad fixture fails, at the
   spot invalid/EXPECTED.json records (same convention as the TLP fixtures);
@@ -33,9 +35,11 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "schema" / "settings.schema.json"
 V1_SCHEMA_PATH = ROOT / "schema" / "settings.schema.v1.json"
+V2_SCHEMA_PATH = ROOT / "schema" / "settings.schema.v2.json"
 FIXTURES = ROOT / "schema" / "fixtures" / "settings"
 V1_FIXTURES = FIXTURES / "v1"
 V2_FIXTURES = FIXTURES / "v2"
+CURRENT_FIXTURES = FIXTURES / "v3"  # the fixtures of the current schema version
 
 ROLES = {"identity", "connection", "hardware", "shared"}
 
@@ -111,7 +115,9 @@ LEAF_SPEC: dict[tuple[str, ...], tuple[str, Any]] = {
     ("notifications", "chime_by_level", "error"): ("shared", True),
     ("notifications", "max_visible"): ("shared", 3),
     ("audio", "media_volume"): ("shared", 50),
+    ("audio", "chime_volume"): ("shared", 100),
     ("audio", "announce_volume_boost"): ("shared", "none"),
+    ("voice", "wake_word_enabled"): ("shared", False),
     ("at_a_glance", "entities"): ("shared", []),
     ("at_a_glance", "style"): ("shared", "pill"),
     ("at_a_glance", "hide_names"): ("shared", False),
@@ -208,9 +214,17 @@ def nested_defaults() -> dict[str, Any]:
 # --- Schema shape ---
 
 
-def test_schema_is_valid_and_declares_version_2() -> None:
-    assert schema()["x-tabula-schema-version"] == 2
+def test_schema_is_valid_and_declares_the_current_version() -> None:
+    assert schema()["x-tabula-schema-version"] == 3
     assert schema()["x-tabula-roles"] == ["identity", "connection", "hardware", "shared"]
+
+
+def test_frozen_schemas_declare_their_own_versions() -> None:
+    """Each frozen copy keeps the version number it was frozen at (P7.1)."""
+    v1 = json.loads(V1_SCHEMA_PATH.read_text(encoding="utf-8"))
+    v2 = json.loads(V2_SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert v1["x-tabula-schema-version"] == 1
+    assert v2["x-tabula-schema-version"] == 2
 
 
 def test_leaf_set_matches_spec() -> None:
@@ -299,23 +313,45 @@ def test_v2_is_additive_over_the_frozen_v1_schema() -> None:
     for path, prop in v1_leaves(v1):
         assert LEAF_SPEC[path] == (prop["x-tabula-role"], prop.get("default")), path
 
-    # a full v1 document validates under v2 unchanged
+    # a full v1 document validates under the current version unchanged
     full = json.loads((V1_FIXTURES / "full.json").read_text(encoding="utf-8"))
+    assert not list(validator().iter_errors(full))
+
+
+def test_v3_is_additive_over_the_frozen_v2_schema() -> None:
+    """P7.1 only adds the `voice` group; every v2 leaf keeps its shape."""
+    v2 = json.loads(V2_SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert v2["x-tabula-schema-version"] == 2
+
+    v2_leaves = dict(leaves(v2))
+    for path, prop in leaves(schema()):
+        if path in v2_leaves:
+            assert prop == v2_leaves[path], f"{'/'.join(path)} changed under v3"
+
+    # and a full v2 document validates under v3 unchanged
+    full = json.loads((V2_FIXTURES / "full.json").read_text(encoding="utf-8"))
     assert not list(validator().iter_errors(full))
 
 
 # --- Fixtures ---
 
 
+@pytest.mark.parametrize("path", sorted(CURRENT_FIXTURES.glob("*.json")), ids=lambda p: p.name)
+def test_valid_current_fixture_validates(path: Path) -> None:
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    errors = list(validator().iter_errors(doc))
+    assert not errors, [e.message for e in errors]
+
+
 @pytest.mark.parametrize("path", sorted(V2_FIXTURES.glob("*.json")), ids=lambda p: p.name)
-def test_valid_v2_fixture_validates(path: Path) -> None:
+def test_v2_fixture_still_validates(path: Path) -> None:
     doc = json.loads(path.read_text(encoding="utf-8"))
     errors = list(validator().iter_errors(doc))
     assert not errors, [e.message for e in errors]
 
 
 @pytest.mark.parametrize("path", sorted(V1_FIXTURES.glob("*.json")), ids=lambda p: p.name)
-def test_v1_fixture_still_validates_under_v2(path: Path) -> None:
+def test_v1_fixture_still_validates_under_the_current_version(path: Path) -> None:
     """The v1 golden documents stay valid: the bump is additive (plan 5.4)."""
     doc = json.loads(path.read_text(encoding="utf-8"))
     errors = list(validator().iter_errors(doc))
@@ -323,14 +359,24 @@ def test_v1_fixture_still_validates_under_v2(path: Path) -> None:
 
 
 def test_defaults_fixture_is_exactly_the_schema_defaults() -> None:
-    doc = json.loads((V2_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
+    doc = json.loads((CURRENT_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
     assert doc == nested_defaults()
 
 
+def test_v2_defaults_fixture_is_the_v3_defaults_without_voice() -> None:
+    """The two golden documents differ only by the group P7.1 added."""
+    v3 = json.loads((CURRENT_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
+    v2 = json.loads((V2_FIXTURES / "defaults.json").read_text(encoding="utf-8"))
+    assert v3.pop("voice") == {"wake_word_enabled": False}
+    assert v3 == v2
+
+
 def test_invalid_fixtures_fail_where_expected() -> None:
-    expected = json.loads((V2_FIXTURES / "invalid" / "EXPECTED.json").read_text(encoding="utf-8"))
+    expected = json.loads(
+        (CURRENT_FIXTURES / "invalid" / "EXPECTED.json").read_text(encoding="utf-8")
+    )
     checked = 0
-    for path in sorted((V2_FIXTURES / "invalid").glob("*.json")):
+    for path in sorted((CURRENT_FIXTURES / "invalid").glob("*.json")):
         if path.name == "EXPECTED.json":
             continue
         doc = json.loads(path.read_text(encoding="utf-8"))

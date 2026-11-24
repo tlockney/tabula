@@ -1,4 +1,5 @@
-"""Sensors (plan 5.5): battery, current page, next screensaver, app version, illuminance."""
+"""Sensors (plan 5.5): battery, current page, next screensaver, app version,
+illuminance, last wake word."""
 
 from __future__ import annotations
 
@@ -105,6 +106,19 @@ SENSORS = (
         capabilities=frozenset({"illuminance"}),
         state_keys=frozenset({"illuminance"}),
         state_key="illuminance",
+    ),
+    # The last accepted wake-word detection (P7.1, ADR 0030): not diagnostic,
+    # because an automation conditions on it ("someone said the phrase in the
+    # last minute"). It has no value until the first detection, and the device
+    # omits the key until then (PROTOCOL 4.2).
+    TabulaSensorDescription(
+        key="last_wake_word",
+        translation_key="last_wake_word",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        capabilities=frozenset({"wake_word"}),
+        state_keys=frozenset({"last_wake_word"}),
+        state_key="last_wake_word",
+        convert=_timestamp,
     ),
     # The last capture started by the capture button (F-HA-12, P3.13): not a
     # device state key - it lives on the record, persisted, and only the

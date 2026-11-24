@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Wake word (P7.1, ADR 0030): the detector listens only while
+         voice.wake_word_enabled is on; the microphone type lets the service
+         keep recording in the background on API 34+. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- The service's ongoing notification (API 33+); without it the service still runs -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Screen control (packet P2.3): the system backlight. Granted over ADB
@@ -53,7 +58,7 @@
         <service
             android:name=".TabulaService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|microphone" />
 
         <!-- Starts the service after boot when the device is already paired. A
              freshly installed app is in the stopped state and gets no boot

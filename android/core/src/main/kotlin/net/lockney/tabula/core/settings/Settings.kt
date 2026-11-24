@@ -11,13 +11,13 @@ import kotlinx.serialization.Serializable
  * Same value as the schema's x-tabula-schema-version; the integration and
  * the device compare it via register and set_settings (PROTOCOL 4.2, 4.5).
  */
-const val SCHEMA_VERSION: Int = 2
+const val SCHEMA_VERSION: Int = 3
 
 /** Schema pattern for ConnectionHaUrlPattern: ^https?://[^/@\s?#]+(/[^\s?#]*)?$ */
 private val ConnectionHaUrlPattern: Regex = Regex("^https?://[^/@\\s?#]+(/[^\\s?#]*)?\$")
 
-/** Schema pattern for DashboardStartPathPattern: ^(?:$|/(?![/\\])[^\\s\\?]*$) */
-private val DashboardStartPathPattern: Regex = Regex("^(?:\$|/(?![/\\\\])[^\\\\s\\\\?]*\$)")
+/** Schema pattern for DashboardStartPathPattern: ^(?:$|/(?![/\\])[^\s\\?]*$) */
+private val DashboardStartPathPattern: Regex = Regex("^(?:\$|/(?![/\\\\])[^\\s\\\\?]*\$)")
 
 /** Schema pattern for ScreensaverClockTextColorPattern: ^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$ */
 private val ScreensaverClockTextColorPattern: Regex = Regex("^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\$")
@@ -442,13 +442,23 @@ data class Notifications(
 data class Audio(
     /** Media channel volume, percent; the level the HA media_player controls (F-TTS-07). Default per ADR 0002. */
     @SerialName("media_volume") val mediaVolume: Int = 50,
+    /** Notification chime loudness, percent of the media volume: the chime plays on the media stream, so the OS silent mode does not mute it, and 100 matches the media volume (F-NTF-09, ADR 0027). Default per ADR 0002. */
+    @SerialName("chime_volume") val chimeVolume: Int = 100,
     /** Announcements play at the current volume; no hidden volume jumps. 'none' is the only v1 value (ADR 0002); a boost level, if ever designed, is added with its own ADR and bumps nothing else. */
     @SerialName("announce_volume_boost") val announceVolumeBoost: AudioAnnounceVolumeBoost = AudioAnnounceVolumeBoost.None
 ) {
     init {
         require(mediaVolume in 0..100) { "audio.media_volume must be 0..100" }
+        require(chimeVolume in 0..100) { "audio.chime_volume must be 0..100" }
     }
 }
+
+/** Microphone behavior (ADR 0030). Off by default: a kiosk whose microphone is always open is a different product from one that is not, so a household opts in per device. */
+@Serializable
+data class Voice(
+    /** Run on-device wake-word detection while the foreground service is up and RECORD_AUDIO is granted. Detection is suspended while the device plays (ADR 0029 item 3). Default per ADR 0002. */
+    @SerialName("wake_word_enabled") val wakeWordEnabled: Boolean = false
+)
 
 /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
 @Serializable
@@ -656,6 +666,8 @@ data class Settings(
     val notifications: Notifications = Notifications(),
     /** Volume levels (FEATURES F-TTS). Volume levels are shared: a profile may carry them, but new profiles start without them (F-MGT-04). */
     val audio: Audio = Audio(),
+    /** Microphone behavior (ADR 0030). Off by default: a kiosk whose microphone is always open is a different product from one that is not, so a household opts in per device. */
+    val voice: Voice = Voice(),
     /** At a Glance (F-AAG-01, F-AAG-02): a row of a few HA entity states drawn on the screensaver, in user-defined order. */
     @SerialName("at_a_glance") val atAGlance: AtAGlance = AtAGlance(),
     /** Corner widgets (F-WGT-01): overlays anchored to the four screen corners, at most one per corner, each individually disabled without losing its corner. */

@@ -1,0 +1,7 @@
+{
+  "id": 5,
+  "type": "tabula/state",
+  "state": {
+    "last_wake_word": null
+  }
+}

@@ -46,6 +46,9 @@ object Constants {
     /** RESTART_EXIT_DELAY: ms the process waits after restart_app's result frame before it exits. */
     const val RESTART_EXIT_DELAY_MS = 500L
 
+    /** RESTART_RELAUNCH_DELAY: ms after that exit before the system relaunches the app. */
+    const val RESTART_RELAUNCH_DELAY_MS = 1000L
+
     /** STATE_MIN_INTERVAL: minimum gap between two tabula/state frames, milliseconds. */
     const val STATE_MIN_INTERVAL_MS = 250L
 
@@ -96,6 +99,11 @@ object Constants {
     /** MEDIA_MAX_BYTES: largest audio file the media player downloads before playing it (P2.5). */
     const val MEDIA_MAX_BYTES = 50L * 1024 * 1024
 
+    /** WAKE_WORD_CHIME_GUARD_MS: ms detection stays closed after a chime sounds
+     * (P7.1, ADR 0002): the beep has no completion callback, so the tone's
+     * length plus a short tail is the window the microphone stays shut. */
+    const val WAKE_WORD_CHIME_GUARD_MS = 500L
+
     /** MEDIA_MAX_REDIRECTS: redirect hops the media fetch follows before giving up (P2.5). */
     const val MEDIA_MAX_REDIRECTS = 5
 
@@ -105,9 +113,6 @@ object Constants {
     /** SCREENSHOT_JPEG_QUALITY: the capture's JPEG quality when the command
      * sends none; inside the schema's 10-95 range (P3.13, 0002-constants.md). */
     const val SCREENSHOT_JPEG_QUALITY = 80
-
-    /** CHIME_VOLUME: the notification chime generator's own scale, at the top (P2.5). */
-    const val CHIME_VOLUME = 100
 
     /**
      * CARD_BACKGROUND: a notification card's near-opaque dark body, ARGB
@@ -131,6 +136,17 @@ object Constants {
 
     /** GALLERY_URL_HISTORY: URL-source photos kept for stepping back (P3.8). */
     const val GALLERY_URL_HISTORY = 8
+
+    // --- Clock faces (docs/decisions/0002-constants.md, "Clock faces") ------------
+
+    /** CLOCK_TIME_BASE_SP: the digital time's text size at size=100 % (P3.3, ADR 0018). */
+    const val CLOCK_TIME_BASE_SP = 120f
+
+    /** CLOCK_DATE_BASE_SP: the date line's text size at size=100 % (P3.3, ADR 0018). */
+    const val CLOCK_DATE_BASE_SP = 32f
+
+    /** CLOCK_DIAL_FRACTION: the analog dial's diameter at size=100 %, as a fraction of the panel's smaller side (P3.3, ADR 0018). */
+    const val CLOCK_DIAL_FRACTION = 0.60f
 
     // --- Illuminance reporting (docs/decisions/0002-constants.md,
     // "Ambient light sensor reporting") -------------------------------------

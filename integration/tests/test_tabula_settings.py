@@ -42,14 +42,15 @@ def schema() -> SettingsSchema:
 def test_bundled_settings_schema_matches_repo():
     """The shipped copy is the repo's source of truth, byte for byte."""
     assert BUNDLED_SCHEMA.read_bytes() == REPO_SCHEMA.read_bytes()
-    assert schema().version == SCHEMA_VERSION == 2
+    assert schema().version == SCHEMA_VERSION == 3
 
 
-def test_bundled_frozen_v1_schema_matches_repo():
-    """The frozen v1 copy (down-translation, migrations/) is the repo's."""
-    bundled_v1 = BUNDLED_SCHEMA.parent / "settings.schema.v1.json"
-    repo_v1 = REPO_SCHEMA.parent / "settings.schema.v1.json"
-    assert bundled_v1.read_bytes() == repo_v1.read_bytes()
+def test_bundled_frozen_schemas_match_repo():
+    """The frozen copies (down-translation, migrations/) are the repo's, byte for byte."""
+    for name in ("settings.schema.v1.json", "settings.schema.v2.json"):
+        bundled = BUNDLED_SCHEMA.parent / name
+        repo = REPO_SCHEMA.parent / name
+        assert bundled.read_bytes() == repo.read_bytes(), name
 
 
 def test_defaults_cover_every_leaf_with_a_default():

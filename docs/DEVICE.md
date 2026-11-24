@@ -6,8 +6,9 @@ installed, and how to recover one. Written by P2.1; later packets extend it
 (Shizuku and the recovery page arrive in Phase 4, plan sections 5.9 and 7.4).
 
 Everything here is scripted so a hardware check is one paste of output
-(AGENTS.md, "Work packets"). No step roots, unlocks a bootloader or needs
-anything the tablet's own settings do not allow.
+(AGENTS.md, "Work packets"). No scripted step roots or unlocks a bootloader:
+the one bootloader unlock in the fleet is the owner-performed, by-hand Echo
+Show 8 (2nd gen) flash (ADR 0026), done before Tabula work begins.
 
 ## Prerequisites (the Mac, or any machine with ADB)
 
@@ -235,11 +236,15 @@ checks:
 
 ### Echo Show 8 (2nd gen)
 
-P0.6 gave a provisional no-go (ADR 0007): no settings-only path to ADB is
-known, and every working path is an exploit plus bootloader unlock, which the
-plan rules out. The P2.1 boot-start observation on an Echo Show is therefore
-skipped; if the ADR's device check ever overturns the no-go, P2.7 owns the
-bring-up.
+The owner unlocks the bootloader and flashes the community LineageOS 18.1
+(Android 11) image himself, by hand, from the public community guide, before
+any Tabula work (ADR 0026) — that step is his alone; nothing here or in
+`tools/device/` unlocks, roots or flashes anything. Once the device boots
+LineageOS, Tabula's part begins: the read-only device probe (P2.7 step 1 —
+WebView version, SELinux mode, screen, sensors), then provisioning and
+recovery exactly as above, over ADB. The image ships SELinux permissive, so
+treat the device as less trusted hardware: nothing sensitive beyond the
+paired HA credential lives on it.
 
 ## Hardware check (P2.5, notifications and audio)
 
@@ -249,10 +254,14 @@ Text-to-Speech, e.g. the Google Translate one; its entity id is on its
 device page). Then:
 
 ```sh
-TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_AUDIO_OK=1 TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
 TABULA_MEDIA=media_player.<tablet>_speaker TABULA_TTS=tts.google_translate_com \
 ANDROID_SERIAL=<serial> tools/device/check_p25.sh
 ```
+
+This check speaks through the tablet, so it is behind the audio opt-in described
+under the P7.0 check: it exits with status 2 unless `TABULA_AUDIO_OK=1` is set,
+for a session scheduled with the owner.
 
 The entity ids are on the tablet's device page in HA. The script records
 `tabula_notification` and `tabula_media` events in the background, then
@@ -272,6 +281,21 @@ checks:
 8. HA received at least six `tabula_notification` events (shown, replaced,
    timed out, tapped) and at least one `tabula_media` (`media_finished`)
    event.
+
+### Chime in silent mode (#121, ADR 0027)
+
+The chime plays on the media stream, so the tablet's silent mode must not
+mute it. By ear, with the media volume around half:
+
+1. Silence the notification and ring streams:
+   `adb shell media volume --stream 5 --set 0` and
+   `adb shell media volume --stream 2 --set 0`. Confirm with
+   `adb shell dumpsys audio | grep -A3 "STREAM_NOTIFICATION:"`.
+2. `tabula.notify` with `level: warning` and `chime: true`: the beep is
+   audible.
+3. Set the tablet's **Chime volume** entity to 30 and send the card again:
+   the beep is quieter. At 0, the card shows silently.
+4. Set **Chime volume** back to 100 and restore the two streams.
 
 ## Hardware check (P2.6, offline-first)
 
@@ -406,6 +430,43 @@ blur copies and normal jitter, ADR 0016).
 
 The URL source needs no photos: point `screensaver.photos.image_url` at any
 image URL and the slideshow fetches it fresh for every slide.
+
+## Hardware check (P3.3, clock faces and background)
+
+Install a P3.3 build, provision and pair, and configure the clock settings
+on the tablet's HA entry (they apply while the clock shows, F-SSV-09):
+
+- screensaver mode `clock`
+- clock face `digital`, font family `serif`, font weight `700`
+- seconds on, date line on
+- background source empty, darkening at the default 40 %
+
+Generate the test photos as for P3.8 (the check serves two of them as the
+background over plain HTTP), then leave Tabula in front with the panel on
+and run:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver \
+TABULA_BACKGROUND=text.<tablet>_clock_background \
+ANDROID_SERIAL=<serial> tools/device/check_p33.sh
+```
+
+The script serves the background from this machine (set `TABULA_HOST_IP`
+when the tablet reaches the Mac on another interface than en0), starts the
+clock from HA, and walks the faces and the background rules: the digital
+face with the changed font, seconds and date line; the analog face (the
+verifier switches it in HA — the save is the settings write, and the face
+changes while the screensaver stays up); the digital face over a URL
+background with the darkening layer visible; a broken URL keeping the
+previous image; and the same URL written again reloading it with new bytes
+behind the same address (F-SSV-09: the revision change is the signal). The
+app's `TabulaClock` logcat lines are the load, show and failure evidence.
+The centre-tap dismissal closes the check.
+
+The background's other source is a local file path: push any image the app
+can read (its own storage, ADR 0016) and set it as the background source to
+check that route by hand.
 
 ## Hardware check (P3.13, screenshots)
 
@@ -544,6 +605,95 @@ holds `dim_brightness` (a different system level from the clock's, nothing
 drawn over the dashboard, no fade flash) and every dismissal returns the
 previous level. Paste the whole output into the packet Result.
 
+## Hardware check (P3.12, screensaver schedule)
+
+Install a P3.12 build (or later), provision and pair, and leave the tablet
+in front with the panel on and untouched for the whole run (a touch
+dismisses the screensaver). The script sets the schedule itself — two slots
+a few minutes ahead on the tablet's own clock, a black one then a clock
+one — through HA's options-flow API, so `TABULA_HA_TOKEN` must belong to an
+admin user (the options flow needs config-entry edit rights). No settings
+need configuring beforehand; the clock slot carries its own fixed brightness
+so the live edit is visible on the panel.
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<admin token> \
+TABULA_SCREENSAVER=switch.<tablet>_screensaver TABULA_DEVICE=<device id> \
+ANDROID_SERIAL=<serial> tools/device/check_p312.sh
+```
+
+`TABULA_DEVICE` is the tablet's HA device id (the id in the URL of its
+Settings > Devices page); the slot offsets are `TABULA_BLACK_AHEAD`
+(default 2 minutes) and `TABULA_CLOCK_AHEAD` (default 5). The script
+starts the screensaver in clock mode from HA, then checks: the first
+crossing **restarts it into black** — the captured `tabula_screensaver`
+events show `stopped clock` + `started black`, both with trigger
+`schedule`, the switch stays on, the panel holds the lowest backlight and
+the verifier sees black; the second crossing **restarts the clock** the
+same way, with exactly the four schedule-triggered events in order
+(clock → black → clock) and the clock slot's fixed brightness on the
+panel; then it **edits the running slot's brightness** through the options
+flow — the run keeps going (no new events, the switch stays on) and the
+panel's level moves at once; dismissal restores the previous level, and
+the script turns the schedule switch off again (the slots would otherwise
+repeat daily at those times). `ha_events.py` captures the events; paste
+the whole output into the packet Result.
+
+## Hardware check (P7.0, voice spike)
+
+The P7.0 spike answers four device questions the Phase 7 voice work depends
+on: whether the microphone grant survives a reboot and a Wi-Fi cycle, which
+`AudioSource` gives usable 16 kHz mono, whether an echo canceller exists and
+what it removes, and what continuous capture with a wake-word model costs in
+CPU, heat and battery. It ships as its own app.
+
+Audio checks in `tools/device/` are opt-in. `check_p70.sh` and `check_p25.sh`
+exit with status 2 unless `TABULA_AUDIO_OK=1` is set, because a run makes the
+tablet listen and speak in the room it lives in: setting it is a decision to
+schedule that with the owner, not a flag to leave on. Nothing in `make check`,
+CI or the release path sets it, and `tools/tests/test_device_scripts.py` fails
+if an audio check loses the guard.
+
+```sh
+make voice-spike-apk          # debug only, never in a release
+adb -s <serial> install -r android/spike-voice/build/outputs/apk/debug/spike-voice-debug.apk
+adb -s <serial> shell pm grant net.lockney.tabula.spike.voice android.permission.RECORD_AUDIO
+TABULA_AUDIO_OK=1 ANDROID_SERIAL=<serial> make check-p70
+```
+
+The app's applicationId is `net.lockney.tabula.spike.voice`, so installing it
+adds a second app and never replaces, uninstalls, clears or unpairs
+`net.lockney.tabula`. It carries none of the production service, dashboard or
+credentials. Both apps then want the one microphone: while another app holds
+it, this app's capture is not a reliable measurement, so close anything else
+that listens before a run. The check prints each capture's sample count and
+level, which is how a microphone that was taken by someone else shows up.
+
+The check measures what needs no person and reboots the tablet once (the
+persistence question needs it); it also turns Wi-Fi off and on, so run it over
+USB, and expect nothing else on the tablet to work for that minute. It fetches
+the wake-word model into `build/spike/` from a pinned commit and checks its
+sha256 before pushing it to the tablet; the model is not committed and needs
+network access on this machine. `make check-p70` needs `TABULA_COST_S`
+(default 600) for the length of the cost run.
+
+The steps that need a person — wake-word accuracy at 1 m and 3 m, with and
+without the tablet's own playback, and the day-long uptime check — are off
+unless `TABULA_PERSON=1`, and then they prompt, so they need an interactive
+terminal:
+
+```sh
+TABULA_AUDIO_OK=1 ANDROID_SERIAL=<serial> TABULA_PERSON=1 make check-p70
+```
+
+Recording the clips pulls them back to `build/spike/clips/` and scores them
+with the reference frontend (`uv run --with pymicro-features --with
+ai-edge-litert python tools/device/score_wakeword.py`), because the app's own
+frontend is a cost proxy: a microphone that cannot hear the wake word at 3 m
+and a frontend that does not match the model look identical on the tablet. The
+scorer's default cutoff is the device's own (200/255), so its hit count and the
+app's agree. Paste the whole output into the packet Result.
+
 ## Hardware check (P2.2)
 
 After provisioning, pairing and letting the app reach its dashboard, run:
@@ -611,6 +761,69 @@ it no longer knows at setup and removes all of them when its entry is
 removed, so leftovers only appear if the hub entry was deleted with the
 integration files also removed. Reinstall the integration and its entry to
 run the sweep, or remove the users with HA's `auth` tooling on the host.
+
+## Hardware check (P9.0, intercom spike)
+
+P9.0's spike is a **second application**, `net.lockney.tabula.spike.intercom`,
+with its own applicationId and no release variant (ADR 0028). Installing it
+never replaces, uninstalls or unpairs `net.lockney.tabula`, and nothing in these
+checks clears or uninstalls the production app. It needs two tablets, because a
+call needs two ends.
+
+Build the spike APK (arm64-v8a is the Fire HD 10 Plus's ABI; ABI splits put one
+per ABI in the same directory):
+
+```sh
+make android-spike-apk
+```
+
+The checks take the tablets from the environment, since one end is attached to
+this machine and the other to another host over ssh. The defaults
+are the fleet's serials; override them when running elsewhere:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `TABULA_INTERCOM_A_SERIAL` | `G001NW0623720AWP` | the Office Kiosk, on local adb |
+| `TABULA_INTERCOM_B_SERIAL` | `G001NW0631460BXX` | the Desk Kiosk, reached over ssh |
+| `TABULA_INTERCOM_B_HOST` | `m4mini` | the host that tablet is attached to |
+| `TABULA_HOST_IP` | `ipconfig getifaddr en0` | the Mac address the tablets reach |
+| `TABULA_INTERCOM_PORT` | `8099` | the throwaway signaling relay's port |
+
+The automated run places calls by itself (it starts the spike's foreground
+service over ADB, so no app has to be in front) and prints the evidence for the
+packet's questions 1, 2, 4, 5 and 6 plus the automated half of 3 and 7. These
+three checks make a tablet listen and speak in the room it lives in, so all of
+them refuse to run (exit 2) unless `TABULA_AUDIO_OK=1` is set; only set it for a
+run the owner has scheduled (ADR 0028).
+
+```sh
+TABULA_AUDIO_OK=1 TABULA_HOST_IP=192.168.1.126 tools/device/check_p90.sh
+```
+
+The 10-minute cost run needs a pty so Ctrl-C reaches it, and places its own
+call:
+
+```sh
+TABULA_AUDIO_OK=1 script -q /dev/null tools/device/check_p90_cost.sh
+```
+
+`check_p90_cost.sh` prints each process's CPU as a share of **one core**
+(`dumpsys cpuinfo`'s unit) beside the device's `TOTAL` line, the audio HAL's
+share, the app's PSS and the battery temperature. Fire OS 7 exposes no readable
+`thermal_zone*/temp` on this device, so battery temperature is the heat measure.
+
+The judgments that need a person — speech at 1 m and 3 m, both tablets in one
+room, and the clap — are `check_p90_owner.sh`, run from an interactive shell:
+
+```sh
+TABULA_AUDIO_OK=1 TABULA_HOST_IP=192.168.1.126 tools/device/check_p90_owner.sh
+```
+
+It places a 6-minute call and asks; the numbers of record stay the ones
+`check_p90.sh` prints (connection times, jitter, loss, the instrumented tone
+latency). Mouth-to-ear latency and hands-free quality are only ever this run's
+judgment, and stay "not measured, needs an owner-scheduled run" until it
+happens. Paste the whole output of each run into the packet Result.
 
 ## Known device behaviors
 

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The voice spike app (packet P7.0). applicationId
+     net.lockney.tabula.spike.voice: it installs beside the paired production
+     app and never replaces, uninstalls or unpairs it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- API 34 requires the per-type permission; on the API 28 targets it is
+         unknown and ignored, and the microphone type is carried as an
+         attribute that API 28 does not read. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"
+        tools:targetApi="34" />
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS"
+        tools:targetApi="33" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="true" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Tabula voice spike"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault">
+
+        <!-- A screen exists so the app can be launched and so a person can
+             grant the microphone with a tap when Fire OS has withdrawn it
+             (P7.0 question 1). Everything else is driven over adb. -->
+        <activity
+            android:name=".SpikeActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Microphone foreground service: the capture, echo-cancellation and
+             wake-word runs all happen here, with another app in front
+             (P7.0 question 2). -->
+        <service
+            android:name=".SpikeService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"
+            tools:targetApi="29" />
+    </application>
+</manifest>

@@ -1,5 +1,6 @@
 """Screensaver brightness (plan 5.5), the idle timeout setting (P3.2, F-HA-11)
-and the return-to-start delay (P3.15, F-DSH-15). Volume lives on the media player."""
+and the return-to-start delay (P3.15, F-DSH-15), and the chime volume setting
+(F-NTF-09, ADR 0027). Media volume lives on the media player."""
 
 from __future__ import annotations
 
@@ -76,6 +77,25 @@ RETURN_HOME_AFTER = TabulaEntityDescription(
 )
 
 
+CHIME_VOLUME = TabulaEntityDescription(
+    key="chime_volume",
+    translation_key="chime_volume",
+    entity_category=EntityCategory.CONFIG,
+    setting="audio_chime_volume",  # F-NTF-09; a share of the media volume (ADR 0027)
+)
+
+
+class TabulaChimeVolume(TabulaSettingsNumber):
+    """Card chime loudness, percent of the media volume (F-NTF-09, ADR 0027).
+
+    The chime plays on the media stream, so 100 is as loud as TTS; bounds
+    come from the schema (ADR 0002), read from the entity's own setting key.
+    """
+
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_mode = NumberMode.SLIDER
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -90,4 +110,7 @@ async def async_setup_entry(
         setup_platform(
             hass, hub, async_add_entities, [IDLE_TIMEOUT, RETURN_HOME_AFTER], TabulaSettingsNumber
         )
+    )
+    entry.async_on_unload(
+        setup_platform(hass, hub, async_add_entities, [CHIME_VOLUME], TabulaChimeVolume)
     )

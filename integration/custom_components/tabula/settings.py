@@ -209,18 +209,22 @@ class SettingsSchema:
     def since(self, key: str) -> int:
         """The settings schema version that introduced this leaf (P3.2).
 
-        A leaf the frozen v1 schema knows is 1; any other is the current
-        version (2 is the only later one so far - a v3 adds its own frozen
-        copy and this walks it the same way). Settings entities exist only
-        for devices whose registered schema_version knows their key, since an
-        older device never receives it (plan 5.4, migrations.DOWNS).
+        The oldest frozen schema that knows the leaf's whole path answers; a
+        leaf none of them knows arrived with the current version. Settings
+        entities exist only for devices whose registered schema_version knows
+        their key, since an older device never receives it (plan 5.4,
+        migrations.DOWNS).
         """
-        node: Any = migrations.frozen_schema(1)
-        for part in self.field(key).path:
-            node = node.get("properties", {}).get(part)
-            if node is None:
-                return SCHEMA_VERSION
-        return 1
+        path = self.field(key).path
+        for version in migrations.frozen_schema_versions():
+            node: Any = migrations.frozen_schema(version)
+            for part in path:
+                node = node.get("properties", {}).get(part) if isinstance(node, dict) else None
+                if node is None:
+                    break
+            else:
+                return version
+        return SCHEMA_VERSION
 
 
 def get_path(document: dict[str, Any] | None, path: tuple[str, ...]) -> Any:

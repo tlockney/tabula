@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 import aiohttp
 from custom_components.tabula import TabulaHub
 from custom_components.tabula.const import DOMAIN
-from custom_components.tabula.number import IDLE_TIMEOUT, RETURN_HOME_AFTER
+from custom_components.tabula.number import CHIME_VOLUME, IDLE_TIMEOUT, RETURN_HOME_AFTER
 from custom_components.tabula.settings import SettingsSchema
 from custom_components.tabula.switch import SETTING_SWITCHES
 from custom_components.tabula.text import CLOCK_BACKGROUND, START_PATH
@@ -31,6 +31,7 @@ SETTING_ENTITIES = [
     *(("switch", d.key, d.setting) for d in SETTING_SWITCHES),
     ("number", IDLE_TIMEOUT.key, IDLE_TIMEOUT.setting),
     ("number", RETURN_HOME_AFTER.key, RETURN_HOME_AFTER.setting),
+    ("number", CHIME_VOLUME.key, CHIME_VOLUME.setting),
     ("text", CLOCK_BACKGROUND.key, CLOCK_BACKGROUND.setting),
     ("text", START_PATH.key, START_PATH.setting),
 ]
@@ -99,16 +100,19 @@ def test_every_setting_entity_names_a_shared_schema_leaf():
         "screensaver_clock_background_source": 2,
         "dashboard_start_path": 2,
         "dashboard_return_home_after": 2,
+        "audio_chime_volume": 2,
+        "voice_wake_word_enabled": 3,
     }
 
 
 async def test_entity_set_follows_the_device_schema_version(
     hass_setup, server, hub, paired, tmp_path
 ):
-    """A schema-1 device gets only the v1 settings entities; schema 2 gets all, and back.
+    """Each schema version gets the entities introduced up to it, and back.
 
     Capabilities play no part: settings exist for every paired device.
     """
+    schema = SettingsSchema()
     async with tablet(hass_setup, server, paired, tmp_path, schema_version=1):
         present = {
             setting
@@ -118,14 +122,23 @@ async def test_entity_set_follows_the_device_schema_version(
         assert present == {"screensaver_enabled", "screensaver_idle_timeout"}
 
     async with tablet(hass_setup, server, paired, tmp_path, schema_version=2):
-        await until(
-            lambda: all(eid(hass_setup, paired.device_id, p, k) for p, k, _ in SETTING_ENTITIES)
-        )
+        up_to_v2 = [(p, k) for p, k, s in SETTING_ENTITIES if schema.since(s) <= 2]
+        await until(lambda: all(eid(hass_setup, paired.device_id, p, k) for p, k in up_to_v2))
+        # the wake-word switch arrived with schema 3 (P7.1), so a v2 device has none
+        assert eid(hass_setup, paired.device_id, "switch", "voice_wake_word_enabled") is None
         runtime = TabulaHub.get(hass_setup)
         assert runtime is not None
         # persisted, so the entity set survives an HA restart before reconnecting
         stored = runtime.entry.data["devices"][paired.device_id]
         assert stored["schema_version"] == 2
+
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=3):
+        await until(
+            lambda: all(eid(hass_setup, paired.device_id, p, k) for p, k, _ in SETTING_ENTITIES)
+        )
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        assert runtime.entry.data["devices"][paired.device_id]["schema_version"] == 3
 
     # and back: a device that re-registers as schema 1 loses the v2-only entities
     async with tablet(hass_setup, server, paired, tmp_path, schema_version=1):
@@ -170,7 +183,13 @@ async def test_v2_entities_write_their_leaves(hass_setup, server, hub, paired, t
         runtime = TabulaHub.get(hass_setup)
         assert runtime is not None
         dev = paired.device_id
-        await until(lambda: all(eid(hass_setup, dev, p, k) for p, k, _ in SETTING_ENTITIES))
+        await until(
+            lambda: all(
+                eid(hass_setup, dev, p, k)
+                for p, k, s in SETTING_ENTITIES
+                if SettingsSchema().since(s) <= 2
+            )
+        )
 
         for key in ("screensaver_brightness_enabled", "widgets_shown"):
             entity = eid(hass_setup, dev, "switch", key)
@@ -227,6 +246,26 @@ async def test_v2_entities_write_their_leaves(hass_setup, server, hub, paired, t
         assert device.settings["dashboard"]["return_home_after"] == 300
 
 
+async def test_wake_word_switch_is_off_by_default_and_writes_its_leaf(
+    hass_setup, server, hub, paired, tmp_path
+):
+    """P7.1: the listener starts off, and turning it on is one revision (ADR 0030)."""
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=3) as (device, _):
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        dev = paired.device_id
+        switch = eid(hass_setup, dev, "switch", "voice_wake_word_enabled")
+        await until(lambda: eid(hass_setup, dev, "switch", "voice_wake_word_enabled") is not None)
+        assert hass_setup.states.get(switch).state == "off"
+
+        await hass_setup.services.async_call(
+            "switch", "turn_on", {"entity_id": switch}, blocking=True
+        )
+        await until(lambda: device.settings.get("voice", {}).get("wake_word_enabled") is True)
+        assert runtime.settings.revision(dev) == 1
+        assert hass_setup.states.get(switch).state == "on"
+
+
 async def test_same_background_value_is_still_a_new_revision(
     hass_setup, server, hub, paired, tmp_path
 ):
@@ -259,6 +298,35 @@ async def test_idle_timeout_bounds_come_from_the_schema(hass_setup, server, hub,
         assert state.state == str(field_.default)
 
 
+async def test_chime_volume_is_a_schema_bounded_percent_slider(
+    hass_setup, server, hub, paired, tmp_path
+):
+    """The chime volume number: 0-100 from the schema, percent, slider (ADR 0027)."""
+    async with tablet(hass_setup, server, paired, tmp_path, schema_version=2) as (device, _):
+        runtime = TabulaHub.get(hass_setup)
+        assert runtime is not None
+        dev = paired.device_id
+        await until(lambda: eid(hass_setup, dev, "number", "chime_volume") is not None)
+        chime = eid(hass_setup, dev, "number", "chime_volume")
+        state = hass_setup.states.get(chime)
+        field_ = SettingsSchema().field("audio_chime_volume")
+        assert state.attributes["min"] == field_.minimum == 0
+        assert state.attributes["max"] == field_.maximum == 100
+        assert state.attributes["unit_of_measurement"] == "%"
+        assert state.attributes["mode"] == "slider"
+        assert state.state == str(field_.default) == "100"
+
+        await hass_setup.services.async_call(
+            "number", "set_value", {"entity_id": chime, "value": 40}, blocking=True
+        )
+        stored = runtime.settings.get(dev)
+        assert stored is not None
+        assert stored.settings["audio"]["chime_volume"] == 40
+        assert hass_setup.states.get(chime).state == "40"
+        await until(lambda: device.settings_revision >= 1)
+        assert device.settings["audio"]["chime_volume"] == 40
+
+
 async def test_concurrent_edits_do_not_interleave_revisions(
     hass_setup, server, hub, paired, tmp_path
 ):
@@ -267,7 +335,13 @@ async def test_concurrent_edits_do_not_interleave_revisions(
         runtime = TabulaHub.get(hass_setup)
         assert runtime is not None
         dev = paired.device_id
-        await until(lambda: all(eid(hass_setup, dev, p, k) for p, k, _ in SETTING_ENTITIES))
+        await until(
+            lambda: all(
+                eid(hass_setup, dev, p, k)
+                for p, k, s in SETTING_ENTITIES
+                if SettingsSchema().since(s) <= 2
+            )
+        )
         await asyncio.gather(
             hass_setup.services.async_call(
                 "switch",

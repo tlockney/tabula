@@ -102,6 +102,7 @@ class TlpFixturesTest {
                 is ScreensaverStopped -> typed(data, ScreensaverStopped.serializer())
                 is MediaFinished -> typed(data, MediaFinished.serializer())
                 is PageChanged -> typed(data, PageChanged.serializer())
+                is WakeWordDetected -> typed(data, WakeWordDetected.serializer())
             }
             assertTrue(
                 encoded.canonical() == frame.data.canonical(),

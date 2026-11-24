@@ -33,6 +33,7 @@ BUS_EVENT_TYPES: dict[str, str] = {
     "screensaver_stopped": "tabula_screensaver",
     "media_finished": "tabula_media",
     "page_changed": "tabula_page",
+    "wake_word_detected": "tabula_wake_word",
 }
 
 

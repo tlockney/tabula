@@ -115,6 +115,11 @@ class PairingClient(
      * seconds, and restart with a fresh attempt when the pending entry expires.
      * Emits [PairingStatus] for the screen; returns when paired. Cancellation
      * (the user leaves pairing) propagates normally.
+     *
+     * [onUnreachable] fires every time the pair request itself fails at the
+     * transport level and is retried: no code exists yet, so the screen must
+     * not offer one to confirm (issue #127). Claim polls that fail keep their
+     * code on screen, so they are not reported here.
      */
     suspend fun pair(
         haUrl: String,
@@ -122,11 +127,12 @@ class PairingClient(
         name: String?,
         model: String?,
         onStatus: suspend (PairingStatus) -> Unit = {},
+        onUnreachable: suspend () -> Unit = {},
     ): Paired {
         while (true) {
             val attempt = newAttempt()
             val pending = try {
-                startWithRetries(haUrl, deviceId, attempt, name, model)
+                startWithRetries(haUrl, deviceId, attempt, name, model, onUnreachable)
             } catch (e: PairingException) {
                 // A different attempt is still pending for this device_id; it was
                 // waited out above, so try again with a fresh nonce (PROTOCOL 2.2).
@@ -156,6 +162,7 @@ class PairingClient(
         attempt: Attempt,
         name: String?,
         model: String?,
+        onUnreachable: suspend () -> Unit,
     ): HttpPairResponse {
         while (true) {
             try {
@@ -174,6 +181,7 @@ class PairingClient(
                     else -> throw e
                 }
             } catch (e: IOException) {
+                onUnreachable()
                 delay((Constants.CLAIM_POLL_INTERVAL_S * 1000).toLong())
             }
         }

@@ -91,6 +91,7 @@
   },
   "audio": {
     "media_volume": 80,
+    "chime_volume": 60,
     "announce_volume_boost": "none"
   },
   "at_a_glance": {

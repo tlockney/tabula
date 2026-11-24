@@ -41,6 +41,7 @@ class TabulaCommands(
     private val audio: AudioControl? = null,
     private val screenshot: ScreenshotControl? = null,
     private val startPage: StartPageControl? = null,
+    private val voice: VoiceControl? = null,
 ) : CommandHandler {
     /** Highest revision applied on this connection (PROTOCOL 4.5). */
     private var connectionRevision = 0
@@ -135,6 +136,10 @@ class TabulaCommands(
         notifications?.applySettings(settings)
         audio?.applySettings(settings)
         startPage?.applySettings(settings)
+        voice?.applySettings(settings)
+        // the activity re-applies the clock settings while a face shows, so
+        // every write reloads the background image (F-SSV-09, P3.3)
+        TabulaStatus.settingsRevision.value = parsed.revision
         return CommandHandler.Reply.Ok(buildJsonObject { put("revision", parsed.revision) })
     }
 }
@@ -146,6 +151,15 @@ class TabulaCommands(
  * uploaded and the answer is still Ok - HA then shows its placeholder
  * (F-MGT-07). No dashboard, or an upload HA refuses, fails the command.
  */
+/**
+ * Wake-word listening follows the settings push (P7.1, ADR 0030): the monitor
+ * starts on enable, stops on disable, and a device without RECORD_AUDIO keeps
+ * running with the capability undeclared.
+ */
+fun interface VoiceControl {
+    fun applySettings(settings: net.lockney.tabula.core.settings.Settings)
+}
+
 interface ScreenshotControl {
     suspend fun capture(quality: Int?, commandId: String): CommandHandler.Reply
 }

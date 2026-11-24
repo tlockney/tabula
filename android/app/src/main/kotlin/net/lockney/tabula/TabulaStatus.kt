@@ -13,7 +13,11 @@ enum class Phase {
     /** No credential: the pairing screen is up. */
     UNPAIRED,
 
-    /** Pairing in progress: [TabulaStatus.code] carries the code to confirm in HA. */
+    /**
+     * Pairing in progress with a code to confirm: [TabulaStatus.pairing]
+     * carries it. An attempt that has not reached HA yet stays UNPAIRED, so
+     * the confirm screen never shows an empty code (issue #127).
+     */
     PAIRING,
 
     /** Paired, working towards a registered connection. */
@@ -33,6 +37,12 @@ object TabulaStatus {
     /** Set by the service when it starts; UNPAIRED until then. */
     val phase = MutableStateFlow(Phase.UNPAIRED)
 
+    /**
+     * Set by the activity when RECORD_AUDIO is granted, so the service starts
+     * listening without waiting for the next settings push (P7.1, ADR 0030).
+     */
+    val wakeWordPermission = MutableStateFlow(false)
+
     /** The pairing code shown on screen, with the device id beside it. */
     val pairing = MutableStateFlow<PairingView?>(null)
 
@@ -42,6 +52,13 @@ object TabulaStatus {
      * a new pairing attempt starts.
      */
     val pairingError = MutableStateFlow<String?>(null)
+
+    /**
+     * A non-terminal line about the attempt in flight, shown on the pairing
+     * form: the pair request cannot reach HA and keeps retrying (issue #127).
+     * Cleared as soon as HA answers or a new attempt starts.
+     */
+    val pairingNotice = MutableStateFlow<String?>(null)
 
     /** The last rejection (code, message) when [Phase.REJECTED]. */
     val rejection = MutableStateFlow<Pair<String, String>?>(null)
@@ -58,6 +75,15 @@ object TabulaStatus {
 
     /** The screensaver mode on screen, or null (P2.4). Written by [ScreensaverManager]. */
     val screensaver = MutableStateFlow<ScreensaverMode?>(null)
+
+    /**
+     * The applied settings document's revision (P3.3). Written by
+     * [TabulaCommands] on every set_settings it applies, startup included;
+     * the activity re-applies the clock settings while a clock face shows,
+     * so a settings write always reloads the clock background, identical
+     * source or not (F-SSV-09: the revision change is the signal).
+     */
+    val settingsRevision = MutableStateFlow(0)
 
     /**
      * The notification card stack, newest first (P2.5). Written by

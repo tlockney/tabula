@@ -45,6 +45,7 @@ Each value is chosen from first principles: the HA facts in ADR 0001, the Office
 | `APP_PING_INTERVAL` | 30 s | The device's own `ping` command (HA's library pings are invisible to the app). Detects a dead socket within about 40 s, well inside the time someone notices a dashboard is stale, at negligible cost. |
 | `PONG_TIMEOUT` | 10 s | A `pong` takes milliseconds on a LAN; 10 s tolerates a busy HA. |
 | `RESTART_EXIT_DELAY` | 500 ms | After `restart_app` is answered (PROTOCOL 4.5: answered before the restart), the process waits this long before exiting so the result frame reaches HA on a slow uplink. |
+| `RESTART_RELAUNCH_DELAY` | 1 s | `restart_app` hands the relaunch to the system as an alarm, because an activity started from the exiting process dies with it. The alarm fires this long after `RESTART_EXIT_DELAY`, so the old process is gone first; a second is short enough that the restart still feels immediate. |
 
 ### Reconnect
 
@@ -120,7 +121,6 @@ Manual brightness from HA (the light entity, the `screen` command) is applied at
 | `MEDIA_MAX_BYTES` | 50 MiB | The media player downloads the audio it plays rather than streaming it, so the fetch is JVM-testable and its redirects stay under Tabula's control (PROTOCOL 4.5; ADR 0001 item 5 still holds: no credential is ever attached). The cap bounds a runaway or endless stream, which would otherwise fill storage: HA TTS clips are well under 1 MiB, and ordinary music files and podcast episodes are a few to a few dozen MiB, so 50 MiB passes every real clip and fails only what could never be a sensible announcement — with `media_finished` reason `error`. |
 | `MEDIA_MAX_REDIRECTS` | 5 | The media fetch follows redirects (the P2.1 no-redirect rule exists so a *credential* cannot be re-sent somewhere else, and this fetch carries none, ADR 0001 item 5) but refuses a downgrade from https to http. Common CDN and signed-URL chains are one or two hops; a chain longer than 5 is a misconfiguration or a loop. |
 | `MEDIA_READ_TIMEOUT` | 30 s | The media download's socket read timeout, set explicitly instead of the HTTP library's default (P2.5 review nit). HA TTS clips are well under 1 MiB on a LAN and even a multi-MiB music file lands in seconds; a stalled or silently dead server is failed after 30 s instead of holding the load slot (and the speaker) forever. Same tolerance for a weak SoC on Wi-Fi as `SCREENSHOT_TIMEOUT`. |
-| `CHIME_VOLUME` | 100 (ToneGenerator scale, top) | The notification chime generator runs at the top of its scale, so the OS notification stream is what decides loudness (F-NTF-09). A per-device notification volume (F-NTF-10) has no settings field yet; when one lands it replaces this constant. |
 | `CARD_BACKGROUND` | 0xEE1C1C1C (ARGB) | A near-opaque dark card body (P2.5): whatever is behind — dashboard or screensaver — shows through faintly, and the severity accent stripe carries the color (F-NTF-02). |
 
 The idle timeout, mode and brightness defaults are in "Phase 1–2 behavior defaults" below.
@@ -136,6 +136,16 @@ Photo-slideshow constants (F-SSV-12, packet P3.8). Same rules: chosen here only.
 | `GALLERY_SMART_FILL_TOLERANCE` | 10 % of the panel's aspect ratio | Smart fill's "shapes nearly match" line (F-SSV-12): within it, the small crop of always-fill beats bars (a 3:2 photo on a 16:10 panel crops 6 %); beyond it, the photo keeps its full frame over blurred, darkened bars (a 4:3 photo would lose 17 % of its width). One line, no per-photo tuning. |
 | `GALLERY_EDGE_ZONE_FRACTION` | 8 % of the panel width | The edge-tap zones' width (F-SSV-12). At a 1200 px panel that is 96 px — a thumb's arc from the bezel — while a deliberate dismiss tap aimed at the middle of a 1200 px panel cannot land inside 96 px of an edge by accident. |
 | `GALLERY_URL_HISTORY` | 8 photos | The URL source's history for stepping back (F-SSV-12): enough to review the last few fetches of a slow-changing source, while the ring's disk use stays bounded (8 × a screen-sized JPEG is a few MiB). |
+
+### Clock faces (P3.3)
+
+The faces' base sizes — the 100 % point of `screensaver.clock.size` (F-SSV-08). Same rules as above: chosen here only.
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `CLOCK_TIME_BASE_SP` | 120 sp | The digital time at size 100. P2.4's fixed face already used 120 sp and read from across a room; it stays as the scale's anchor so an upgraded document at 100 % looks the same as before (ADR 0018). |
+| `CLOCK_DATE_BASE_SP` | 32 sp | The date line at size 100: roughly a quarter of the time's height — legible at a glance without competing with it. P2.4's fixed face used 32 sp. |
+| `CLOCK_DIAL_FRACTION` | 0.60 of the panel's smaller side | The analog dial's diameter at size 100. Six tenths of a 1200 px panel is 720 px — hands that resolve from across a room — while leaving room under the dial for the date line (ADR 0018). |
 
 ### Settings schema v2 (P3.1)
 
@@ -248,6 +258,12 @@ Phase 3 keys for `schema/settings.schema.json` (schema_version 2). Same rules as
 
 **NightState (pre-committed interface).** The night-mode flag is a plain-JVM interface in `android/core`, `net.lockney.tabula.core.screensaver.NightState` with two members — `isNight: Boolean` and `addListener`, a listener registration that returns a removal function — plus a never-night default (`NightState.NEVER`, false, whose listeners never fire). P3.4 implements it from the light sensor against `screensaver.night_mode`'s threshold and hysteresis, firing listeners on each transition; P3.6 (At a Glance) and P3.11 (widgets) consume it for the night color. Landing the interface in P3.1 — before the hardware-dependent P3.4 — lets those packets compile against the contract; the never-night default is the honest pre-P3.4 behavior: night mode never engages, so consumers render their day colors. The interface is observable, not polled: consumers register a listener and re-render on each transition instead of re-reading the flag every frame. The observation seam is a plain listener rather than a coroutine flow because `android/core` carries no coroutine dependency; P3.4 owns the threading guarantees.
 
+**Voice (`voice`, P7.1).**
+
+| Field | Bound / default | Reasoning |
+| --- | --- | --- |
+| `wake_word_enabled` | default false | Off unless a household asks for it: with the setting on the microphone runs whenever the service is up and nothing is playing, which is a decision for the people living with the device, not a default to discover. On is what ADR 0024's device-side wake word needs; off leaves the tablet a kiosk with no microphone use at all. |
+
 ### Ambient light sensor reporting (P3.16)
 
 F-HA-06's rate limit for the illuminance state key. Same rules: chosen here only. The filter that applies them is plain JVM code in `android/core` (packet P3.16), and `STATE_MIN_INTERVAL` still coalesces bursts on top of both values.
@@ -256,6 +272,24 @@ F-HA-06's rate limit for the illuminance state key. Same rules: chosen here only
 | --- | --- | --- |
 | `ILLUMINANCE_CHANGE_THRESHOLD` | 20 % of the last value sent | A real change in room light — a lamp switched on, a curtain opened, dusk crossing a threshold — moves the lux reading by several tens of percent, while sensor quantization and noise around a steady level is a few percent (the same reasoning as `ADAPTIVE_CHANGE_THRESHOLD`). 20 % separates the two: a step beyond it goes out at once (F-HA-06 "a real change goes out at once"), oscillation below it does not. From total dark (last value 0 lx) any positive reading is a step, since 20 % of zero is zero. |
 | `ILLUMINANCE_MIN_INTERVAL` | 30 s | The most generous rate at which sub-threshold drift reaches HA (F-HA-06: one update per interval so HA's recorder is not flooded): at most 120 updates per hour while the light drifts, and none at all in a steady room, where identical readings produce nothing. Slow daylight drift crosses the 20 % threshold in a couple of minutes anyway; covering and uncovering the sensor moves in seconds. Because Android light sensors report on change, a sub-threshold change reaches HA only when the next reading arrives past the interval: a room that drifts and then holds steady keeps HA's older value, an error bounded by the 20 % threshold (review, PR #108) - acceptable, not a bug. |
+
+### Wake-word detection (P7.1)
+
+The detector's constants. ADR 0029 already fixed the model, its cutoff and the audio path; these are the values the production code adds, and ADR 0030 says where each is used.
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `WAKE_WORD_PHRASE` | `okay_nabu` | The phrase the pinned model is trained for. It rides on the event so HA can tell phrases apart if a later packet ships a second model; the string is the model's file name, lowercase, with no spaces. |
+| `DETECTION_CUTOFF` | 200 (of 255) | ADR 0029 item 5, unchanged: the scorer and the device call a hit at the same level, so a desk table and a device count mean the same thing. Lowering it to make a clip pass would hide a frontend problem. |
+| `WAKE_WORD_COOLDOWN` | 4 s | One utterance is about a second and the model's score stays high for several hundred milliseconds after it, so without a cooldown a single phrase fires a burst of events. Four seconds is longer than that tail and shorter than the pause before someone says it again. |
+| `WAKE_WORD_CHUNK_FRAMES` | 10 (100 ms of audio, 1600 samples) | The capture read size: 100 ms keeps the capture loop at ten wake-ups a second (the rate the spike's cost figure was measured at) while staying far inside the `AudioRecord` buffer. |
+| `WAKE_WORD_FRAME_SAMPLES` | 480 (30 ms), hop 160 (10 ms) | The model family's window and stride: 40 bins per hop, three hops per inference for the v2 model's 3-row input. |
+| `WAKE_WORD_FFT_SIZE` / `WAKE_WORD_BINS` | 512 / 40 | A 512-point FFT at 16 kHz gives 31.25 Hz resolution, enough for 40 mel bins between 125 Hz and 7500 Hz. |
+| `WAKE_WORD_LOW_HZ` / `WAKE_WORD_HIGH_HZ` | 125 / 7500 | The model's mel range; speech below 125 Hz is rumble and the 16 kHz band ends at 8 kHz. |
+| `WAKE_WORD_DYNAMIC_RANGE_DB` | 20 dB | The frontend's per-frame normalisation: the loudest bin at the top of the model's input range and 20 dB below it at the bottom, which is the span of the reference features in the model's own training data. |
+| `WAKE_WORD_FEATURE_TOP` | 26.0 | Top of the input tensor's real range: 255 steps of the 0.10196 scale from the -128 zero point. A frontend emitting 0–1 would use ten of the 256 levels. |
+| `AUDIO_SOURCE` order | `MIC`, then `VOICE_RECOGNITION` | ADR 0029 item 2: the raw path first, the OS's speech path when another app holds `MIC`. |
+| `WAKE_WORD_CHIME_GUARD_MS` | 500 ms | Half-duplex keeps detection closed after a chime (ADR 0030 item 7). `TONE_PROP_BEEP` is a short one-shot with no completion callback, so the guard is the tone's length plus the speaker's tail: long enough that the microphone never reopens on the beep's last samples, short enough not to swallow a phrase spoken right after the notification. |
 
 ### Phase 1–2 behavior defaults
 
@@ -275,7 +309,17 @@ Defaults for the settings schema (P0.5) and the device's behavior before HA has 
 | Notification level when missing or unknown | `info` | FEATURES F-NTF-02 fallback; the neutral level. |
 | Notifications shown at once | 3 | More would cover the dashboard; older ones collapse. |
 | Media volume | 50 % | Middle of the range; TTS is audible without startling. |
+| Chime volume | 100 % of the media volume | The chime plays on the media stream (ADR 0027), so at 100 it is as loud as TTS and media; a household that wants quieter chimes lowers it. It can only scale the media level down: raising the chime above it would mean moving the stream volume behind the user's back, which the no-hidden-volume-jumps rule (announce volume boost) rules out. Replaces the P2.5 `CHIME_VOLUME` constant. |
 | Announce volume boost | none | `announce` plays at the current volume; no hidden volume jumps. |
+
+### Intercom (P9.0)
+
+Chosen in ADR 0028 from the measurements in that ADR and the packet's Result.
+
+| Name | Value | Reasoning |
+| --- | --- | --- |
+| `INTERCOM_RING_LIMIT_S` | 45 s | Long enough to cross a house and answer hands-free, which is why intercom exists; short enough that a call into an empty room ends within a minute. A phone rings about 30 s; 45 s adds one walk-over. |
+| `INTERCOM_CONNECT_TIMEOUT_S` | 10 s | ICE on the LAN took 0.3–0.6 s in the spike, so 10 s is an order of magnitude of margin. Past it a caller is told the call could not connect instead of waiting on one that never starts. Same value as `COMMAND_TIMEOUT`, because both mean "the device did not answer". |
 
 ### Settings bounds in the settings schema
 
@@ -285,6 +329,7 @@ These appear as bounds in `schema/settings.schema.json` (P0.5) and are chosen he
 | --- | --- | --- |
 | `screensaver.idle_timeout` | 1–86400 s | A non-zero floor: 0 would mean "start instantly", not "never" (a disabled screensaver already expresses never). A day is the longest sensible idle wait; longer than that is "leave it on", and 86400 sits far inside a Kotlin `Int`. |
 | `notifications.max_visible` | 1–10 | A non-zero floor: a cap of 0 would hide every card. Ten full-width cards already cover a phone-height panel, so more would bury the dashboard rather than show anything. |
+| `audio.chime_volume` | 0–100 % | A share of the media volume (ADR 0027): 0 silences chimes without turning off `chime_by_level`, 100 is the media level itself. |
 
 ## Consequences
 

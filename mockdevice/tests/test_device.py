@@ -246,6 +246,56 @@ async def test_a_changed_return_delay_restarts_the_mock_countdown():
     assert device.tick() is True
 
 
+def voice(revision: int, enabled: bool) -> dict:
+    return {
+        "revision": revision,
+        "schema_version": 3,
+        "settings": {"voice": {"wake_word_enabled": enabled}},
+    }
+
+
+async def test_wake_word_listening_follows_the_setting_not_the_capability():
+    """P7.1: wake_word is always declared; the switch drives wake_word_active.
+
+    The app cannot re-register mid-session, so a capability that tracked the
+    switch would only reach HA on the next connection, and a device whose
+    grant was withdrawn could never say it is not listening (ADR 0030 3, 5).
+    """
+    device = MockDevice()
+    assert "wake_word" in device.capabilities
+    assert device.state.get("wake_word_active") is False
+
+    await device.handle("set_settings", voice(1, True))
+    assert "wake_word" in device.capabilities
+    assert device.state["wake_word_active"] is True
+
+    await device.handle("set_settings", voice(2, False))
+    assert "wake_word" in device.capabilities
+    assert device.state["wake_word_active"] is False
+
+
+async def test_detection_emits_the_event_then_the_timestamp():
+    """The event frame leads; the state delta follows with last_wake_word (4.7)."""
+    device = MockDevice()
+    events: list[tuple[str, dict]] = []
+    deltas: list[dict] = []
+    device.on_event = lambda name, data: events.append((name, data))
+    device.on_change = deltas.append
+    await device.handle("set_settings", voice(1, True))
+
+    device.detect_wake_word("okay_nabu", 231)
+    assert events == [("wake_word_detected", {"phrase": "okay_nabu", "probability": 231})]
+    assert list(deltas[-1]) == ["last_wake_word"]
+    assert deltas[-1]["last_wake_word"].endswith("Z")
+
+
+def test_detection_is_impossible_while_the_setting_is_off():
+    device = MockDevice()
+    with pytest.raises(CommandError) as err:
+        device.detect_wake_word()
+    assert err.value.code == "unsupported_command"
+
+
 def test_backoff_equal_jitter_and_reset():
     backoff = Backoff(base=1, cap=8, reset_after=60, rng=random.Random(1))
     delays = [backoff.next_delay() for _ in range(6)]

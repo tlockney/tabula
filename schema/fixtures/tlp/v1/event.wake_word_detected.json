@@ -1,0 +1,9 @@
+{
+  "id": 14,
+  "type": "tabula/event",
+  "event": "wake_word_detected",
+  "data": {
+    "phrase": "okay_nabu",
+    "probability": 231
+  }
+}

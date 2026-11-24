@@ -66,6 +66,8 @@ class TlpClient(
     private val transportFactory: WsTransportFactory,
     private val backoff: Backoff = Backoff(),
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** Failure-reason sink; the app wires it to logcat. No secret ever rides here. */
+    private val logger: (String) -> Unit = {},
 ) {
     /** Everything the session needs from the device. */
     data class Config(
@@ -132,11 +134,17 @@ class TlpClient(
                 events.onRejected(e.code, e.detail) // final; the caller surfaces it
                 return
             } catch (e: TimeoutCancellationException) {
-                // a handshake or pong timed out; close and back off (PROTOCOL 4.1, 4)
+                // the handshake (auth or register) timed out; close and back
+                // off (PROTOCOL 4.1, 4). A missed pong surfaces as an
+                // IOException from the pong wait, in the catch below.
+                logger("session failed: handshake timed out: ${e.message}")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // connection ended; reconnect (PROTOCOL 7)
+                // connection ended; reconnect (PROTOCOL 7). The reason is
+                // surfaced too: a silent retry loop hides the failure from
+                // anyone debugging a device that never connects.
+                logger("session failed: ${e::class.simpleName}: ${e.message}")
             }
             events.onDisconnected()
             delay(backoff.nextDelayMs())

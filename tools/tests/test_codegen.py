@@ -24,7 +24,7 @@ def test_generated_file_matches_schema():
 
 def test_schema_version_constant():
     out = codegen.generate(schema())
-    assert "const val SCHEMA_VERSION: Int = 2" in out
+    assert f"const val SCHEMA_VERSION: Int = {schema()['x-tabula-schema-version']}" in out
 
 
 def test_snake_case_names():

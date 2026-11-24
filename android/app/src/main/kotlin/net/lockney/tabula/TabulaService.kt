@@ -1,5 +1,6 @@
 package net.lockney.tabula
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,8 +17,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import net.lockney.tabula.core.voice.WakeWordDetector
 import net.lockney.tabula.ha.CredentialRevoked
 import net.lockney.tabula.ha.EntityDataConnection
 import net.lockney.tabula.ha.HaChannel
@@ -92,6 +95,29 @@ class TabulaService : Service() {
     private lateinit var audio: MediaManager
     private lateinit var startPage: StartPageManager
     private lateinit var deviceEvents: EventFanIn
+    // Wake word (P7.1, ADR 0030): null until startVoice, off until the setting
+    // says otherwise. The channel is the monitor's event source in the fan-in.
+    private var voice: WakeWordMonitor? = null
+    private val voiceEvents = Channel<(Int) -> net.lockney.tabula.core.tlp.EventFrame>(2)
+    @Volatile private var wakeWordListening = false
+    @Volatile private var lastWakeWord: String? = null
+
+    /**
+     * Half-duplex (ADR 0029 item 3, ADR 0030 item 7): the gate closes the
+     * microphone while the tablet plays and reopens it - detector reset - when
+     * the sound stops.
+     */
+    private var voiceGate: net.lockney.tabula.core.voice.WakeWordGate? = null
+
+    /** The media channel's own state, from its deltas. */
+    @Volatile private var mediaPlaying = false
+
+    /** Until when a chime is still sounding, in [System.currentTimeMillis] terms. */
+    @Volatile private var chimeUntil = 0L
+    private var chimeJob: kotlinx.coroutines.Job? = null
+
+    /** Set while a TLP session exists, so a detection reaches HA at once. */
+    @Volatile private var publishState: ((net.lockney.tabula.core.tlp.StateDelta) -> Unit)? = null
     private var stopPageListener: (() -> Unit)? = null
     private val mediaFetcher = net.lockney.tabula.ha.MediaFetcher()
 
@@ -112,6 +138,7 @@ class TabulaService : Service() {
         startStartPage()
         startNotifications()
         startAudio()
+        startVoice()
     }
 
     /**
@@ -194,16 +221,16 @@ class TabulaService : Service() {
     /**
      * Notifications (packet P2.5) run for the service's lifetime too. Cards
      * arrive only from HA, but the ones already up keep timing out while HA
-     * is down, and the chime is a synthesized tone on the notification
-     * stream (F-NTF-09). A card's tap travels back through
+     * is down, and the chime is a synthesized tone on the media stream at
+     * `audio.chime_volume` (F-NTF-09, ADR 0027). A card's tap travels back through
      * [TabulaStatus.cardDismiss]; it removes only that card (F-NTF-08).
      */
     private fun startNotifications() {
-        chime = NotificationChime()
+        chime = NotificationChime(volume = { store.settings.audio.chimeVolume })
         notifications = NotificationsManager(
             controller = net.lockney.tabula.core.notifications.NotificationCards(),
             show = { cards -> TabulaStatus.notifications.value = cards },
-            chime = chime::play,
+            chime = ::playChime,
             scope = scope,
         )
         notifications.applySettings(store.settings)
@@ -229,8 +256,120 @@ class TabulaService : Service() {
             scope = scope,
         )
         audio.applySettings(store.settings)
-        // one event stream for the TLP session from every source (P2.4, P2.5)
-        deviceEvents = EventFanIn(scope, listOf(screensaver.events, notifications.events, audio.events))
+        // one event stream for the TLP session from every source (P2.4, P2.5, P7.1)
+        deviceEvents = EventFanIn(
+            scope,
+            listOf(screensaver.events, notifications.events, audio.events, voiceEvents),
+        )
+    }
+
+    /**
+     * The wake-word monitor (packet P7.1, ADR 0030). Constructed always and
+     * started only when the setting asks for it, so turning the setting off and
+     * on does not recreate the service. The microphone is opened lazily by
+     * [WakeWordMonitor.start], so a device that never enables the feature never
+     * holds it.
+     */
+    private fun startVoice() {
+        val monitor = WakeWordMonitor(
+            context = applicationContext,
+            scope = scope,
+            onDetection = ::onWakeWord,
+            onListening = { listening ->
+                val changed = wakeWordListening != listening
+                wakeWordListening = listening
+                if (changed) {
+                    publishState?.invoke(
+                        net.lockney.tabula.core.tlp.StateDelta(wakeWordActive = listening),
+                    )
+                }
+            },
+            log = { Log.i(TAG, it) },
+        )
+        voice = monitor
+        val gate = net.lockney.tabula.core.voice.WakeWordGate(
+            object : net.lockney.tabula.core.voice.WakeWordGate.Listener {
+                override fun startListening(): Boolean = monitor.start()
+
+                override fun stopListening() {
+                    monitor.pause()
+                }
+            },
+        )
+        voiceGate = gate
+        gate.update(
+            enabled = store.settings.voice.wakeWordEnabled,
+            permitted = monitor.permitted(),
+            playing = playingNow(),
+        )
+        // a grant arrives after the settings push that asked for it, so the
+        // gate hears the activity's answer rather than waiting for the next push
+        scope.launch {
+            TabulaStatus.wakeWordPermission.collect { granted -> gate.onPermission(granted) }
+        }
+    }
+
+    /**
+     * The settings push's voice part: the gate applies the setting, and re-reads
+     * the grant because Fire OS can withdraw it at boot (F-KSK-21).
+     */
+    private fun applyVoiceSettings(settings: net.lockney.tabula.core.settings.Settings) {
+        val gate = voiceGate ?: return
+        voice?.let { gate.onPermission(it.permitted()) }
+        gate.onSetting(settings.voice.wakeWordEnabled)
+    }
+
+    /** True while the tablet is making a sound its own microphone would hear. */
+    private fun playingNow(): Boolean =
+        mediaPlaying || System.currentTimeMillis() < chimeUntil
+
+    /** Re-applies the playback input after the media state or a chime moved. */
+    private fun updatePlaying() {
+        voiceGate?.onPlaying(playingNow())
+    }
+
+    /**
+     * The notification chime: plays the beep and keeps detection closed for
+     * [net.lockney.tabula.core.Constants.WAKE_WORD_CHIME_GUARD_MS]. The tone has
+     * no completion callback, and half-duplex needs to know when the speaker
+     * stops (ADR 0029 item 3).
+     */
+    private fun playChime() {
+        chime.play()
+        chimeUntil = System.currentTimeMillis() +
+            net.lockney.tabula.core.Constants.WAKE_WORD_CHIME_GUARD_MS
+        updatePlaying()
+        chimeJob?.cancel()
+        chimeJob = scope.launch {
+            kotlinx.coroutines.delay(
+                net.lockney.tabula.core.Constants.WAKE_WORD_CHIME_GUARD_MS,
+            )
+            updatePlaying()
+        }
+    }
+
+    /**
+     * One detection: timestamp the state key before the event goes out, so a
+     * subscriber that sees the event can read the sensor's new value, and queue
+     * the TLP event behind any earlier ones (bounded at two, ADR 0002).
+     */
+    private fun onWakeWord(detection: WakeWordDetector.Detection) {
+        val at = wakeWordTimestamp()
+        lastWakeWord = at
+        Log.i(TAG, "wake word: ${detection.phrase} at ${detection.probability}/255")
+        publishState?.invoke(
+            net.lockney.tabula.core.tlp.StateDelta(
+                wakeWordActive = wakeWordListening,
+                lastWakeWord = at,
+            ),
+        )
+        voiceEvents.trySend { id ->
+            net.lockney.tabula.core.tlp.EventFrame.wakeWordDetected(
+                id,
+                detection.phrase,
+                detection.probability,
+            )
+        }
     }
 
     /**
@@ -263,8 +402,7 @@ class TabulaService : Service() {
             }
             ACTION_UNPAIR -> {
                 store.clearCredential()
-                TabulaStatus.phase.value = Phase.UNPAIRED
-                TabulaStatus.pairing.value = null
+                PairingScreen.attemptStarted()
                 job?.cancel()
                 job = null
             }
@@ -302,7 +440,11 @@ class TabulaService : Service() {
         if (job?.isActive == true) return
         if (store.isPaired) startSession() else {
             // Paired state without a credential can still have an HA URL saved.
+            // No attempt runs after a restart, so neither a code nor the
+            // "retrying" line from before it may stay on the form (issue #127).
             TabulaStatus.phase.value = Phase.UNPAIRED
+            TabulaStatus.pairing.value = null
+            TabulaStatus.pairingNotice.value = null
         }
     }
 
@@ -310,9 +452,10 @@ class TabulaService : Service() {
         val haUrl = store.haUrl ?: return
         job?.cancel()
         job = scope.launch {
-            TabulaStatus.phase.value = Phase.PAIRING
-            TabulaStatus.pairing.value = null
-            TabulaStatus.pairingError.value = null
+            // The form stays up until HA has issued a code: an attempt that
+            // cannot reach HA is not something to confirm, and showing the
+            // confirm screen for it left a blank code on screen (issue #127).
+            PairingScreen.attemptStarted()
             try {
                 val http = OkHttpExchange()
                 val paired = PairingClient(http).pair(
@@ -322,10 +465,11 @@ class TabulaService : Service() {
                     // manufacturer: every Fire tablet would pair as "Amazon"
                     store.nameForPairing(defaultPairingName(this@TabulaService, store.deviceId)),
                     PairingName.clip(Build.MODEL),
-                ) { status ->
-                    TabulaStatus.pairing.value =
-                        TabulaStatus.PairingView(status.code, status.deviceId.take(8))
-                }
+                    onStatus = { status ->
+                        PairingScreen.codeIssued(status.code, status.deviceId.take(8))
+                    },
+                    onUnreachable = { PairingScreen.unreachableNow(haUrl) },
+                )
                 // The claim released the credential exactly once (PROTOCOL 2.5):
                 // savePairing commits synchronously, so it is durable before the
                 // claim is treated as complete. If the write fails, do not start
@@ -333,21 +477,17 @@ class TabulaService : Service() {
                 // user pairs again and deletes the HA entry this claim created.
                 if (!store.savePairing(paired.credential.refreshToken, paired.haDeviceId)) {
                     Log.e(TAG, "could not persist the pairing credential; pair again")
-                    TabulaStatus.pairingError.value = "Pairing failed: the credential could not be saved on this device. Pair again."
-                    TabulaStatus.phase.value = Phase.UNPAIRED
-                    TabulaStatus.pairing.value = null
+                    PairingScreen.failed("Pairing failed: the credential could not be saved on this device. Pair again.")
                     return@launch
                 }
-                TabulaStatus.pairing.value = null
+                PairingScreen.paired()
                 startSession()
             } catch (e: CredentialRevoked) {
                 TabulaStatus.phase.value = Phase.REVOKED
             } catch (e: net.lockney.tabula.ha.PairingException) {
                 // Terminal pairing failure (bad nonce, refused request): show it
                 // as a pairing error, PROTOCOL 2.5, then back to the pairing form.
-                TabulaStatus.pairingError.value = "Pairing failed: ${e.message ?: e.name.name}. Pair again."
-                TabulaStatus.phase.value = Phase.UNPAIRED
-                TabulaStatus.pairing.value = null
+                PairingScreen.failed("Pairing failed: ${e.message ?: e.name.name}. Pair again.")
             } catch (e: Exception) {
                 // A restart cancels the running pairing job, and that surfaces
                 // here as CancellationException; rethrow it (the block below is
@@ -358,10 +498,7 @@ class TabulaService : Service() {
                 // it must surface as a pairing error, never an uncaught exception
                 // in a coroutine that kills the app process.
                 Log.e(TAG, "pairing failed", e)
-                TabulaStatus.pairingError.value =
-                    "Pairing failed: ${e.message ?: e.javaClass.simpleName}. Pair again."
-                TabulaStatus.phase.value = Phase.UNPAIRED
-                TabulaStatus.pairing.value = null
+                PairingScreen.failed("Pairing failed: ${e.message ?: e.javaClass.simpleName}. Pair again.")
             }
         }
     }
@@ -377,9 +514,20 @@ class TabulaService : Service() {
                 (application as TabulaApp).dashboard,
                 extra = ::extraState,
             )
+            publishState = state::publish
             screen.listener = state::publish
             screensaver.listener = state::publish
-            audio.listener = state::publish
+            // the media state is also the half-duplex input (ADR 0030 item 7)
+            audio.listener = { delta ->
+                delta.mediaState?.let { media ->
+                    mediaPlaying = media == net.lockney.tabula.core.tlp.MediaState.PLAYING
+                    updatePlaying()
+                }
+                state.publish(delta)
+            }
+            mediaPlaying =
+                audio.current().mediaState == net.lockney.tabula.core.tlp.MediaState.PLAYING
+            updatePlaying()
             illuminanceListener = state::publish
             TabulaStatus.phase.value = Phase.CONNECTING
             val client = TlpClient(
@@ -413,11 +561,13 @@ class TabulaService : Service() {
                             screenOn = { screen.current().screenOn ?: true },
                         ),
                         startPage = startPage,
+                        voice = ::applyVoiceSettings,
                     ),
                     events = deviceEvents.events,
                 ),
                 (application as TabulaApp).tokens,
                 OkHttpWsTransportFactory(),
+                logger = { line -> Log.i(TAG, line) },
             )
             val events = object : TlpClient.Events {
                 override fun onRegistered(result: net.lockney.tabula.core.tlp.RegisterResultData) {
@@ -461,10 +611,23 @@ class TabulaService : Service() {
 
     /** restart_app: answer first (the client does), then relaunch this process. */
     private fun restartApp() {
+        // The activity lives in this process, so starting it here would die
+        // with the process below. The relaunch is handed to the system as an
+        // alarm that fires after the exit (ADR 0002: RESTART_RELAUNCH_DELAY).
         val intent = packageManager.getLaunchIntentForPackage(packageName)
         if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            val relaunch = PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val alarms = getSystemService(AlarmManager::class.java)
+            val at = android.os.SystemClock.elapsedRealtime() +
+                net.lockney.tabula.core.Constants.RESTART_EXIT_DELAY_MS +
+                net.lockney.tabula.core.Constants.RESTART_RELAUNCH_DELAY_MS
+            alarms?.setExact(AlarmManager.ELAPSED_REALTIME, at, relaunch)
         }
         scope.launch {
             // give the result frame time to reach HA before the process dies
@@ -487,6 +650,15 @@ class TabulaService : Service() {
             illuminance = illuminance.value,
         )
         return net.lockney.tabula.ha.mergeState(screenAndSaver, audio.current())
+            .copy(
+                // The APK always ships the detector, so this key always exists:
+                // `wakeWordActive` carries the truth (microphone open and
+                // features being computed), and null never goes on the wire
+                // while the capability that covers it is declared (ADR 0030
+                // items 3 and 7, PROTOCOL 4.4)
+                wakeWordActive = wakeWordListening,
+                lastWakeWord = lastWakeWord,
+            )
     }
 
     /**
@@ -512,6 +684,14 @@ class TabulaService : Service() {
         add("notifications")
         add("audio")
         add("screenshot")
+        // Declared unconditionally: every build ships the detector, and the
+        // capability list is read once per session, so a value that tracked the
+        // switch would only reach HA on the next register - and turning the
+        // switch off would make the integration delete the entities rather than
+        // leave them unavailable. `wake_word_active` says whether the
+        // microphone is actually open, which also covers a withdrawn grant
+        // (ADR 0030 items 3 and 5, F-KSK-21)
+        add("wake_word")
     }
 
     private fun versionName(): String =

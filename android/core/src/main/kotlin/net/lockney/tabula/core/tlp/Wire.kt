@@ -18,6 +18,9 @@ internal object Wire {
     /** Like [pagePath] but without the query/fragment exclusions (navigate). */
     val navigatePath = Regex("^/(?![/\\\\])[^\\s\\\\]*$")
 
+    /** Wake-word identifier: lowercase, digits and underscores (P7.1). */
+    val wakeWordPhrase = Regex("^[a-z0-9_]{1,32}$")
+
     /** Absolute http(s) URL without userinfo, or a path resolved against the HA base URL. */
     val playUrl = Regex("^(https?://[^/@\\s?#]+(/[^\\s]*)?|/(?![/\\\\])[^\\s\\\\]*)$")
 

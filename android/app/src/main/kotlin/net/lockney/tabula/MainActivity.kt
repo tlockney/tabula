@@ -41,7 +41,15 @@ import kotlin.math.roundToInt
  * stays with plain views too (ADR 0013).
  */
 class MainActivity : Activity() {
+    private companion object {
+        /** The RECORD_AUDIO prompt the wake word asks for once (ADR 0030). */
+        const val REQUEST_RECORD_AUDIO = 2
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Set once the microphone prompt has been shown, so a refusal is not a loop. */
+    private var askedRecordAudio = false
     private lateinit var store: TabulaStore
     private lateinit var root: FrameLayout
     private lateinit var native: LinearLayout
@@ -59,6 +67,9 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
+        // the microphone is asked for only when the wake word is switched on:
+        // a tablet that never enables it never sees the prompt (ADR 0030)
+        requestRecordAudioIfNeeded()
         root = FrameLayout(this)
         native = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -70,10 +81,12 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         setContentView(root)
-        // the screensaver overlay sits above everything else in the window (P2.4);
-        // the engine polish reads its settings when the screensaver starts (P3.14)
+        // the screensaver overlay sits above everything else in the window
+        // (P2.4); the engine polish reads its settings when the screensaver
+        // starts (P3.14)
         screensaver = ScreensaverView(
             this,
+            scope,
             pixelShift = { PixelShift(store.settings.screensaver.pixelShift) },
             fade = { FadeRule(store.settings.screensaver.fade.enabled) },
         )
@@ -87,8 +100,8 @@ class MainActivity : Activity() {
             scope,
             clockStandIn = {
                 // a playlist with nothing decodable: the clock stand-in
-                // (ADR 0013 item 3, ADR 0016)
-                screensaver.show(net.lockney.tabula.core.tlp.ScreensaverMode.CLOCK)
+                // (ADR 0013 item 3, ADR 0016), with the clock settings applied
+                screensaver.show(net.lockney.tabula.core.tlp.ScreensaverMode.CLOCK, store.settings.screensaver.clock)
             },
             pixelShift = { PixelShift(store.settings.screensaver.pixelShift) },
             fade = { FadeRule(store.settings.screensaver.fade.enabled) },
@@ -146,6 +159,45 @@ class MainActivity : Activity() {
         ScreenWindow.onResume(this)
     }
 
+    /**
+     * Asks for `RECORD_AUDIO` when the setting is on and the grant is missing.
+     *
+     * Called at creation and again on every settings revision: the switch is
+     * usually flipped from HA while the kiosk already runs, and the prompt is
+     * the only thing that can produce a grant on a device that was never
+     * provisioned over ADB. Asked once per process so a refusal is not a
+     * dialog loop; a later flip reuses [askedRecordAudio] and the service
+     * reports the setting as on but not listening.
+     */
+    private fun requestRecordAudioIfNeeded() {
+        if (!store.settings.voice.wakeWordEnabled) return
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        if (askedRecordAudio) return
+        askedRecordAudio = true
+        requestPermissions(
+            arrayOf(android.Manifest.permission.RECORD_AUDIO),
+            REQUEST_RECORD_AUDIO,
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            // the service collects this: granted starts listening, refused
+            // leaves the switch on with wake_word_active false (ADR 0030)
+            TabulaStatus.wakeWordPermission.value =
+                grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
     override fun onDestroy() {
         scope.cancel()
         destroyDashboard()
@@ -154,9 +206,13 @@ class MainActivity : Activity() {
 
     private fun observe() {
         scope.launch {
-            // the slideshow pauses with the window (F-SSV-02): a powered-off
-            // panel stops the activity, so no decode or fetch runs in the dark
-            TabulaStatus.foreground.collect { gallery.setActive(it) }
+            // the slideshow and the clock background pause with the window
+            // (F-SSV-02): a powered-off panel stops the activity, so no
+            // decode or fetch runs in the dark
+            TabulaStatus.foreground.collect {
+                gallery.setActive(it)
+                screensaver.setActive(it)
+            }
         }
         scope.launch {
             TabulaStatus.screensaver.collect { mode ->
@@ -169,8 +225,23 @@ class MainActivity : Activity() {
                     screensaver.show(null)
                 } else {
                     gallery.hide()
-                    screensaver.show(mode)
+                    // the clock draws with the v2 clock settings (P3.3); the
+                    // other modes ignore them (black, dim) or stand in (ADR 0013)
+                    screensaver.show(mode, store.settings.screensaver.clock)
                 }
+            }
+        }
+        scope.launch {
+            // a settings write re-applies the clock while a face shows, so
+            // the background image always reloads, identical source or not
+            // (F-SSV-09: the revision change is the signal, P3.3)
+            TabulaStatus.settingsRevision.collect {
+                if (screensaver.showingFace) screensaver.applyClock(store.settings.screensaver.clock)
+                // the switch can be flipped from HA while the kiosk is already
+                // showing, so the prompt cannot live in onCreate alone; asking
+                // here keeps the setting's promise that turning it on is what
+                // asks (ADR 0030 item 3, F-KSK-21)
+                requestRecordAudioIfNeeded()
             }
         }
         scope.launch {
@@ -183,6 +254,11 @@ class MainActivity : Activity() {
             // a pairing error arrives while the phase stays UNPAIRED, so it
             // needs its own trigger to re-render the form
             TabulaStatus.pairingError.collect { render(TabulaStatus.phase.value) }
+        }
+        scope.launch {
+            // so does the line explaining a pair request that cannot reach HA
+            // (issue #127): the attempt keeps retrying behind the form
+            TabulaStatus.pairingNotice.collect { render(TabulaStatus.phase.value) }
         }
         scope.launch {
             TabulaStatus.pairing.collect { view ->
@@ -225,7 +301,12 @@ class MainActivity : Activity() {
         native.removeAllViews()
         when (phase) {
             Phase.UNPAIRED, Phase.REVOKED -> pairingForm(phase)
-            Phase.PAIRING -> waitingForConfirm()
+            Phase.PAIRING -> when (val state = PairingScreen.state()) {
+                // PAIRING without a code is not confirmable, so it draws the
+                // form with the reason instead of a blank code (issue #127)
+                is PairingScreenState.Confirm -> waitingForConfirm(state)
+                is PairingScreenState.Form -> pairingForm(Phase.UNPAIRED)
+            }
             Phase.CONNECTING -> status("Connecting to Home Assistant…")
             Phase.REJECTED -> rejected()
             else -> {} // CONNECTED never lands here
@@ -236,8 +317,10 @@ class MainActivity : Activity() {
         if (phase == Phase.REVOKED) {
             text("Home Assistant revoked this device's credential.", bold = false)
         }
-        // a terminal pairing failure (PROTOCOL 2.5), e.g. a refused nonce
-        TabulaStatus.pairingError.value?.let { text(it, bold = false) }
+        // a terminal pairing failure (PROTOCOL 2.5), e.g. a refused nonce; else
+        // the attempt in flight that has not reached HA yet (issue #127)
+        (TabulaStatus.pairingError.value ?: TabulaStatus.pairingNotice.value)
+            ?.let { text(it, bold = false) }
         text("Enter your Home Assistant address", bold = false)
         val input = EditText(this).apply {
             hint = "http://homeassistant.local:8123"
@@ -282,11 +365,10 @@ class MainActivity : Activity() {
         text("Tabula ${versionName()}", small = true)
     }
 
-    private fun waitingForConfirm() {
+    private fun waitingForConfirm(state: PairingScreenState.Confirm) {
         text("Confirm this code in Home Assistant", bold = false)
-        val current = TabulaStatus.pairing.value
-        text(current?.code.orEmpty(), tag = "code", size = 96f)
-        text(current?.let { "Device ${it.deviceIdShort}" }.orEmpty(), tag = "device", size = 20f)
+        text(state.code, tag = "code", size = 96f)
+        text("Device ${state.deviceIdShort}", tag = "device", size = 20f)
         text("Settings → Devices & services → Tabula", small = true)
     }
 

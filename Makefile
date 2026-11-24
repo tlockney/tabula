@@ -39,7 +39,7 @@ lint: ## Lint, format check and repo policy checks
 	git ls-files -z '*.sh' | xargs -0 $(UV) run shellcheck -x --source-path=SCRIPTDIR
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
-	$(UV) run python tools/check_repo.py
+	$(UV) run python -m tools.check_repo
 
 .PHONY: fmt
 fmt: ## Apply formatting and auto-fixable lint
@@ -91,6 +91,23 @@ android-test: ## Android unit tests via the Gradle wrapper (skipped without a JD
 android-apk: ## Build the debug APK for device provisioning (skipped without a JDK)
 	@tools/android_build.sh
 
+.PHONY: android-spike-apk
+android-spike-apk: ## Build P9.0's debug-only intercom spike APK (its own applicationId)
+	@tools/android_build.sh spike-intercom
+
+.PHONY: voice-spike-apk
+voice-spike-apk: ## Build the P7.0 voice spike debug APK (separate applicationId, debug only)
+	@tools/android_build.sh spike-voice
+
+.PHONY: check-p70
+check-p70: ## Run the P7.0 voice spike measurements against the attached tablet
+	@tools/device/check_p70.sh
+
+.PHONY: voice-desk
+voice-desk: ## Desk wake-word harness: Mac-made clips through the shipped model (needs macOS say + ffmpeg)
+	$(UV) run --with ai-edge-litert --with pymicro-features --with numpy \
+		python tools/desk/wake_word.py $(if $(JSON),--json,)
+
 .PHONY: codegen
 codegen: ## Regenerate the Kotlin settings classes from the schema
 	$(UV) run python tools/codegen.py
@@ -107,6 +124,16 @@ android: codegen-drift android-test ## Codegen drift check and Android unit test
 .PHONY: frames
 frames: ## Validate golden TLP fixtures against the protocol schema
 	$(UV) run python tools/validate_frames.py
+
+# --- Docs indexes (tools/doc_index.py; nothing is committed) ---
+
+.PHONY: adr-index
+adr-index: ## Print the ADR index from each ADR's header
+	@$(UV) run python -m tools.doc_index adr
+
+.PHONY: provenance
+provenance: ## Print the full provenance table (PROVENANCE.md plus docs/provenance/)
+	@$(UV) run python -m tools.doc_index provenance
 
 # --- Website ---
 
