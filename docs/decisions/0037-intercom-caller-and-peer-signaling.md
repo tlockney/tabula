@@ -1,0 +1,84 @@
+# 0037: Intercom — the caller's own frame, and one peer connection per receiver
+
+Status: accepted
+Date: 2026-11-24
+Packet: P9.1b
+
+## Context
+
+ADR 0025 left two things to the packets: HA is the directory and the signaling path (decision 4), and a broadcast is one-way and live to several receivers (decision 2). P9.1 wrote the frames, P9.2 the relay, the services and the timers, P9.3 the device's call engine. Two gaps came back from them, both recorded in their Results.
+
+**1. An HA-started call never reaches its own caller.** `call_id` is chosen by whoever starts a call and echoed by every later frame (PROTOCOL 4.5). For a call the `tabula.intercom_call` service starts, that is the integration, which rings the callee with the id. No frame tells the *caller* which call it is in. Its engine stays idle: it has no id to attach an offer to, it cannot tell whether a relayed answer or an `intercom_end` belongs to anything, and an `intercom_answered` event on the HA bus is not something a device can see. A call started from the device's own screen works (the device mints the id), so the relay itself is sound; only the caller's half of an HA-started call is missing. P9.2's open question 1 and P9.3's deviation 1 are the same finding from the two sides.
+
+**2. A broadcast has no signaling path at all.** A WebRTC connection is between two peers: a broadcast from one sender to N receivers is N connections, each with its own offer and SDP answer. But `intercom_signal` names only the call — `call_id`, `kind`, `payload` — and P9.2's relay returns early for a broadcast, on the reading that a one-way broadcast needs no return path. Two consequences follow. Nothing is relayed today, so a broadcast rings, reports `in_call` on every receiver and carries no audio until the hard limit. And even with that early return removed, the relay is a fan-out: every signal from the caller would go to every receiver, a receiver's answer would go to every other receiver, and a sender holding N connections could not tell which of them an answer belonged to.
+
+Forces at work:
+
+- Two protocol versions are live at once by design: PROTOCOL 4.0 (strict senders, tolerant receivers) and 8 (additive changes ride a *new* capability; a new value in an existing enum is not additive) exist so the app and the integration can be updated in either order.
+- A broadcast has to stay **one call in HA**: one record, one `tabula_intercom_started`/`_ended` pair, one `intercom_state` per device, one hard limit, and one `tabula.intercom_end` that reaches every participant in every state (ADR 0028 guard 3, and P9.2's tests assert each of these).
+- The caller's screen has to name who it is calling (P9.4), and a broadcast sender has to know each receiver it is sending to.
+- The sender's cost with more than one receiver is **not measured**; ADR 0028 says plainly not to treat it as a multiple of one measured call. A fan-out therefore needs a bound that a household cannot exceed by accident.
+- The four `intercom_state` values and the `intercom_end` reasons are the existing enums. Growing either is the expensive kind of change; nothing here needs to.
+
+## Decision
+
+1. **A peer connection is between two devices, and peers are named.** A call of two devices has one connection. A broadcast has one connection per receiver, all star-shaped at the caller, and every frame that can cross more than one connection says which connection it belongs to. The call remains one call.
+
+2. **`intercom_start` tells a device it is the caller.** A new command, gated by a new capability `intercom_caller`:
+
+   | `args` | |
+   | --- | --- |
+   | `call_id` | the call, minted by whoever started it, as today |
+   | `mode` | `call` or `broadcast` |
+   | `peers` | 1–`INTERCOM_BROADCAST_MAX_TARGETS` of `{device_id, name}`: the devices this device is calling; `device_id` is the TLP device id, `name` is 1–64 characters for the screen; exactly one peer when `mode` is `call` |
+
+   The integration sends it to the caller of **every call it starts**, whoever started it: after the targets are selected and their rings accepted, and before it relays any signal to that device. For a call a device started on its own screen this is how the device learns the resolved targets of an area or an all-devices broadcast, which it named but cannot enumerate; for a call the service started it is the only way the device learns the id at all.
+
+   A device that receives `intercom_start` for a call id it already holds adopts the peers it lists: a peer it has is kept, one it lacks is opened, one the list no longer names is closed. A device with no call adopts the whole thing — id, mode and peers. It opens one connection per peer, offers to each, and reports the state a device-started call already reports: `in_call` for a call, `broadcasting` for a broadcast. It sends no `intercom_start_request` for a call it was given this way, and `intercom_state` gains no value.
+
+3. **`intercom_signal` gains an optional `peer_device_id`.** It appears only in the caller's frames of a call with more than two devices, and it names the other end of that one connection: in the device's event it is the receiver the signal is for; in the command the integration sends, it is the device the signal came from. The two rules that make it safe:
+
+   - A receiver never sees it and never sends it. The integration labels a receiver's signal with the receiver's own id when it passes it to the caller. A broadcast's receivers therefore speak v1 byte for byte, and a receiver needs no new build to take part in a broadcast.
+   - It is optional. In a two-device call the sender and the recipient are the only other device in the call, so neither omits anything it needs. A signal that arrives without it in a call of more than two devices has no one to go to and is dropped by the integration with a warning.
+
+4. **The relay is a star, and the broadcast exception goes.** `_async_signal` no longer returns early for a broadcast. A signal from the caller goes to the peer it names, or, in a two-device call, to the other device; a signal from a callee goes to the caller alone. A `peer_device_id` naming a device that is not in the call is a device fault, answered `invalid_args` and logged, never relayed and never allowed to end the call — the same rule P9.1's mock already applies to a signal for another call.
+
+5. **Nothing is relayed to a device that has not been given the call.** The integration's order for every call is: select the targets, ring them and settle the rings, send `intercom_start` to the caller, then relay signals. A caller's signal that arrives before that point is held for that short window, not dropped; the window is bounded by the ring limit that is already running. A callee's `intercom_answer` is processed the moment it arrives — it says a person answered, and it starts the connect timeout — but the session description that follows it is a signal, so it is not passed to a caller that does not yet know the call. This is what keeps a caller's first offer from racing the ring it belongs to, and it is why an auto-answered call (P9.5) cannot reach a caller whose engine does not know the call yet.
+
+6. **A broadcast is one call, one limit, one end.** The record, the timers, the events and `intercom_end` are unchanged, and they cover the whole star: `INTERCOM_CALL_LIMIT_S` runs from the start of the broadcast, and the end reaches every receiver and every connection the sender holds. This is the reason a broadcast is not split into one call per receiver, and the whole reason the sender may not hold a connection outside a call.
+
+7. **`INTERCOM_BROADCAST_MAX_TARGETS` = 8, provisional.** The caller encodes one stream per receiver and the cost beyond one is unmeasured, so the fan-out is bounded rather than unbounded: eight is twice the v1 fleet (two Fire HD 10 Plus, two Echo Show 8) and far more than any room announcement needs, and it bounds an `intercom_start` frame at a handful of bytes per peer. A resolved broadcast target set larger than the cap is refused with a validation error naming the devices — never silently trimmed, because a broadcast that quietly lost a receiver is the failure nobody sees (P9.2's decision 12). The owner confirms the value once a broadcast has been measured on hardware; changing it is ADR 0002's, and it is one number in five places with a drift guard.
+
+8. **Compatibility is four rules, and they follow from PROTOCOL 4.0 and 8.**
+
+   | | Behaviour |
+   | --- | --- |
+   | Newer integration, newer device | The whole of this ADR: HA-started calls and broadcasts with audio. |
+   | Newer integration, older device (no `intercom_caller`) | It is never sent `intercom_start`, so it is never the prepared caller: `tabula.intercom_call` with it as the caller is refused with a clear error instead of ringing into a one-sided call, and a broadcast it asks for from its own screen with more than one target is refused the same way. It can still be called, answer, listen to a broadcast, and start a two-way call from its own screen, all with v1 frames. |
+   | Older integration, newer device | The device declares `intercom_caller`, the integration answers `register_result.capabilities` with the subset it accepts (4.0), and the device says nothing of this ADR to a peer that did not accept it: no `intercom_start` reaches it, so it is never a prepared caller, and it sends no `peer_device_id`. A broadcast's signals are still dropped by that integration's relay, so a broadcast carries no audio and ends at the hard limit — exactly as it does today. |
+   | Older device as a broadcast receiver, newer integration, newer caller | Works unchanged: it is rung with the v1 ring, receives v1 offers, answers with a v1 answer, and the integration labels its answer for the caller. |
+
+   No major bump, no schema version, no enum value: one new command, one new optional member, one new capability, one new `$defs` entry and one constant.
+
+9. **A refused `intercom_start` ends the call.** The caller is prepared before anything is relayed, so a NACK to it means there is no caller side: the integration ends the call — `busy` for a `busy` NACK, `error` otherwise — and raises, with the started and ended events it would have fired anyway. Nothing is left ringing.
+
+## Consequences
+
+- The protocol gains one frame type (`intercom_start`), one capability (`intercom_caller`), one `$defs` (`intercom_peer`) and one optional member in two places. There are no new enum values, so the riskiest kind of additive change is avoided.
+- A broadcast's receivers need no new build. A broadcast's sender does, and so does any device that is to be the caller of an HA-started call — which is every device the feature was asked for.
+- P9.4's screen gets what it needs to draw a call: the peer names from `intercom_start` and the call id, mode and direction from `CallInfo`. P9.5's auto-answer and P9.6's voice-started calls inherit the frame with no change of their own, because they both run `IntercomManager.async_start_call`.
+- P9.3's engine holds one connection; the caller's half becomes a map keyed by device id. A callee still holds exactly one, and the state machine's four states are unchanged.
+- An older integration still carries no broadcast audio and no HA-started caller. That is the state of the feature before this ADR, made visible in the refusal message rather than half-working.
+- Broadcast cost on the hardware, and the cap of 8, remain unmeasured. A measured broadcast is what confirms or changes the cap.
+
+## Alternatives considered
+
+- **Ring the caller too, with a `role` field on `intercom_ring`.** Reuses a frame instead of adding one, but the ring's arguments describe the callee's view (`caller_device_id`, `caller_name`), so the caller would receive a ring naming itself; and the caller still needs the peer list, which the ring does not carry. A new command with the right arguments is smaller than a reused one with the wrong ones.
+- **One call per receiver for a broadcast.** Needs no new field at all, but multiplies the record, the started and ended events, the sensor state and the hard limit by the number of receivers; `tabula.intercom_end` by call id would no longer end a broadcast, and a sender could keep a room in calls indefinitely by cascading them. It also breaks the one-record-per-broadcast shape P9.2's tests assert.
+- **Relay by `call_id` alone and fan out to every device in the call.** The smallest change to the integration and wrong in both directions: a receiver would take an offer meant for another receiver, and one receiver's answer would reach all of them.
+- **A stream or session id instead of a device id.** A per-connection id would also work, but the two ends already know each other's device ids from the ring and from `intercom_start`, and an id nobody can look up adds a mapping to both sides for nothing.
+- **Make `peer_device_id` required.** Would make every two-device call carry a redundant field and would require a new build on any device that is to be called; the optional form leaves v1 frames exactly as they are wherever one connection is enough.
+- **A new `intercom_end` reason or `intercom_state` value for a prepared-but-unrung caller.** Section 8 says a new enum value needs its own capability; the caller's existing state (`in_call`, `broadcasting`) already describes it, and the failure is reported as `busy` or `error`, which already exist.
+- **An unbounded fan-out.** Cheap to write, and the failure mode — a sender encoding for a number of receivers nobody has measured — would show up as a bad call rather than an error. Bounded instead, with the number in ADR 0002.
+- **Relay audio through HA for a broadcast.** Would need no signaling at all, but ADR 0025 rejected a relayed media path and nothing about a broadcast changes that reasoning.
+- **Silently trimming an oversized broadcast to the cap.** Fails in the way P9.2's decision 12 already rejected: a broadcast that lost receivers without saying so.
