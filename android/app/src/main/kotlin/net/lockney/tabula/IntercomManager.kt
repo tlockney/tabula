@@ -98,6 +98,18 @@ class IntercomManager(
         targetAreaId: String? = null,
         peerName: String = "",
     ): StartOutcome {
+        // PROTOCOL 4.5: a call names exactly one of a device and an area; a
+        // broadcast names neither. Keeping the frame honest here means P9.4's
+        // screen cannot put an illegal shape on the wire (review of #171, 5).
+        val valid = if (mode == IntercomMode.CALL) {
+            (targetDeviceId != null) != (targetAreaId != null)
+        } else {
+            targetDeviceId == null && targetAreaId == null
+        }
+        if (!valid) {
+            log("intercom: a $mode start needs " + if (mode == IntercomMode.CALL) "one target" else "no target")
+            return StartOutcome.InvalidTarget
+        }
         val outcome = engine.start(
             StartRequest(
                 mode = mode,
@@ -111,6 +123,7 @@ class IntercomManager(
             StartOutcome.Busy -> log("intercom: a call is already up; not starting another")
             StartOutcome.CannotTalk -> log("intercom: no microphone; this device cannot start a call")
             StartOutcome.Unavailable -> log("intercom: the audio connection could not be created")
+            StartOutcome.InvalidTarget -> log("intercom: the target is not a legal one; not starting")
         }
         return outcome
     }

@@ -96,6 +96,37 @@ class CallMachineTest {
     }
 
     @Test
+    fun `candidates that arrive while ringing reach the peer on the answer`() {
+        // The caller offers at start and trickles candidates at once, long
+        // before anyone answers (review of #171, finding 1)
+        ring()
+        assertTrue(machine.signal(CALL, IntercomSignalKind.CANDIDATE, "candidate:1"))
+        assertTrue(machine.signal(CALL, IntercomSignalKind.CANDIDATE, "candidate:2"))
+        assertTrue(peers.created.isEmpty())
+        machine.answer()
+        assertEquals(listOf("candidate:1", "candidate:2"), peers.last?.candidates?.toList())
+        // and a candidate after the peer exists goes straight to it
+        assertTrue(machine.signal(CALL, IntercomSignalKind.CANDIDATE, "candidate:3"))
+        assertEquals(listOf("candidate:1", "candidate:2", "candidate:3"), peers.last?.candidates?.toList())
+    }
+
+    @Test
+    fun `an answered call whose offer never arrives still times out`() {
+        // The connect deadline runs from this device's own answer too
+        // (review of #171, finding 3)
+        ring()
+        machine.answer()
+        scheduler.advance(Constants.INTERCOM_CONNECT_TIMEOUT_S * 1000L - 1)
+        assertEquals(IntercomState.IN_CALL, machine.state.value)
+        scheduler.advance(1)
+        assertEquals(IntercomState.IDLE, machine.state.value)
+        assertEquals(
+            listOf<EngineEvent>(EngineEvent.Answered(CALL), EngineEvent.Ended(CALL, IntercomEndReason.TIMEOUT)),
+            events(),
+        )
+    }
+
+    @Test
     fun `declining ends the ring and reports only a decline`() {
         ring()
         assertTrue(machine.decline())

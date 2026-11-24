@@ -29,7 +29,15 @@ class WakeWordGate(private val listener: Listener) {
     private var permitted = false
     private var playing = false
 
-    /** True while the gate has asked for capture and the listener accepted. */
+    /** The decision last reported to the listener; false after a refused open. */
+    private var wanted = false
+
+    /**
+     * The last capture state the listener reported. It is what the listener
+     * said, never a decision of the gate's own: capture has one owner, and
+     * another feature (a call that captures) can close and reopen the
+     * microphone without the gate hearing about it (review of #171, finding 2).
+     */
     var listening: Boolean = false
         private set
 
@@ -72,14 +80,26 @@ class WakeWordGate(private val listener: Listener) {
         reconcile()
     }
 
+    /**
+     * Reports the gate's decision whenever that decision changes, rather than
+     * acting only on its own cached copy of the capture state. Capture has one
+     * owner: a call that captures can close and reopen the microphone without
+     * the gate hearing about it, so a cached "we are open" would let the next
+     * stop go unreported and leave the detector listening with the feature off
+     * (review of #171, finding 2). A stop is reported whenever capture was last
+     * asked for, which is what makes that case safe; a refused open is retried
+     * at the next change, as before.
+     */
     private fun reconcile() {
-        if (shouldListen) {
-            if (!listening) listening = listener.startListening()
+        val decision = shouldListen
+        val retry = decision && !listening
+        if (decision == wanted && !retry) return
+        wanted = decision
+        if (decision) {
+            listening = listener.startListening()
             return
         }
-        if (listening) {
-            listening = false
-            listener.stopListening()
-        }
+        listener.stopListening()
+        listening = false
     }
 }

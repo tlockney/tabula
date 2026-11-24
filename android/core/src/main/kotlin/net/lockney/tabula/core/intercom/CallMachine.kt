@@ -71,6 +71,14 @@ class CallMachine(
 
     private var peer: CallPeer? = null
     private var pendingOffer: String? = null
+
+    /**
+     * Candidates that arrived while there was no connection to give them to:
+     * the caller trickles its host candidates within milliseconds of its offer,
+     * which is long before the callee's ring is answered. They are handed over
+     * when the connection is created (review of #171, finding 1).
+     */
+    private val pendingCandidates = mutableListOf<String>()
     private var answeredOffer = false
     private var connected = false
     private var closed = false
@@ -157,6 +165,10 @@ class CallMachine(
             pendingOffer = null
             answerWith(offer)
         }
+        // The connect deadline runs from this answer too: an offer that never
+        // arrives must not leave the call up until the hard limit (review of
+        // #171, finding 3)
+        armConnectTimer(info)
         // ADR 0002: the hard limit runs from the moment the call is up
         armCallLimit(info)
         emit(EngineEvent.Answered(info.callId))
@@ -204,7 +216,10 @@ class CallMachine(
                 armConnectTimer(info)
             }
 
-            IntercomSignalKind.CANDIDATE -> peer?.candidate(payload)
+            IntercomSignalKind.CANDIDATE -> {
+                val connection = peer
+                if (connection != null) connection.candidate(payload) else pendingCandidates += payload
+            }
         }
         return true
     }
@@ -251,6 +266,10 @@ class CallMachine(
             return false
         }
         peer = created
+        if (pendingCandidates.isNotEmpty()) {
+            pendingCandidates.forEach { created.candidate(it) }
+            pendingCandidates.clear()
+        }
         return true
     }
 
@@ -359,6 +378,7 @@ class CallMachine(
         val connection = peer
         peer = null
         pendingOffer = null
+        pendingCandidates.clear()
         answeredOffer = false
         connected = false
         runCatching { connection?.close() }

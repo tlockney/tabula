@@ -168,17 +168,29 @@ data class EventFrame(
             mode: IntercomMode,
             targetDeviceId: String? = null,
             targetAreaId: String? = null,
-        ) =
-            frame(
-                id,
-                EventName.INTERCOM_START_REQUEST,
-                buildJsonObject {
-                    put("call_id", callId)
-                    put("mode", wireName(mode))
-                    targetDeviceId?.let { put("target_device_id", it) }
-                    targetAreaId?.let { put("target_area_id", it) }
-                },
-            )
+        ) = frame(
+            id,
+            EventName.INTERCOM_START_REQUEST,
+            buildJsonObject {
+                put("call_id", callId)
+                put("mode", wireName(mode))
+                targetDeviceId?.let { put("target_device_id", it) }
+                targetAreaId?.let { put("target_area_id", it) }
+            },
+        ).also {
+            // PROTOCOL 4.5: a call names exactly one of a device and an area, a
+            // broadcast neither. The frame is refused rather than put on the wire
+            // in a shape the integration would drop.
+            val valid = if (mode == IntercomMode.CALL) {
+                (targetDeviceId != null) != (targetAreaId != null)
+            } else {
+                targetDeviceId == null && targetAreaId == null
+            }
+            require(valid) {
+                "intercom_start_request: mode $mode takes " +
+                    if (mode == IntercomMode.CALL) "one target" else "no target"
+            }
+        }
 
         fun wakeWordDetected(id: Int, phrase: String, probability: Int) =
             frame(

@@ -105,7 +105,11 @@ class WakeWordGateTest {
         gate.onPlaying(true)
         gate.onPlaying(false)
         assertTrue(gate.listening)
-        assertEquals(listOf("start", "start"), listener.calls)
+        // the stop on the way down is reported because the gate had asked for
+        // capture; closing a microphone that never opened is a no-op, and the
+        // report is what keeps a capture another owner reopened from surviving
+        // the next stop (review of #171, finding 2)
+        assertEquals(listOf("start", "stop", "start"), listener.calls)
     }
 
     @Test

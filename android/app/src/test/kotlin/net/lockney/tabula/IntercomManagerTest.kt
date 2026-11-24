@@ -149,6 +149,35 @@ class IntercomManagerTest {
         assertEquals(IntercomState.IDLE, manager.state())
     }
 
+    @Test
+    fun `a start with a target shape the protocol forbids is refused`() {
+        // a call needs one target, a broadcast none (PROTOCOL 4.5)
+        assertEquals(StartOutcome.InvalidTarget, manager.start(IntercomMode.CALL))
+        assertEquals(
+            StartOutcome.InvalidTarget,
+            manager.start(IntercomMode.CALL, targetDeviceId = TARGET, targetAreaId = "area-1"),
+        )
+        assertEquals(
+            StartOutcome.InvalidTarget,
+            manager.start(IntercomMode.BROADCAST, targetDeviceId = TARGET),
+        )
+        assertTrue(engine.starts.isEmpty())
+        assertEquals(IntercomState.IDLE, manager.state())
+        scope.runCurrent()
+        assertTrue(frames().none { it.event == EventName.INTERCOM_START_REQUEST })
+    }
+
+    @Test
+    fun `a broadcast start takes no target`() {
+        assertTrue(manager.start(IntercomMode.BROADCAST) is StartOutcome.Started)
+        scope.runCurrent()
+        val frame = frames().single()
+        assertEquals(EventName.INTERCOM_START_REQUEST, frame.event)
+        assertEquals("broadcast", text(frame, "mode"))
+        assertEquals("", text(frame, "target_device_id"))
+        assertEquals("", text(frame, "target_area_id"))
+    }
+
     // --- the microphone hand-off ----------------------------------------------
 
     @Test

@@ -110,6 +110,12 @@ sealed interface StartOutcome {
 
     /** The audio connection could not be created; the call is already over. */
     data object Unavailable : StartOutcome
+
+    /**
+     * The request does not name a legal target: a call takes exactly one of a
+     * device and an area, a broadcast neither (PROTOCOL 4.5).
+     */
+    data object InvalidTarget : StartOutcome
 }
 
 /** Everything the engine reports upward, one TLP event each. */
