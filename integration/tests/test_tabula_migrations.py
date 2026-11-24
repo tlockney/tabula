@@ -1,9 +1,10 @@
 """Translate-down migrations (plan 5.4, PROTOCOL.md 4.5).
 
-SCHEMA_VERSION is 3, so DOWNS[3] and DOWNS[2] are real: [3] drops the v3-only
-`voice` group (P7.1), [2] prunes every v2-only key, nested ones included, and
-each result validates strictly against the frozen schema below it
-(`schema/settings.schema.v2.json`, `schema/settings.schema.v1.json`) - the
+SCHEMA_VERSION is 4, so DOWNS[4], DOWNS[3] and DOWNS[2] are real: [4] drops the
+v4-only `intercom` group (P9.5), [3] drops the v3-only `voice` group (P7.1),
+[2] prunes every v2-only key, nested ones included, and each result validates
+strictly against the frozen schema below it (`schema/settings.schema.v3.json`,
+`schema/settings.schema.v2.json`, `schema/settings.schema.v1.json`) - the
 frozen files are what a device on that version enforces, so "valid v2" has to
 mean the v2 schema, not today's. The chain-walk tests drive hypothetical future
 steps on top, to prove the walk itself keeps working past v3: each step sees
@@ -27,8 +28,10 @@ from referencing import Registry, Resource
 REPO_ROOT = Path(__file__).resolve().parents[2]
 V1_SCHEMA_PATH = REPO_ROOT / "schema" / "settings.schema.v1.json"
 V2_SCHEMA_PATH = REPO_ROOT / "schema" / "settings.schema.v2.json"
+V3_SCHEMA_PATH = REPO_ROOT / "schema" / "settings.schema.v3.json"
 V2_FULL_FIXTURE = REPO_ROOT / "schema" / "fixtures" / "settings" / "v2" / "full.json"
 V3_FULL_FIXTURE = REPO_ROOT / "schema" / "fixtures" / "settings" / "v3" / "full.json"
+V4_FULL_FIXTURE = REPO_ROOT / "schema" / "fixtures" / "settings" / "v4" / "full.json"
 
 DOC = {"screen": {"brightness": 42, "keep_screen_on": True}, "v3only": {"x": 1}}
 
@@ -43,6 +46,12 @@ def v1_validator() -> Draft202012Validator:
 def v2_validator() -> Draft202012Validator:
     """Strict validation against the frozen v2 schema."""
     return _validator(V2_SCHEMA_PATH)
+
+
+@lru_cache(maxsize=1)
+def v3_validator() -> Draft202012Validator:
+    """Strict validation against the frozen v3 schema."""
+    return _validator(V3_SCHEMA_PATH)
 
 
 def _validator(path: Path) -> Draft202012Validator:
@@ -115,6 +124,21 @@ async def test_missing_step_is_an_error(monkeypatch):
 async def test_target_below_one_is_rejected():
     with pytest.raises(ValueError):
         migrations.translate(DOC, 0)
+
+
+async def test_v4_document_translates_down_to_strict_v3():
+    """The populated v4 fixture prunes to a document the frozen v3 schema accepts.
+
+    P9.5 added the `intercom` group. A device still on v3 rejects unknown keys,
+    so the step drops it whole and leaves a document v3 validates.
+    """
+    document = json.loads(V4_FULL_FIXTURE.read_text(encoding="utf-8"))
+    assert "intercom" in document, "the fixture stopped exercising the v4 group"
+    out = migrations.translate(document, 3)
+    assert not list(v3_validator().iter_errors(out))
+    assert "intercom" not in out
+    # nothing else moves: the rest of the document is passed through
+    assert out == {k: v for k, v in document.items() if k != "intercom"}
 
 
 async def test_v3_document_translates_down_to_strict_v2():
