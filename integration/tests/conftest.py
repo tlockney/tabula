@@ -36,7 +36,13 @@ asyncio.run(_start_aiohttp_resolver_thread())
 
 @pytest.fixture(name="hass_setup")
 async def hass_setup_fixture(hass, enable_custom_integrations):
-    """Home Assistant with the real auth, http and websocket_api apps."""
+    """Home Assistant with the real auth, http and websocket_api apps.
+
+    The core "homeassistant" component is set up too: the conversation component
+    (reached through the assist_satellite platform, P7.3) reads its
+    exposed-entity registry.
+    """
+    assert await async_setup_component(hass, "homeassistant", {})
     assert await async_setup_component(hass, "http", {})
     assert await async_setup_component(hass, "auth", {})
     assert await async_setup_component(hass, "websocket_api", {})
@@ -53,8 +59,23 @@ async def integration_fixture(hass_setup):
     assert await async_setup_component(hass_setup, DOMAIN, {})
     # Entity platforms whose components register HTTP views (media_player,
     # notify via repairs, and image via the image proxy) must also be set up
-    # before the server starts.
-    for component in ("media_player", "notify", "image"):
+    # before the server starts. The same holds for the components the
+    # assist_satellite platform (P7.3) pulls in: intent, stt and tts each
+    # register a view, so a platform forwarding that reached them after the
+    # router froze would fail to set the satellite up at all.
+    for component in (
+        "media_player",
+        "notify",
+        "image",
+        "assist_satellite",
+        "assist_pipeline",
+        "conversation",
+        "intent",
+        "stt",
+        "tts",
+        "ffmpeg",
+        "wake_word",
+    ):
         assert await async_setup_component(hass_setup, component, {})
     return hass_setup
 
