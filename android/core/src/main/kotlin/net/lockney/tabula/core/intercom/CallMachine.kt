@@ -84,6 +84,13 @@ class CallMachine(
      */
     private val connections = LinkedHashMap<String, CallPeer>()
 
+    /**
+     * The peers HA resolved for this call, whether or not their connections are
+     * open yet: the label a caller's signal carries depends on how many peers
+     * the call has, not on how many connections happen to exist mid-prepare.
+     */
+    private var peerIds: Set<String> = emptySet()
+
     private var pendingOffer: String? = null
 
     /**
@@ -151,6 +158,7 @@ class CallMachine(
         // callee's answer comes back as a relayed signal.
         val direction = if (request.mode == IntercomMode.BROADCAST) PeerDirection.SEND_ONLY else PeerDirection.SEND_RECEIVE
         val key = info.peerDeviceId ?: ""
+        peerIds = setOf(key)
         if (!openPeer(key, info, direction)) return StartOutcome.Unavailable
         connections[key]?.offer()
         armCallLimit(info)
@@ -184,6 +192,7 @@ class CallMachine(
         // Reconcile: a peer the list no longer names is closed, one it lacks is
         // opened and offered to
         val wanted = peers.map { it.deviceId }
+        peerIds = wanted.toSet()
         for (key in connections.keys - wanted.toSet()) {
             connections.remove(key)?.let { dropped -> closeLater(dropped) }
         }
@@ -392,7 +401,7 @@ class CallMachine(
         // Only a caller with more than one peer says which connection a signal
         // belongs to; a callee and a two-device call send v1 frames unchanged
         // (ADR 0037 decision 3)
-        val label = if (info.direction == CallDirection.OUTGOING && connections.size > 1) key else null
+        val label = if (info.direction == CallDirection.OUTGOING && peerIds.size > 1) key else null
         emit(EngineEvent.Signal(info.callId, kind, payload, label))
     }
 
@@ -501,6 +510,7 @@ class CallMachine(
         transportTimer = null
         val closing = connections.values.toList()
         connections.clear()
+        peerIds = emptySet()
         pendingOffer = null
         pendingCandidates.clear()
         answeredOffer = false
