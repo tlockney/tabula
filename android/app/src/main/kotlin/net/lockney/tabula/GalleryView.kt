@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -200,7 +199,7 @@ class GalleryView(
         fadeRule = fade()
         if (fadeRule.onShow(ScreensaverMode.PHOTOS)) {
             alpha = 0f
-            Log.i(TAG, "fade in")
+            TabulaLog.i(TAG, "fade in")
             animate().alpha(1f).setDuration(Constants.SCREENSAVER_FADE_MS)
         } else {
             alpha = 1f
@@ -218,7 +217,7 @@ class GalleryView(
             // bitmaps release when it ends, and a re-show cancels this end
             // action and stops the engine itself (the transitions'
             // cancellation rule, ADR 0016 item 4)
-            Log.i(TAG, "fade out")
+            TabulaLog.i(TAG, "fade out")
             animate().cancel()
             animate()
                 .alpha(0f)
@@ -298,7 +297,7 @@ class GalleryView(
         shiftStep += 1
         layers.translationX = offset.x.toFloat()
         layers.translationY = offset.y.toFloat()
-        Log.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
+        TabulaLog.i(TAG, "pixel shift: dx=${offset.x} dy=${offset.y}")
         postDelayed(shiftTick, shift.intervalMs)
     }
 
@@ -335,7 +334,7 @@ class GalleryView(
         // a stale carry-out racing a stop: the engine released it already
         if (bitmap.isRecycled) return
         // the hardware check counts these lines as slide evidence (check_p38.sh)
-        Log.i(TAG, "slide: transition=${show.transition} fit=${show.fit.kind}")
+        TabulaLog.i(TAG, "slide: transition=${show.transition} fit=${show.fit.kind}")
         // Cancel both layers' animations before placing anything: a pending
         // end action from an earlier transition would otherwise clear the
         // slide this draw just placed (a cancelled animator never runs its

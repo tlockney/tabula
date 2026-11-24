@@ -35,6 +35,7 @@ import net.lockney.tabula.core.tlp.CommandResultFrame
 import net.lockney.tabula.core.tlp.Commands
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.EventFrame
+import net.lockney.tabula.core.tlp.LogFrame
 import net.lockney.tabula.core.tlp.PingFrame
 import net.lockney.tabula.core.tlp.RegisterFrame
 import net.lockney.tabula.core.tlp.RegisterResultData
@@ -89,6 +90,12 @@ class TlpClient(
          * see, and the registration state already carries the outcome.
          */
         val events: ReceiveChannel<(Int) -> EventFrame>? = null,
+        /**
+         * Log batches to send while a log subscription is on (PROTOCOL 4.8),
+         * each built for the frame id it is sent with. The producer obeys the
+         * protocol's interval, cap and TTL; this loop only puts them on the wire.
+         */
+        val logs: ReceiveChannel<(Int) -> LogFrame>? = null,
     )
 
     /** Session lifecycle callbacks; called from the client's coroutines. */
@@ -284,8 +291,10 @@ class TlpClient(
                 val pingJob = launch { pingLoop(conn) }
                 val stateJob = launch { stateLoop(conn) }
                 val eventJob = launch { eventLoop(conn) }
+                val logJob = launch { logLoop(conn) }
                 readJob.join()
                 eventJob.cancelAndJoin()
+                logJob.cancelAndJoin()
                 stableJob.cancelAndJoin()
                 pingJob.cancelAndJoin()
                 stateJob.cancelAndJoin()
@@ -595,6 +604,23 @@ class TlpClient(
         while (true) {
             val build = events.receive()
             conn.send { id -> Tlp.encodeFrame("event", build(id)) }
+        }
+    }
+
+    /**
+     * Send log batches while a subscription is on (PROTOCOL 4.8). The producer
+     * already waited out the interval and dropped nothing it had taken, so a
+     * batch that arrived here goes out: what was queued before registration is
+     * dropped first, like events, because a tail is about now.
+     */
+    private suspend fun logLoop(conn: Connection) {
+        val logs = config.logs ?: return
+        while (logs.tryReceive().isSuccess) {
+            // drop it
+        }
+        while (true) {
+            val build = logs.receive()
+            conn.send { id -> Tlp.encodeFrame("log", build(id)) }
         }
     }
 

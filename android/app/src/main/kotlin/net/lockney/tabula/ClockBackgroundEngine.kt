@@ -102,8 +102,7 @@ class ClockBackgroundEngine(
             when (effect) {
                 is ClockBackgroundController.Effect.Load -> {
                     // the hardware check counts these lines as load evidence (check_p33.sh)
-                    // runCatching: android.util.Log is not mocked in the JVM tests
-                    runCatching { android.util.Log.i(TAG, "background: load source=${effect.source}") }
+                    TabulaLog.i(TAG, "background: load source=${effect.source}")
                     val gen = generation.incrementAndGet()
                     scope.launch { loadSource(gen, effect.source, width, height) }
                 }
@@ -131,8 +130,7 @@ class ClockBackgroundEngine(
         }
         if (loaded == null) {
             // the hardware check counts these lines as failure evidence (check_p33.sh)
-            // runCatching: android.util.Log is not mocked in the JVM tests
-            runCatching { android.util.Log.w(TAG, "background: load failed; the previous image stays (F-SSV-09)") }
+            TabulaLog.w(TAG, "background: load failed; the previous image stays (F-SSV-09)")
             carryOut(controller.onLoadFailed(now()), width, height)
         } else {
             carryOut(controller.onLoaded(loaded, now()), width, height)

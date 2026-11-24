@@ -14,9 +14,13 @@ data class LogEntry(
     val tag: String,
     val message: String,
 ) {
+    /** The line's timestamp in the wire's RFC 3339 form. */
+    val tsIso: String
+        get() = Instant.ofEpochMilli(tsMs).toString()
+
     /** The line as a TLP `LogLine` payload (PROTOCOL.md 4.8). */
     fun toWire(): Map<String, Any> = mapOf(
-        "ts" to Instant.ofEpochMilli(tsMs).toString(),
+        "ts" to tsIso,
         "level" to level.name.lowercase(),
         "tag" to tag,
         "message" to message,

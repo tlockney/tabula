@@ -12,7 +12,6 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.PowerManager
 import android.provider.Settings
-import android.util.Log
 import net.lockney.tabula.core.screen.ScreenController
 
 /**
@@ -120,7 +119,7 @@ class AndroidPanel(
             // (issue #96)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         runCatching { appContext.startActivity(intent) }
-            .onFailure { Log.w(TAG, "could not bring the dashboard to the front", it) }
+            .onFailure { TabulaLog.w(TAG, "could not bring the dashboard to the front", it) }
     }
 
     override fun setKeepOn(keep: Boolean) {

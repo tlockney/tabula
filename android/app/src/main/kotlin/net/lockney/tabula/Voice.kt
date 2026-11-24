@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.time.Instant
@@ -44,7 +43,7 @@ class WakeWordMonitor(
     private val scope: CoroutineScope,
     private val onDetection: (WakeWordDetector.Detection) -> Unit,
     private val onListening: (Boolean) -> Unit,
-    private val log: (String) -> Unit = { Log.i(TAG, it) },
+    private val log: (String) -> Unit = { TabulaLog.i(TAG, it) },
 ) {
     private var job: Job? = null
     private var record: AudioRecord? = null
