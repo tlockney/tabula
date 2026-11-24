@@ -12,7 +12,8 @@ because TLP has no upload direction.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+import os
+from typing import Any, ClassVar
 
 import aiohttp
 import pytest
@@ -24,7 +25,7 @@ from custom_components.tabula.profiles import (
     split_shared_values,
 )
 from custom_components.tabula.settings import SettingsSchema, async_set_settings
-from helpers import WS, Paired, frame_fixture, pair_device, uid, ws_connect
+from helpers import WS, Paired, pair_device, uid, ws_connect
 from homeassistant.auth.const import GROUP_ID_ADMIN
 from homeassistant.core import HomeAssistant
 from mockdevice.client import TLPClient
@@ -109,7 +110,7 @@ class _StubSchema:
     not be a list of the roles that happen to have members today.
     """
 
-    _FIELDS = {
+    _FIELDS: ClassVar[dict[str, _Leaf]] = {
         "screen_brightness": _Leaf("shared"),
         "identity_name": _Leaf("identity"),
         "connection_ha_url": _Leaf("connection"),
@@ -289,9 +290,7 @@ async def test_override_needs_a_covered_key(hass_setup, runtime, paired):
 async def test_reassignment_drops_overrides_that_shadow_nothing(hass_setup, runtime, paired):
     """An override exists only while the assigned profile covers its key."""
     first, _ = await make_profile(hass_setup, "One", {"screen_brightness": 40})
-    second, _ = await make_profile(
-        hass_setup, "Two", {"screensaver_idle_timeout": 300}
-    )
+    second, _ = await make_profile(hass_setup, "Two", {"screensaver_idle_timeout": 300})
     await store(hass_setup).async_assign(paired.device_id, first.profile_id)
     await store(hass_setup).async_set_override(paired.device_id, "screen_brightness", 30)
 
@@ -372,9 +371,7 @@ async def test_diff_previews_unsaved_values(hass_setup, runtime, paired):
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
 
-    rows = store(hass_setup).diff(
-        profile_id=profile.profile_id, values={"screen_brightness": 90}
-    )
+    rows = store(hass_setup).diff(profile_id=profile.profile_id, values={"screen_brightness": 90})
 
     assert [row["profile_value"] for row in rows] == [90]
     assert store(hass_setup).get(profile.profile_id).values == {"screen_brightness": 40}
@@ -687,6 +684,27 @@ async def connect_mock(
     return device, client, task
 
 
+def observe(label: str, device: MockDevice, hass: HomeAssistant, paired: Paired) -> None:
+    """Print one observation of the two-device manual check (see the packet).
+
+    Run with TABULA_PROFILES_MANUAL=1 to see the transcript the P5.6 manual
+    check pastes: what each device holds and which revision HA stores.
+    """
+    if not os.environ.get("TABULA_PROFILES_MANUAL"):
+        return
+    runtime = TabulaHub.get(hass)
+    assert runtime is not None
+    stored = runtime.settings.get(paired.device_id)
+    record = runtime.devices[paired.device_id]
+    print(
+        f"[manual] {label}: {record.name or paired.device_id[:8]}"
+        f" brightness={device.settings.get('screen', {}).get('brightness')!r}"
+        f" device_revision={device.settings_revision}"
+        f" ha_revision={stored.revision if stored else None}"
+        f" connected={record.connected}"
+    )
+
+
 async def _until(predicate, timeout: float = 10.0) -> None:
     async with asyncio.timeout(timeout):
         while not predicate():
@@ -704,9 +722,13 @@ async def test_two_devices_share_a_profile(hass_setup, server, runtime, session,
         await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
         await store(hass_setup).async_assign(second.device_id, profile.profile_id)
         await _until(
-            lambda: one.settings.get("screen", {}).get("brightness") == 40
-            and two.settings.get("screen", {}).get("brightness") == 40
+            lambda: (
+                one.settings.get("screen", {}).get("brightness") == 40
+                and two.settings.get("screen", {}).get("brightness") == 40
+            )
         )
+        observe("profile created, both assigned", one, hass_setup, paired)
+        observe("profile created, both assigned", two, hass_setup, second)
 
         # The hallway tablet drops off; the profile changes; the kitchen follows.
         two_client.stop()
@@ -718,16 +740,26 @@ async def test_two_devices_share_a_profile(hass_setup, server, runtime, session,
         )
         await store(hass_setup).async_apply_profile(saved.profile_id)
         await _until(lambda: one.settings.get("screen", {}).get("brightness") == 65)
+        observe("profile changed offline", one, hass_setup, paired)
+        observe("profile changed offline", two, hass_setup, second)
 
         # The offline member is listed as drifted, and catches up on reconnect.
         rows = {row["device_id"]: row for row in store(hass_setup).drift()}
         assert rows[second.device_id]["connected"] is False
         assert rows[second.device_id]["drifted"] is True
+        if os.environ.get("TABULA_PROFILES_MANUAL"):
+            row = rows[second.device_id]
+            print(
+                f"[manual] drift: {row['name']} connected={row['connected']}"
+                f" ha_revision={row['ha_revision']} device_revision={row['device_revision']}"
+                f" revisions_behind={row['revisions_behind']}"
+            )
         again, again_client, again_task = await connect_mock(
             hass_setup, server, second, tmp_path, "two-again"
         )
         running.append((again_client, again_task))
         await _until(lambda: again.settings.get("screen", {}).get("brightness") == 65)
+        observe("reconnected, caught up", again, hass_setup, second)
     finally:
         for client, task in running:
             client.stop()
@@ -760,8 +792,10 @@ async def test_older_schema_member_gets_the_keys_it_knows(
         runtime = TabulaHub.get(hass_setup)
         assert runtime is not None
         await _until(
-            lambda: runtime.devices[paired.device_id].current.reported_settings_revision
-            == settings_store(hass_setup).revision(paired.device_id)
+            lambda: (
+                runtime.devices[paired.device_id].current.reported_settings_revision
+                == settings_store(hass_setup).revision(paired.device_id)
+            )
         )
         rows = store(hass_setup).drift()
         assert rows[0]["behind_keys"] == [newer[0]]

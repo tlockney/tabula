@@ -315,7 +315,8 @@ export const STRINGS = {
     loading: "Loading the profiles…",
     loadError: "The profiles could not be loaded",
     newProfile: "New profile",
-    empty: "No profiles yet. A profile shares the settings you choose with the tablets you put in it.",
+    empty:
+      "No profiles yet. A profile shares the settings you choose with the tablets you put in it.",
     columnName: "Profile",
     columnMembers: "Devices",
     columnActions: "Actions",
@@ -329,7 +330,8 @@ export const STRINGS = {
     delete: "Delete",
     deleteNote:
       "Deleting a profile does not change its devices' settings: they become unassigned and keep the values they have.",
-    confirmDelete: (name: string) => `Delete the profile "${name}"? Its devices keep their settings.`,
+    confirmDelete: (name: string) =>
+      `Delete the profile "${name}"? Its devices keep their settings.`,
     editorTitle: "New profile",
     editorTitleEdit: (name: string) => `Edit ${name}`,
     name: "Name",
@@ -400,9 +402,7 @@ export const STRINGS = {
     clear: "Clear",
     clearNote: "Clearing an override applies the profile's value.",
     changed: (count: number) =>
-      count === 0
-        ? "Already current."
-        : `${count} value${count === 1 ? "" : "s"} applied.`,
+      count === 0 ? "Already current." : `${count} value${count === 1 ? "" : "s"} applied.`,
     noKeys: "This profile covers no keys, so nothing changes.",
     sharedKeys: (count: number) => `Shares ${count} key${count === 1 ? "" : "s"}.`,
     error: "The profile could not be applied",
