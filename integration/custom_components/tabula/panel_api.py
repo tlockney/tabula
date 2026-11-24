@@ -27,7 +27,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
 
-from . import DeviceRecord, TabulaHub
+from . import DeviceRecord, TabulaHub, logs
 from .const import DOMAIN, PROTOCOL_VERSION, SCHEMA_VERSION
 
 # The reported state keys the device list shows (PROTOCOL.md 4.4). Absent keys
@@ -181,3 +181,5 @@ def async_register(hass: HomeAssistant) -> None:
     """Register the panel commands (called once from async_setup)."""
     websocket_api.async_register_command(hass, ws_panel_info)
     websocket_api.async_register_command(hass, ws_panel_devices)
+    # P5.4's log view: the snapshot and the live stream commands (logs.py).
+    logs.async_register(hass)
