@@ -446,7 +446,7 @@ class TLPClient:
         """Send one chunk per 10 ms of audio until the turn closes (4.10).
 
         The device stops itself at `VOICE_TURN_MAX_S` so a lost `voice_stop`
-        cannot stream forever (ADR 0031 item 4).
+        cannot stream forever (ADR 0032 item 4).
         """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self.voice_turn_max_s

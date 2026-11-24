@@ -161,7 +161,7 @@ class MockDevice:
             # the capability is always declared, so the flag is always sent;
             # off until a settings push switches it on (P7.1, ADR 0030)
             "wake_word_active": False,
-            # idle, or listening while a turn streams (P7.2, ADR 0031 item 5)
+            # idle, or listening while a turn streams (P7.2, ADR 0032 item 5)
             "voice_turn": "idle",
             "app_version": __version__,
         }
@@ -361,7 +361,7 @@ class MockDevice:
         )
 
     def _cmd_voice_stop(self, args: dict[str, Any]) -> None:
-        # Idempotent (ADR 0031 item 4): the client stops streaming either way.
+        # Idempotent (ADR 0032 item 4): the client stops streaming either way.
         self.end_voice_turn(args["turn_id"], "command")
 
     def _cmd_screen(self, args: dict[str, Any]) -> None:

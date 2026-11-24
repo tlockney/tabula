@@ -5,7 +5,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/** The binary voice frame (PROTOCOL.md 4.10, ADR 0031). */
+/** The binary voice frame (PROTOCOL.md 4.10, ADR 0032). */
 class VoiceFrameTest {
     private val pcm = ByteArray(VoiceFrame.CHUNK_BYTES) { (it % 251).toByte() }
 
