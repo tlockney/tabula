@@ -178,6 +178,11 @@ class DeviceRecord:
     # offline device shows when it was last connected across an HA restart.
     # Not a state key and not a setting: the device never reports it.
     last_seen: str | None = None
+    # P5.6: the settings revision the device last reported, kept when its
+    # session ends so an offline member can still be compared with HA's copy
+    # (ADR 0035 item 7: drift is revision-based, and an offline device has no
+    # session to ask). Persisted like last_seen.
+    last_settings_revision: int | None = None
 
     @property
     def connected(self) -> bool:
@@ -214,6 +219,9 @@ class DeviceRecord:
             # When the device was last connected (P5.2); the Tabularium shows
             # it for an offline device.
             "last_seen": self.last_seen,
+            # The settings revision it last reported (P5.6): drift needs it
+            # while the device is offline.
+            "last_settings_revision": self.last_settings_revision,
         }
 
 
@@ -308,6 +316,7 @@ class TabulaHub:
                 schema_version=info.get("schema_version"),
                 last_capture=info.get("last_capture"),
                 last_seen=info.get("last_seen"),
+                last_settings_revision=info.get("last_settings_revision"),
             )
             self.devices[record.device_id] = record
             self.by_user[record.user_id] = record.device_id
@@ -506,6 +515,7 @@ class TabulaHub:
         record.current = session
         session.registered = True
         session.reported_settings_revision = frame["settings_revision"]
+        record.last_settings_revision = frame["settings_revision"]
         # Superseded sessions stay in place: every frame they send answers
         # "superseded" until the socket closes (PROTOCOL.md 4.9). The close
         # itself runs the cleanup registered under the register's msg id, so
@@ -587,6 +597,8 @@ class TabulaHub:
                 # offline device shows it across an HA restart (F-MGT-06 leaves
                 # all other health to diagnostics).
                 record.last_seen = _utc_now()
+                if session.reported_settings_revision is not None:
+                    record.last_settings_revision = session.reported_settings_revision
                 self._persist()
                 # A device that drops out of a call ends it for the other side
                 # instead of leaving someone talking to nobody (P9.2, guard 4).

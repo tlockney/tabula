@@ -167,3 +167,104 @@ export interface SettingsSaveResult {
   /** The keys that did not, each with the schema's reason. */
   rejected: { key: string; reason: string }[];
 }
+
+/** One profile, as `tabula/panel_profiles` lists it (P5.6). */
+export interface PanelProfile {
+  profile_id: string;
+  name: string;
+  /** The built-in empty profile: no keys, permanent, read-only (ADR 0035 item 9). */
+  builtin: boolean;
+  /** Flat shared key -> value; only keys the profile covers. */
+  values: Record<string, unknown>;
+  /** The device ids assigned to it. */
+  members: string[];
+  member_count: number;
+}
+
+/** One device the Profiles section can assign, with its exceptions. */
+export interface PanelProfileDevice {
+  device_id: string;
+  ha_device_id: string;
+  name: string | null;
+  connected: boolean;
+  last_seen: string | null;
+  settings_schema_version: number | null;
+  profile_id: string;
+  /** Flat key -> value for keys this device overrides (ADR 0035 item 1). */
+  overrides: Record<string, unknown>;
+}
+
+/** `tabula/panel_profiles`. */
+export interface PanelProfiles {
+  schema_version: number;
+  profiles: PanelProfile[];
+  assignments: Record<string, string>;
+  devices: PanelProfileDevice[];
+}
+
+/** What applying a profile did to one member. */
+export interface ProfileApplyResult {
+  device_id: string;
+  connected: boolean;
+  /** The keys written, as flat schema keys; empty when it was current. */
+  applied: string[];
+  /** The revision saved, or null when nothing changed. */
+  revision: number | null;
+}
+
+/** `tabula/panel_profile_save`. */
+export interface ProfileSaveResult {
+  profile: PanelProfile;
+  applied: ProfileApplyResult[];
+  rejected: { key: string; reason: string }[];
+}
+
+/** One covered key against one member's current value. */
+export interface ProfileDiffRow {
+  device_id: string;
+  key: string;
+  profile_value: unknown;
+  /** What would be written: the override when one shadows the key. */
+  effective_value: unknown;
+  device_value: unknown;
+  device_unset: boolean;
+  overridden: boolean;
+  changes: boolean;
+}
+
+/** `tabula/panel_profile_diff`. */
+export interface ProfileDiff {
+  rows: ProfileDiffRow[];
+  changing: number;
+}
+
+/** One drifting member (ADR 0035 item 7). */
+export interface DriftMember {
+  device_id: string;
+  ha_device_id: string;
+  name: string | null;
+  profile_id: string;
+  profile_name: string;
+  connected: boolean;
+  last_seen: string | null;
+  ha_revision: number;
+  device_revision: number | null;
+  /** HA's revision minus the reported one; null when the device never reported. */
+  revisions_behind: number | null;
+  drifted: boolean;
+  overrides: { key: string; value: unknown }[];
+  /** Covered keys the device's settings schema predates. */
+  behind_keys: string[];
+}
+
+/** `tabula/panel_drift`. */
+export interface DriftReport {
+  members: DriftMember[];
+}
+
+/** `tabula/panel_profile_override`. */
+export interface ProfileOverrideResult {
+  device_id: string;
+  overrides: Record<string, unknown>;
+  applied: ProfileApplyResult;
+}

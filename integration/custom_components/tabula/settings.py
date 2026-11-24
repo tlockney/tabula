@@ -463,6 +463,9 @@ async def async_push_settings(hub: TabulaHub, record: DeviceRecord) -> int | Non
     # Only on the session that took it: a reconnect mid-push reports its own.
     if applied is not None and session is not None and record.current is session:
         session.reported_settings_revision = applied
+        # Kept on the record too: drift compares an offline member's last
+        # report (P5.6, ADR 0035 item 7).
+        record.last_settings_revision = applied
     return applied
 
 

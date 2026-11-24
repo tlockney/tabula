@@ -678,3 +678,116 @@ td a {
   border-left: 3px solid var(--primary-color, #03a9f4);
   background: var(--secondary-background-color, #f5f5f5);
 }
+
+/* --- P5.6: the Profiles section and the device page's assignment control --- */
+
+.toolbar-link {
+  margin-left: auto;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.status-line {
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.9rem;
+}
+
+.route.profiles table .actions,
+.profile-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.badge.builtin,
+.badge.drift {
+  background: var(--secondary-background-color, #f5f5f5);
+  color: var(--secondary-text-color, #727272);
+}
+
+.profile-editor {
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 6px;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+
+.profile-name {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.profile-name input {
+  flex: 1;
+  max-width: 24rem;
+}
+
+.profile-key {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+
+.profile-key label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex: 1;
+}
+
+.profile-key input[type="number"],
+.profile-key input[type="text"],
+.profile-key select,
+.profile-key textarea {
+  max-width: 16rem;
+}
+
+.profile-preview,
+.profile-overrides {
+  margin-top: 1rem;
+}
+
+.profile-preview table {
+  width: auto;
+  min-width: 60%;
+}
+
+.profile-preview tr.changes td {
+  font-weight: 600;
+}
+
+.drift {
+  margin-top: 2rem;
+}
+
+.drift table .note {
+  margin-left: 0.5rem;
+}
+
+.profile-assign {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--divider-color, #e0e0e0);
+  padding-top: 0.75rem;
+}
+
+.profile-assign ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0;
+}
+
+.profile-assign li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+
+.rejected-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+}

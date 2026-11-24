@@ -48,6 +48,14 @@ async def call(client: WS, payload: dict[str, Any], msg_id: int = 1) -> dict[str
     return result["result"]
 
 
+@pytest.fixture(name="runtime")
+async def runtime_fixture(hass_setup, hub) -> TabulaHub:
+    """The live hub runtime (the ``hub`` fixture is the config entry)."""
+    runtime = TabulaHub.get(hass_setup)
+    assert runtime is not None
+    return runtime
+
+
 def store(hass: HomeAssistant) -> ProfileStore:
     hub = TabulaHub.get(hass)
     assert hub is not None
@@ -162,7 +170,7 @@ def test_group_unknown_and_invalid_values_are_refused():
         {"screen_brightness": 40, "identity_name": "Sneaky", "connection_ha_url": "http://x"},
     ],
 )
-async def test_stored_profile_never_holds_a_forbidden_key(hass_setup, hub, values):
+async def test_stored_profile_never_holds_a_forbidden_key(hass_setup, runtime, values):
     """A save keeps the shared keys and refuses the rest, whatever was sent."""
     profile, rejected = await store(hass_setup).async_save(
         profile_id=None, name="Smuggled", values=values
@@ -178,7 +186,7 @@ async def test_stored_profile_never_holds_a_forbidden_key(hass_setup, hub, value
 # --- the store's own rules ---------------------------------------------------
 
 
-async def test_names_are_unique(hass_setup, hub):
+async def test_names_are_unique(hass_setup, runtime):
     """Two profiles cannot share a name, in any case or spacing."""
     await store(hass_setup).async_save(profile_id=None, name="Kitchen", values={})
     with pytest.raises(ProfileError) as error:
@@ -186,7 +194,7 @@ async def test_names_are_unique(hass_setup, hub):
     assert "already named" in str(error.value)
 
 
-async def test_empty_profile_is_permanent_and_reserved(hass_setup, hub):
+async def test_empty_profile_is_permanent_and_reserved(hass_setup, runtime):
     """The built-in profile cannot be renamed, saved over or deleted."""
     profiles = store(hass_setup).profiles()
     assert profiles[0].profile_id == EMPTY_PROFILE_ID
@@ -199,7 +207,7 @@ async def test_empty_profile_is_permanent_and_reserved(hass_setup, hub):
         await store(hass_setup).async_delete(EMPTY_PROFILE_ID)
 
 
-async def test_a_profile_with_no_keys_is_valid(hass_setup, hub):
+async def test_a_profile_with_no_keys_is_valid(hass_setup, runtime):
     """An empty named profile is a legal document (F-MGT-04's starting point)."""
     profile, rejected = await store(hass_setup).async_save(
         profile_id=None, name="Nothing yet", values={}
@@ -208,7 +216,7 @@ async def test_a_profile_with_no_keys_is_valid(hass_setup, hub):
     assert rejected == []
 
 
-async def test_delete_moves_members_to_the_empty_profile(hass_setup, hub, paired):
+async def test_delete_moves_members_to_the_empty_profile(hass_setup, runtime, paired):
     """Removing a profile leaves its members unassigned and writes nothing."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -227,32 +235,32 @@ async def test_delete_moves_members_to_the_empty_profile(hass_setup, hub, paired
 # --- effective values and overrides ------------------------------------------
 
 
-async def test_effective_values_use_the_profile_then_the_override(hass_setup, hub, paired):
+async def test_effective_values_use_the_profile_then_the_override(hass_setup, runtime, paired):
     """Covered keys come from the profile; an override shadows its own key."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
     assert store(hass_setup).effective_values(paired.device_id) == {"screen_brightness": 40}
 
     # A per-device write of a covered key becomes an override (ADR 0035 item 1).
-    await async_set_settings(hub, paired.device_id, {"screen_brightness": 30})
+    await async_set_settings(runtime, paired.device_id, {"screen_brightness": 30})
     assert store(hass_setup).overrides(paired.device_id) == {"screen_brightness": 30}
     assert store(hass_setup).effective_values(paired.device_id) == {"screen_brightness": 30}
 
     # Submitting the profile's own value clears the override.
-    await async_set_settings(hub, paired.device_id, {"screen_brightness": 40})
+    await async_set_settings(runtime, paired.device_id, {"screen_brightness": 40})
     assert store(hass_setup).overrides(paired.device_id) == {}
 
 
-async def test_uncovered_keys_keep_their_own_value(hass_setup, hub, paired):
+async def test_uncovered_keys_keep_their_own_value(hass_setup, runtime, paired):
     """A profile writes only the keys it covers."""
-    await async_set_settings(hub, paired.device_id, {"screen_brightness": 55})
+    await async_set_settings(runtime, paired.device_id, {"screen_brightness": 55})
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screensaver_idle_timeout": 120})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
     assert store(hass_setup).stored_value(paired.device_id, "screen_brightness") == 55
     assert store(hass_setup).stored_value(paired.device_id, "screensaver_idle_timeout") == 120
 
 
-async def test_profile_save_leaves_an_override_alone(hass_setup, hub, paired):
+async def test_profile_save_leaves_an_override_alone(hass_setup, runtime, paired):
     """Saving a profile applies to every member except an overridden key."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -270,7 +278,7 @@ async def test_profile_save_leaves_an_override_alone(hass_setup, hub, paired):
     assert store(hass_setup).stored_value(paired.device_id, "screen_brightness") == 70
 
 
-async def test_override_needs_a_covered_key(hass_setup, hub, paired):
+async def test_override_needs_a_covered_key(hass_setup, runtime, paired):
     """A key the profile does not cover cannot be overridden."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -278,7 +286,7 @@ async def test_override_needs_a_covered_key(hass_setup, hub, paired):
         await store(hass_setup).async_set_override(paired.device_id, "screensaver_idle_timeout", 5)
 
 
-async def test_reassignment_drops_overrides_that_shadow_nothing(hass_setup, hub, paired):
+async def test_reassignment_drops_overrides_that_shadow_nothing(hass_setup, runtime, paired):
     """An override exists only while the assigned profile covers its key."""
     first, _ = await make_profile(hass_setup, "One", {"screen_brightness": 40})
     second, _ = await make_profile(
@@ -297,12 +305,16 @@ async def test_reassignment_drops_overrides_that_shadow_nothing(hass_setup, hub,
 # --- one revision, only what changes ----------------------------------------
 
 
-async def test_apply_writes_only_differing_keys_as_one_revision(hass_setup, hub, paired):
+async def test_apply_writes_only_differing_keys_as_one_revision(hass_setup, runtime, paired):
     """Two covered keys, one differing: one revision, one key in the write."""
-    await async_set_settings(hub, paired.device_id, {"screen_brightness": 40})
+    await async_set_settings(
+        runtime,
+        paired.device_id,
+        {"screen_brightness": 40, "screensaver_idle_timeout": 300},
+    )
     revision = settings_store(hass_setup).revision(paired.device_id)
     profile, _ = await make_profile(
-        hass_setup, "Kitchen", {"screen_brightness": 40, "screensaver_idle_timeout": 300}
+        hass_setup, "Kitchen", {"screen_brightness": 40, "screensaver_idle_timeout": 600}
     )
 
     result = await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -312,7 +324,7 @@ async def test_apply_writes_only_differing_keys_as_one_revision(hass_setup, hub,
     assert settings_store(hass_setup).revision(paired.device_id) == revision + 1
 
 
-async def test_apply_twice_writes_nothing_the_second_time(hass_setup, hub, paired):
+async def test_apply_twice_writes_nothing_the_second_time(hass_setup, runtime, paired):
     """An already-current member costs no revision and no push."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -328,13 +340,22 @@ async def test_apply_twice_writes_nothing_the_second_time(hass_setup, hub, paire
 # --- diff and drift ----------------------------------------------------------
 
 
-async def test_diff_lists_covered_keys_and_whether_they_change(hass_setup, hub, paired):
+async def test_diff_lists_covered_keys_and_whether_they_change(hass_setup, runtime, paired):
     """Each member row carries the profile value, the current value and the change."""
-    await async_set_settings(hub, paired.device_id, {"screen_brightness": 40})
-    profile, _ = await make_profile(
-        hass_setup, "Kitchen", {"screen_brightness": 55, "screensaver_idle_timeout": 300}
+    await async_set_settings(
+        runtime,
+        paired.device_id,
+        {"screen_brightness": 40, "screensaver_idle_timeout": 300},
     )
+    # An empty profile first: assigning it writes nothing, so the values can be
+    # compared before any push has moved them.
+    profile, _ = await make_profile(hass_setup, "Kitchen", {})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
+    profile, _ = await store(hass_setup).async_save(
+        profile_id=profile.profile_id,
+        name="Kitchen",
+        values={"screen_brightness": 55, "screensaver_idle_timeout": 300},
+    )
 
     rows = {row["key"]: row for row in store(hass_setup).diff(profile_id=profile.profile_id)}
 
@@ -346,7 +367,7 @@ async def test_diff_lists_covered_keys_and_whether_they_change(hass_setup, hub, 
     assert rows["screensaver_idle_timeout"]["changes"] is False
 
 
-async def test_diff_previews_unsaved_values(hass_setup, hub, paired):
+async def test_diff_previews_unsaved_values(hass_setup, runtime, paired):
     """An unsaved document diffs against the members without storing anything."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -359,24 +380,24 @@ async def test_diff_previews_unsaved_values(hass_setup, hub, paired):
     assert store(hass_setup).get(profile.profile_id).values == {"screen_brightness": 40}
 
 
-async def test_drift_reports_a_stale_revision(hass_setup, hub, paired):
+async def test_drift_reports_a_stale_revision(hass_setup, runtime, paired):
     """A member whose reported revision is behind HA's is drifted."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
-    record = hub.devices[paired.device_id]
-    record.current = FakeSession(reported=1)  # type: ignore[assignment]
+    record = runtime.devices[paired.device_id]
+    record.current = FakeSession(reported=0)  # type: ignore[assignment]
 
     rows = store(hass_setup).drift()
 
     assert [row["device_id"] for row in rows] == [paired.device_id]
     row = rows[0]
     assert row["drifted"] is True
-    assert row["revisions_behind"] == settings_store(hass_setup).revision(paired.device_id) - 1
+    assert row["revisions_behind"] == settings_store(hass_setup).revision(paired.device_id)
     assert row["connected"] is True  # a session exists; the revision is what is stale
     record.current = None
 
 
-async def test_drift_reports_an_override(hass_setup, hub, paired):
+async def test_drift_reports_an_override(hass_setup, runtime, paired):
     """A member that intentionally differs is listed with its exception."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -389,7 +410,7 @@ async def test_drift_reports_an_override(hass_setup, hub, paired):
     assert rows[0]["drifted"] is False
 
 
-async def test_drift_reports_a_key_the_device_is_too_old_for(hass_setup, hub, paired):
+async def test_drift_reports_a_key_the_device_is_too_old_for(hass_setup, runtime, paired):
     """A covered key newer than the device's schema is named, not silently lost."""
     schema = SettingsSchema()
     newer = [
@@ -401,7 +422,7 @@ async def test_drift_reports_a_key_the_device_is_too_old_for(hass_setup, hub, pa
     key = newer[0]
     profile, _ = await make_profile(hass_setup, "Kitchen", {key: _value_for(key)})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
-    hub.devices[paired.device_id].schema_version = 1
+    runtime.devices[paired.device_id].schema_version = 1
 
     rows = store(hass_setup).drift()
 
@@ -438,7 +459,7 @@ class FakeSession:
 
 
 async def test_panel_profiles_lists_profiles_assignments_and_devices(
-    hass_setup, server, hub, session, paired
+    hass_setup, server, runtime, session, paired
 ):
     """One snapshot: the empty profile, the assignments and the assignable devices."""
     await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
@@ -455,7 +476,7 @@ async def test_panel_profiles_lists_profiles_assignments_and_devices(
     assert [device["device_id"] for device in payload["devices"]] == [paired.device_id]
 
 
-async def test_panel_commands_are_admin_only(hass_setup, server, hub, session, paired):
+async def test_panel_commands_are_admin_only(hass_setup, server, runtime, session, paired):
     """Every profile command refuses a non-admin, like the rest of the panel."""
     user = await hass_setup.auth.async_create_system_user("Not an admin")
     refresh = await hass_setup.auth.async_create_refresh_token(user)
@@ -491,7 +512,7 @@ async def test_panel_commands_are_admin_only(hass_setup, server, hub, session, p
     assert {result["error"]["code"] for result in results} == {"unauthorized"}
 
 
-async def test_panel_save_assign_sync_and_override(hass_setup, server, hub, session, paired):
+async def test_panel_save_assign_sync_and_override(hass_setup, server, runtime, session, paired):
     """The panel's write commands do what the store does, and report per key."""
     client = await admin_client(hass_setup, server, session)
     try:
@@ -572,7 +593,7 @@ async def test_panel_save_assign_sync_and_override(hass_setup, server, hub, sess
         await client.close()
 
 
-async def test_panel_payloads_carry_no_credential(hass_setup, server, hub, session, paired):
+async def test_panel_payloads_carry_no_credential(hass_setup, server, runtime, session, paired):
     """No panel payload mentions a token, a user id or a pairing detail."""
     client = await admin_client(hass_setup, server, session)
     try:
@@ -592,7 +613,7 @@ async def test_panel_payloads_carry_no_credential(hass_setup, server, hub, sessi
 # --- services ----------------------------------------------------------------
 
 
-async def test_assign_profile_service(hass_setup, server, hub, session, paired):
+async def test_assign_profile_service(hass_setup, server, runtime, session, paired):
     """tabula.assign_profile names a profile and targets devices (F-MGT-02)."""
     await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await hass_setup.services.async_call(
@@ -605,7 +626,7 @@ async def test_assign_profile_service(hass_setup, server, hub, session, paired):
     assert settings_store(hass_setup).value(paired.device_id, "screen_brightness") == 40
 
 
-async def test_sync_profile_service(hass_setup, server, hub, session, paired):
+async def test_sync_profile_service(hass_setup, server, runtime, session, paired):
     """tabula.sync_profile applies a saved profile by name or id."""
     profile, _ = await make_profile(hass_setup, "Kitchen", {"screen_brightness": 40})
     await store(hass_setup).async_assign(paired.device_id, profile.profile_id)
@@ -618,7 +639,7 @@ async def test_sync_profile_service(hass_setup, server, hub, session, paired):
     assert settings_store(hass_setup).value(paired.device_id, "screen_brightness") == 40
 
 
-async def test_unknown_profile_is_a_service_error(hass_setup, server, hub, session, paired):
+async def test_unknown_profile_is_a_service_error(hass_setup, server, runtime, session, paired):
     """A name that matches no profile raises instead of doing nothing."""
     from homeassistant.exceptions import ServiceValidationError
 
@@ -672,7 +693,7 @@ async def _until(predicate, timeout: float = 10.0) -> None:
             await asyncio.sleep(0.02)
 
 
-async def test_two_devices_share_a_profile(hass_setup, server, hub, session, paired, tmp_path):
+async def test_two_devices_share_a_profile(hass_setup, server, runtime, session, paired, tmp_path):
     """A profile save reaches both members; an offline one catches up later (step 10)."""
     second = await pair_device(hass_setup, server, uid(), name="Hallway Tablet")
     one, one_client, one_task = await connect_mock(hass_setup, server, paired, tmp_path, "one")
@@ -691,7 +712,7 @@ async def test_two_devices_share_a_profile(hass_setup, server, hub, session, pai
         two_client.stop()
         await asyncio.wait_for(two_task, 10)
         running.remove((two_client, two_task))
-        await _until(lambda: hub.devices[second.device_id].current is None)
+        await _until(lambda: runtime.devices[second.device_id].current is None)
         saved, _ = await store(hass_setup).async_save(
             profile_id=profile.profile_id, name="Household", values={"screen_brightness": 65}
         )
@@ -714,7 +735,7 @@ async def test_two_devices_share_a_profile(hass_setup, server, hub, session, pai
 
 
 async def test_older_schema_member_gets_the_keys_it_knows(
-    hass_setup, server, hub, session, paired, tmp_path
+    hass_setup, server, runtime, session, paired, tmp_path
 ):
     """A member on an older schema takes what it can and drifts on the rest."""
     schema = SettingsSchema()
@@ -726,7 +747,7 @@ async def test_older_schema_member_gets_the_keys_it_knows(
     assert newer
     device, client, task = await connect_mock(hass_setup, server, paired, tmp_path, "old")
     try:
-        assert hub.devices[paired.device_id].schema_version == 1
+        assert runtime.devices[paired.device_id].schema_version == 1
         profile, _ = await make_profile(
             hass_setup,
             "Household",

@@ -466,15 +466,20 @@ class ProfileStore:
         its members are the default targets. A row carries the profile's value,
         the member's current value and whether the write would change it.
         """
+        profile = self.get(profile_id) if profile_id is not None else None
+        if profile_id is not None and profile is None:
+            raise ProfileError([f"No profile has the id {profile_id!r}."])
         if values is None:
-            profile = self.get(profile_id or EMPTY_PROFILE_ID)
-            if profile is None:
-                raise ProfileError([f"No profile has the id {profile_id!r}."])
-            covered = profile.values
-            targets = device_ids if device_ids is not None else self.members(profile.profile_id)
+            covered = profile.values if profile is not None else {}
         else:
             covered, _ = split_shared_values(self._hub.settings.schema, values)
-            targets = device_ids if device_ids is not None else []
+        if device_ids is not None:
+            targets = device_ids
+        elif profile is not None:
+            # A preview still diffs against the profile's members.
+            targets = self.members(profile.profile_id)
+        else:
+            targets = []
         rows: list[dict[str, Any]] = []
         for device_id in targets:
             overrides = self.overrides(device_id)
@@ -512,8 +517,14 @@ class ProfileStore:
                 continue
             record = self._hub.devices[device_id]
             stored = self._hub.settings.get(device_id)
+            # A live session's report is the newest; otherwise the last one it
+            # gave before the socket closed (persisted, ADR 0035 item 7).
             session = record.current
-            reported = session.reported_settings_revision if session is not None else None
+            reported = (
+                session.reported_settings_revision
+                if session is not None
+                else record.last_settings_revision
+            )
             ha_revision = stored.revision if stored is not None else 0
             device_schema = record.schema_version
             behind_keys = [
