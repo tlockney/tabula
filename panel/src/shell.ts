@@ -82,9 +82,10 @@ export class TabulaPanel extends LitElement {
     }
   }
 
+  /** The error action: ask again. `updated()` will not fire without a new hass. */
   private readonly retry = (): void => {
-    this.requested = false;
-    this.requestUpdate();
+    this.requested = true;
+    void this.load();
   };
 
   protected override render(): TemplateResult {

@@ -31,10 +31,23 @@ BUNDLE = "// Tabula panel bundle\n"
 
 @pytest.fixture
 def bundle(monkeypatch, tmp_path):
-    """A staged bundle, in place before the hub entry loads (router is open then)."""
+    """A staged bundle, in place before the hub entry loads."""
     root = tmp_path / "panel"
     root.mkdir()
     (root / panel.BUNDLE_FILE).write_text(BUNDLE)
+    monkeypatch.setattr(panel, "BUNDLE_DIR", root)
+    return root
+
+
+@pytest.fixture
+def no_bundle(monkeypatch, tmp_path):
+    """An empty bundle directory, so the test never depends on the working tree.
+
+    Listed before `hub` in the test signature: the entry is what registers the
+    panel, so the missing bundle has to be in place before it loads.
+    """
+    root = tmp_path / "no-bundle"
+    root.mkdir()
     monkeypatch.setattr(panel, "BUNDLE_DIR", root)
     return root
 
@@ -74,6 +87,22 @@ async def test_registers_the_panel_once_with_the_expected_arguments(hass_setup, 
     assert panel_config(hass_setup) is registered
 
 
+async def test_registers_when_the_server_started_before_the_hub(
+    hass_setup, bundle, server, session, hub
+):
+    """The other fixture order: the HTTP app is serving before setup_entry runs.
+
+    aiohttp freezes the router once the runner starts, so this is the order that
+    made `make check` fail on a checkout with a built bundle (P5.1 review). HA's
+    own start() disables that freeze for components discovered after boot; the
+    test server does the same, and the panel registers either way.
+    """
+    assert panel_config(hass_setup) is not None
+    async with session.get(f"{server}{PANEL_STATIC_URL_PATH}/panel.js") as response:
+        assert response.status == 200
+        assert await response.text() == BUNDLE
+
+
 async def test_static_path_serves_the_staged_bundle(hass_setup, bundle, hub, server, session):
     """The bundle is reachable at the URL the panel's module_url names."""
     url = f"{server}{PANEL_STATIC_URL_PATH}/panel.js"
@@ -83,14 +112,12 @@ async def test_static_path_serves_the_staged_bundle(hass_setup, bundle, hub, ser
 
 
 async def test_skips_registration_with_a_warning_when_the_bundle_is_absent(
-    hass_setup, hub, tmp_path, monkeypatch, caplog
+    hass_setup, no_bundle, hub, caplog
 ):
     """A checkout that has not run `make panel` still loads the hub."""
     assert panel_config(hass_setup) is None
-    empty = tmp_path / "missing"
-    empty.mkdir()
-    monkeypatch.setattr(panel, "BUNDLE_DIR", empty)
-    hass_setup.data.pop(DATA_PANEL_REGISTERED, None)
+    assert DATA_PANEL_REGISTERED not in hass_setup.data
+    hass_setup.data.pop(DATA_PANEL_STATIC_PATH, None)
 
     with caplog.at_level(logging.WARNING, logger=panel.__name__):
         assert await panel.async_register_panel(hass_setup) is False

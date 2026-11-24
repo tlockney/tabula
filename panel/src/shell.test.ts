@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import "./panel";
+import type { TabulaPanel } from "./shell";
 import { LANDING_ROUTE, routeOf } from "./shell";
 import type { HomeAssistant, PanelInfo } from "./types";
 
@@ -18,16 +19,21 @@ function fakeHass(
   };
 }
 
-/** Mount the element with a fake hass and wait for the panel_info round trip. */
-async function mount(hass: HomeAssistant): Promise<HTMLElement> {
-  const element = document.createElement("tabula-panel");
-  element.hass = hass;
-  document.body.append(element);
-  await customElements.whenDefined("tabula-panel");
+/** Let the element's pending request and re-render settle. */
+async function settle(element: TabulaPanel): Promise<void> {
   for (let i = 0; i < 5; i += 1) {
     await Promise.resolve();
     await element.updateComplete;
   }
+}
+
+/** Mount the element with a fake hass and wait for the panel_info round trip. */
+async function mount(hass: HomeAssistant): Promise<TabulaPanel> {
+  const element = document.createElement("tabula-panel") as TabulaPanel;
+  element.hass = hass;
+  document.body.append(element);
+  await customElements.whenDefined("tabula-panel");
+  await settle(element);
   return element;
 }
 
@@ -66,6 +72,30 @@ describe("tabula-panel shell", () => {
     const alert = element.shadowRoot?.querySelector("[role='alert']");
     expect(alert?.textContent ?? "").toContain("The Tabularium could not load its status");
     expect(alert?.textContent ?? "").toContain("unauthorized");
+  });
+
+  it("asks again when the error action is used", async () => {
+    let calls = 0;
+    const element = await mount(
+      fakeHass(async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error("network down");
+        }
+        return INFO;
+      }),
+    );
+    expect(calls).toBe(1);
+
+    const button = element.shadowRoot?.querySelector("button");
+    expect(button).not.toBeNull();
+    button?.click();
+    await settle(element);
+
+    expect(calls).toBe(2);
+    const text = element.shadowRoot?.textContent ?? "";
+    expect(text).toContain("Tabula 0.1.0 · protocol 1 · settings schema 3 · 2 devices");
+    expect(element.shadowRoot?.querySelector("[role='alert']")).toBeNull();
   });
 
   it("renders the shell without a status line before hass arrives", async () => {
