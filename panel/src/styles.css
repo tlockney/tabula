@@ -240,3 +240,214 @@ td a {
 .tab-body {
   padding: 8px 0;
 }
+
+/* P5.3: the settings editor. Controls use HA's own custom properties so the
+   form matches the frontend's theme instead of shipping its own palette. */
+.settings-status {
+  margin: 8px 0 12px;
+}
+
+.settings-status .meta {
+  color: var(--secondary-text-color, #727272);
+  margin: 0;
+}
+
+.settings-status .dirty {
+  color: var(--warning-color, #ff9800);
+  margin: 4px 0 0;
+}
+
+.save-summary p {
+  margin: 4px 0 0;
+}
+
+.save-summary .applied {
+  color: var(--success-color, #4caf50);
+}
+
+.save-summary .rejected-all,
+.save-summary .rejected-count {
+  color: var(--error-color, #db4437);
+}
+
+.error-line {
+  color: var(--error-color, #db4437);
+  margin: 4px 0 0;
+}
+
+.settings-form {
+  display: grid;
+  gap: 16px;
+  margin: 8px 0 16px;
+}
+
+.settings-section {
+  border-top: 1px solid var(--divider-color, #e0e0e0);
+  padding-top: 12px;
+}
+
+.settings-section h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.settings-group {
+  margin: 8px 0;
+}
+
+.settings-group > summary {
+  cursor: pointer;
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+.settings-form .field {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 14px;
+}
+
+.settings-form .field > label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.settings-form .field input[type="text"],
+.settings-form .field input[type="number"],
+.settings-form .field select {
+  max-width: 320px;
+  padding: 6px 8px;
+  border: 1px solid var(--divider-color, #c4c4c4);
+  border-radius: 4px;
+  background: var(--card-background-color, #ffffff);
+  color: var(--primary-text-color, #212121);
+}
+
+.settings-form .field input.slider {
+  max-width: 320px;
+}
+
+.settings-form .field input.swatch {
+  width: 40px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--divider-color, #c4c4c4);
+  border-radius: 4px;
+  background: none;
+}
+
+.settings-form .field .help {
+  margin: 0;
+  color: var(--secondary-text-color, #727272);
+  font-size: 0.8rem;
+  max-width: 60ch;
+}
+
+.settings-form .field .behind {
+  margin: 0;
+  color: var(--warning-color, #ff9800);
+  font-size: 0.8rem;
+}
+
+.settings-form .field .problem,
+.settings-form .field .rejected {
+  margin: 0;
+  color: var(--error-color, #db4437);
+  font-size: 0.8rem;
+}
+
+.settings-form .field .rejected .tag {
+  font-weight: 500;
+}
+
+.settings-form .field.invalid input,
+.settings-form .field.invalid select {
+  border-color: var(--error-color, #db4437);
+}
+
+.settings-form .rows {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-form .row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-form .row.slot {
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.settings-form .row .slot-field {
+  display: grid;
+  gap: 2px;
+  font-size: 0.8rem;
+  color: var(--secondary-text-color, #727272);
+}
+
+.settings-form .row .inherit-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.settings-form .row .inherit-row input[type="number"] {
+  width: 80px;
+}
+
+.settings-form .row-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.settings-form .row-actions button,
+.settings-form button.add {
+  background: var(--card-background-color, #ffffff);
+  border: 1px solid var(--divider-color, #c4c4c4);
+  border-radius: 4px;
+  color: var(--primary-text-color, #212121);
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.settings-form button.add:disabled,
+.settings-form .row-actions button:disabled,
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.actions button {
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--divider-color, #c4c4c4);
+  background: var(--card-background-color, #ffffff);
+  color: var(--primary-text-color, #212121);
+  cursor: pointer;
+}
+
+.actions button.primary {
+  background: var(--primary-color, #03a9f4);
+  border-color: var(--primary-color, #03a9f4);
+  color: var(--text-primary-color, #ffffff);
+}
+
+.settings-section h3 .section-dirty {
+  margin-left: 8px;
+  color: var(--warning-color, #ff9800);
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: none;
+}

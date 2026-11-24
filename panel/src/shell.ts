@@ -7,6 +7,8 @@ import {
   type TemplateResult,
 } from "lit";
 import styles from "./styles.css?inline";
+// Registers <tabula-settings-editor>; the Settings tab mounts it (P5.3).
+import "./settings-editor";
 import {
   DEVICE_TABS,
   TABULA_EVENT_TYPES,
@@ -62,6 +64,7 @@ export class TabulaPanel extends LitElement {
     takenAt: { state: true },
     filter: { state: true },
     tab: { state: true },
+    settingsDirty: { state: true },
   };
 
   /** Home Assistant's frontend interface, set by the panel host. */
@@ -75,6 +78,8 @@ export class TabulaPanel extends LitElement {
   declare takenAt?: string;
   declare filter: string;
   declare tab: DeviceTab;
+  /** The Settings tab holds unsaved changes: leaving the page asks first. */
+  declare settingsDirty: boolean;
 
   private requested = false;
   private subscribing = false;
@@ -86,23 +91,54 @@ export class TabulaPanel extends LitElement {
     this.route = routeOf(window.location?.hash ?? "");
     this.filter = "";
     this.tab = "overview";
+    this.settingsDirty = false;
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("hashchange", this.onHashChange);
+    window.addEventListener("beforeunload", this.onBeforeUnload);
     document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   override disconnectedCallback(): void {
     window.removeEventListener("hashchange", this.onHashChange);
+    window.removeEventListener("beforeunload", this.onBeforeUnload);
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.unsubscribeFromEvents();
     super.disconnectedCallback();
   }
 
   private readonly onHashChange = (): void => {
-    this.route = routeOf(window.location?.hash ?? "");
+    const next = routeOf(window.location?.hash ?? "");
+    if (next !== this.route && !this.confirmLeave()) {
+      // Stay: put the address back where the panel is (a dirty settings form).
+      window.history.replaceState(null, "", this.route);
+      return;
+    }
+    this.settingsDirty = false;
+    this.route = next;
+  };
+
+  /** A dirty settings form asks before the browser unloads the panel. */
+  private readonly onBeforeUnload = (event: BeforeUnloadEvent): void => {
+    if (!this.settingsDirty) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  };
+
+  /** True when it is fine to leave the current page (clean, or confirmed). */
+  private confirmLeave(): boolean {
+    if (!this.settingsDirty) {
+      return true;
+    }
+    return window.confirm(STRINGS.settings.discard);
+  }
+
+  private readonly onSettingsDirty = (event: CustomEvent<boolean>): void => {
+    this.settingsDirty = event.detail;
   };
 
   /** Coming back to the tab is the refresh trigger; there is no timer (P5.2). */
@@ -207,6 +243,10 @@ export class TabulaPanel extends LitElement {
   };
 
   private readonly selectTab = (tab: DeviceTab): void => {
+    if (tab !== this.tab && !this.confirmLeave()) {
+      return;
+    }
+    this.settingsDirty = false;
     this.tab = tab;
   };
 
@@ -399,9 +439,22 @@ export class TabulaPanel extends LitElement {
         ${
           this.tab === "overview"
             ? this.renderOverview(device)
-            : html`<p class="tab-body">${STRINGS.tabPending}</p>`
+            : this.tab === "settings"
+              ? this.renderSettings(device)
+              : html`<p class="tab-body">${STRINGS.tabPending}</p>`
         }
       </section>
+    `;
+  }
+
+  /** The Settings tab: the schema-driven editor (P5.3), keyed by device id. */
+  private renderSettings(device: PanelDevice): TemplateResult {
+    return html`
+      <tabula-settings-editor
+        .hass=${this.hass}
+        .deviceId=${device.device_id}
+        @dirty-changed=${this.onSettingsDirty}
+      ></tabula-settings-editor>
     `;
   }
 

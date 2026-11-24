@@ -109,6 +109,47 @@ def _validator() -> Draft202012Validator:
 
 
 @lru_cache(maxsize=1)
+def _leaf_schemas() -> dict[str, dict[str, Any]]:
+    """The schema's own subschema for every leaf, keyed by flat key.
+
+    A property subschema is self-contained (the schema uses no ``$ref``), so it
+    can validate one submitted value on its own: that is what gives the panel's
+    editor per-key reasons instead of one whole-document failure (P5.3).
+    """
+    out: dict[str, dict[str, Any]] = {}
+
+    def walk(properties: dict[str, Any], path: tuple[str, ...]) -> None:
+        for name, prop in properties.items():
+            if prop.get("type") == "object":
+                walk(prop["properties"], (*path, name))
+                continue
+            out["_".join((*path, name))] = prop
+
+    walk(_document()["properties"], ())
+    return out
+
+
+@lru_cache(maxsize=1)
+def _group_keys() -> frozenset[str]:
+    """Flat keys that name a group object rather than a leaf.
+
+    The editor submits leaves only; a group key is a wrong shape, not an
+    unknown key, and the two get different reasons (P5.3).
+    """
+    out: set[str] = set()
+
+    def walk(properties: dict[str, Any], path: tuple[str, ...]) -> None:
+        for name, prop in properties.items():
+            if prop.get("type") != "object":
+                continue
+            out.add("_".join((*path, name)))
+            walk(prop["properties"], (*path, name))
+
+    walk(_document()["properties"], ())
+    return frozenset(out)
+
+
+@lru_cache(maxsize=1)
 def _fields() -> tuple[SettingsField, ...]:
     """Every leaf property of the schema, in document order."""
     doc = _document()
@@ -205,6 +246,24 @@ class SettingsSchema:
             if field_.key == key:
                 return field_
         raise KeyError(key)
+
+    def group_keys(self) -> frozenset[str]:
+        """Flat keys that name a group, not a leaf (the editor never submits one)."""
+        return _group_keys()
+
+    def validate_value(self, key: str, value: Any) -> list[str]:
+        """Validate one leaf's submitted value against its own subschema.
+
+        Returns the problem messages, empty when the value is acceptable;
+        KeyError when the schema has no leaf with that key. This is what lets
+        one save reject one key and apply the rest (F-MGT-01): a whole-document
+        check would fail all of them together.
+        """
+        self.field(key)  # KeyError for an unknown key, before any validation
+        validator = Draft202012Validator(
+            _leaf_schemas()[key], format_checker=Draft202012Validator.FORMAT_CHECKER
+        )
+        return [error.message for error in validator.iter_errors(value)]
 
     def since(self, key: str) -> int:
         """The settings schema version that introduced this leaf (P3.2).
