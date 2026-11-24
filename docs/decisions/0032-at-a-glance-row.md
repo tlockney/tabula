@@ -84,8 +84,12 @@ at the time of writing.)
    `config/entity_registry/list_for_display` and followed by its
    `unit_of_measurement`, e.g. `21.5 °C`; anything else uses HA's own state
    text (the translation chain `DisplayData.stateText` already implements).
-   This lives in the JVM feed (`GlanceFeed`), so the formatting is tested
-   without a device.
+   The half-up applies to the parsed double, not to the decimal text: HA's
+   frontend formats a JS number, so a value written `2.675` — stored just below
+   the halfway point — shows `2.67` at precision 2 on HA's own screens. Tabula
+   rounds the same value to agree with the screen it sits next to, and
+   `GlanceFeedTest` pins it. This lives in the JVM feed (`GlanceFeed`), so the
+   formatting is tested without a device.
 8. **Night is consumed through `NightState`, not polled.** The view registers a
    listener while a run shows and removes it on dismissal; a transition
    re-renders the row. `screensaver.night_mode`'s `hide_overlays` hides the row

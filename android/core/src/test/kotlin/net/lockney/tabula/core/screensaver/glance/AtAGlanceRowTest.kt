@@ -147,6 +147,20 @@ class AtAGlanceRowTest {
     }
 
     @Test
+    fun `a hidden-names row that does not fit reports no truncation`() {
+        // names are not drawn, so there is nothing to shorten (ADR 0032 item 5)
+        val row = planner.plan(
+            settings("lock.front", "cover.garage", hideNames = true),
+            listOf(lock, garage),
+            ScreensaverMode.CLOCK,
+            widthPx = 150f,
+        )
+        assertTrue(row.visible)
+        assertEquals(Constants.GLANCE_MIN_TEXT_SCALE, row.textScale)
+        assertFalse(row.truncateNames)
+    }
+
+    @Test
     fun `hide-names widens the values and the scale setting sizes the row`() {
         val shown = planner.plan(settings("lock.front"), listOf(lock), ScreensaverMode.CLOCK, widthPx = 1000f)
         val hidden = planner.plan(

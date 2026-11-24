@@ -65,6 +65,17 @@ class GlanceFeedTest {
     }
 
     @Test
+    fun `an exact-half decimal rounds the way HA's own display does`() {
+        // ADR 0032 item 7: the parsed double is rounded, as HA's frontend rounds
+        // a JS number, so 2.675 (stored just below the halfway point) shows 2.67
+        val precise = display.copy(
+            registry = mapOf("sensor.money" to DisplayData.RegistryDisplay(precision = 2)),
+        )
+        val states = mapOf("sensor.money" to state("sensor.money", "2.675", """{"friendly_name":"Money"}"""))
+        assertEquals("2.67", GlanceFeed.of(states, precise, listOf("sensor.money")).single().value)
+    }
+
+    @Test
     fun `a blank value drops out and a missing or unavailable entity still shows`() {
         val states = mapOf(
             "sensor.temp" to state("sensor.temp", ""),

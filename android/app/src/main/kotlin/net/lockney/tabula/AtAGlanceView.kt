@@ -26,7 +26,7 @@ import net.lockney.tabula.core.settings.AtAGlanceStyle
  * screensaver.
  *
  * What to draw is decided by [net.lockney.tabula.core.screensaver.glance.AtAGlanceRow]
- * (ADR 0031): this view only turns a plan into views - the pill or the plain
+ * (ADR 0032): this view only turns a plan into views - the pill or the plain
  * style, the icon box's active/inactive color, the night scheme and the
  * configured scale and font.
  */
@@ -152,7 +152,7 @@ class AtAGlanceView(context: Context) : LinearLayout(context) {
         }
 
     /**
-     * One chip's icon (ADR 0031 item 2): a curated vector glyph drawn on a
+     * One chip's icon (ADR 0032 item 1): a curated vector glyph drawn on a
      * canvas, inside a rounded box whose color carries the active/inactive
      * state the way HA's tiles do. [GlanceGlyph.Initial] draws the entity
      * domain's initial instead, the fallback for icons outside the set.

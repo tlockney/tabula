@@ -21,7 +21,7 @@ import net.lockney.tabula.core.screensaver.glance.GlanceValue
  * - an entity HA does not have shows as `Unavailable`, and a blank state stays
  *   blank, so the row drops that chip until the entity has a value;
  * - the icon is the `mdi:` name HA would show, resolved by
- *   [DisplayData.icon] and drawn by the row's curated glyph set (ADR 0031);
+ *   [DisplayData.icon] and drawn by the row's curated glyph set (ADR 0032 item 1);
  * - a state HA's tiles draw as "off" (`off`, `unknown`, `unavailable`,
  *   `locked`, `closed`, and [Constants.GLANCE_INACTIVE_STATES]) is inactive:
  *   the icon box takes the inactive color, the text never changes (F-AAG-02).
@@ -49,6 +49,11 @@ object GlanceFeed {
         val precision = display.precision(entity.entityId)
         val number = raw.toDoubleOrNull()
         if (number == null || precision == null) return display.stateText(entity)
+        // the rounding choice (ADR 0032 item 7): round the parsed double, the way
+        // HA's frontend rounds a JS number, so a text value that sits exactly
+        // halfway between two decimals goes to its binary neighbour, as HA's
+        // display does - "2.675" at precision 2 shows 2.67, not 2.68. Rounding
+        // the decimal text instead would disagree with the HA screen next to it
         val rounded = BigDecimal(number).setScale(precision, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
         val unit = entity.attributes.string("unit_of_measurement")
         return if (unit.isNullOrBlank()) rounded else "$rounded $unit"

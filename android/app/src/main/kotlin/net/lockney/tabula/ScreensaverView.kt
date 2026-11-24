@@ -104,7 +104,7 @@ class ScreensaverView(
     /** The At a Glance row (F-AAG-01, packet P3.6), drawn over the mode on screen. */
     private val glance = AtAGlanceView(context)
 
-    /** Measures row text with the size it is about to be drawn at (ADR 0031 item 1). */
+    /** Measures row text with the size it is about to be drawn at (ADR 0032 item 2). */
     private val glancePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glancePlanner = AtAGlanceRow { text, sizePx ->
         glancePaint.textSize = sizePx
@@ -117,7 +117,7 @@ class ScreensaverView(
     private var glanceValues: List<GlanceValue> = emptyList()
     private var removeNightListener: (() -> Unit)? = null
 
-    /** Where the row last drew, and the offset under the date line it rests at (ADR 0031 item 4). */
+    /** Where the row last drew, and the offset under the date line it rests at (ADR 0032 item 4). */
     private var glancePlacement: GlancePlacement? = null
     private var glanceBaseY = 0f
     private var glanceShiftX = 0f
@@ -256,11 +256,15 @@ class ScreensaverView(
         glanceSettings = settings
         glanceNight = nightMode
         glanceValues = values
+        // the fit's widths must be the drawn widths: measure with the row's own
+        // font family, not the paint's default (ADR 0032 item 2)
+        glancePaint.typeface = runCatching { Typeface.create(settings.font, Typeface.NORMAL) }
+            .getOrElse { Typeface.DEFAULT }
         renderGlance()
     }
 
     /**
-     * Plan and draw the row for the mode on screen (F-AAG-01, ADR 0031). The
+     * Plan and draw the row for the mode on screen (F-AAG-01, ADR 0032). The
      * plan decides visibility, placement, wrapping, the shrink and the night
      * scheme; this method only feeds it the panel's width, the night flag and
      * the settings, and logs what it drew - one line per chip, which is the
@@ -308,7 +312,7 @@ class ScreensaverView(
         }
     }
 
-    /** Set the row's gravity and margins for its placement (F-AAG-01, ADR 0031 item 4). */
+    /** Set the row's gravity and margins for its placement (F-AAG-01, ADR 0032 item 4). */
     private fun placeGlance() {
         val placement = glancePlacement ?: return
         val edge = (Constants.GLANCE_ROW_EDGE_SP * resources.displayMetrics.density).roundToInt()
@@ -330,7 +334,7 @@ class ScreensaverView(
     /**
      * The row's resting offset: centered on black, under the clock's date line
      * otherwise, plus the run's pixel shift so the row moves with the face
-     * (F-SSV-22, ADR 0031 item 4).
+     * (F-SSV-22, ADR 0032 item 9).
      */
     private fun applyGlanceOffset() {
         glance.translationX = glanceShiftX

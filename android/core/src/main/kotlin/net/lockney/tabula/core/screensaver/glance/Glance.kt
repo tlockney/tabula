@@ -24,7 +24,7 @@ data class GlanceValue(
 )
 
 /**
- * The glyph a chip draws (ADR 0031). HA's icons are `mdi:` names; Tabula
+ * The glyph a chip draws (ADR 0032 item 1). HA's icons are `mdi:` names; Tabula
  * draws a curated vector set for the things the row is for — doors, locks,
  * garage, lights and the common sensors — and falls back to the entity
  * domain's initial for everything else. No icon font is bundled.
@@ -46,7 +46,7 @@ enum class GlanceGlyph {
     Initial,
 }
 
-/** Where the row sits for the mode on screen (F-AAG-01, ADR 0031). */
+/** Where the row sits for the mode on screen (F-AAG-01, ADR 0032 item 4). */
 enum class GlancePlacement {
     /** Centered on black mode. */
     Centered,
@@ -70,7 +70,7 @@ data class GlanceChip(
 )
 
 /**
- * What the row draws for the current mode, settings and data (ADR 0031).
+ * What the row draws for the current mode, settings and data (ADR 0032 item 5).
  *
  * [lines] holds at most two lines (one in landscape) of [GlanceChip]s in
  * display order; [textScale] is the shrink factor applied to the text after
@@ -94,7 +94,7 @@ data class GlanceRow(
     }
 }
 
-/** The row's per-scale pixel metrics (ADR 0002's At a Glance constants; ADR 0031 item 1). */
+/** The row's per-scale pixel metrics (ADR 0002's At a Glance constants; ADR 0032 item 2). */
 data class GlanceMetrics(
     val valuePx: Float,
     val namePx: Float,
@@ -108,7 +108,7 @@ data class GlanceMetrics(
          * The metrics for an `at_a_glance.scale` percent on a panel of
          * [density]. Sizes are sp × density × scale: the row is laid out for
          * the panel, so Android's user font scale is deliberately not applied
-         * (ADR 0031 item 1).
+         * (ADR 0032 item 2).
          */
         fun of(scalePercent: Int, density: Float): GlanceMetrics {
             val scale = (scalePercent / 100f) * density
@@ -125,7 +125,7 @@ data class GlanceMetrics(
 }
 
 /**
- * The At a Glance row's layout (F-AAG-01 to F-AAG-03, packet P3.6; ADR 0031).
+ * The At a Glance row's layout (F-AAG-01 to F-AAG-03, packet P3.6; ADR 0032).
  *
  * Plain JVM: the view supplies a text [measure] (text width in px at a px
  * size) and the panel's width, so ordering, placement, wrapping, shrinking
@@ -170,9 +170,15 @@ class AtAGlanceRow(private val measure: (text: String, sizePx: Float) -> Float) 
             if (scale <= Constants.GLANCE_MIN_TEXT_SCALE) break
             scale = max(Constants.GLANCE_MIN_TEXT_SCALE, scale - Constants.GLANCE_SHRINK_STEP)
         }
-        // the floor: truncate names to each chip's share of its line
+        // the floor: truncate names to each chip's share of their line. With
+        // names hidden there is nothing to shorten, and the flag reports only a
+        // name that actually changed (the hardware check reads it)
         val share = sharePx(chips.size, maxLines, widthPx, metrics.chipGapPx)
-        val truncated = chips.map { chip -> chip.copy(name = ellipsize(chip, metrics, share)) }
+        val truncated = if (settings.hideNames) {
+            chips
+        } else {
+            chips.map { chip -> chip.copy(name = ellipsize(chip, metrics, share)) }
+        }
         val lines = pack(truncated, metrics, Constants.GLANCE_MIN_TEXT_SCALE, widthPx, settings.hideNames)
         val kept = lines.take(maxLines)
         return GlanceRow(
@@ -180,13 +186,13 @@ class AtAGlanceRow(private val measure: (text: String, sizePx: Float) -> Float) 
             placement = placement,
             lines = kept,
             textScale = Constants.GLANCE_MIN_TEXT_SCALE,
-            truncateNames = true,
+            truncateNames = chips.zip(truncated).any { (before, after) -> before.name != after.name },
             night = night,
             omitted = chips.size - kept.sumOf { it.size },
         )
     }
 
-    /** Where [mode] draws the row, or null for the modes that never show it (F-AAG-01, ADR 0031 item 4). */
+    /** Where [mode] draws the row, or null for the modes that never show it (F-AAG-01, ADR 0032 item 4). */
     fun placement(mode: ScreensaverMode?): GlancePlacement? = when (mode) {
         null, ScreensaverMode.CALENDAR, ScreensaverMode.DIM -> null
         ScreensaverMode.BLACK -> GlancePlacement.Centered
@@ -284,7 +290,7 @@ class AtAGlanceRow(private val measure: (text: String, sizePx: Float) -> Float) 
     }
 }
 
-/** `mdi:` names and domains to the drawn glyph set (ADR 0031 item 2). */
+/** `mdi:` names and domains to the drawn glyph set (ADR 0032 item 1). */
 object GlanceIcons {
     private val byIcon: Map<String, GlanceGlyph> = mapOf(
         "lock" to GlanceGlyph.Lock,

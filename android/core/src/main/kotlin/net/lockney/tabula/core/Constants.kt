@@ -216,7 +216,7 @@ object Constants {
     /**
      * GLANCE_PILL_BG: the chip pill's body, ARGB (P3.6, F-AAG-02). Half-opaque
      * black so the white text and the icon keep contrast over any clock
-     * background image (ADR 0031 item 3).
+     * background image (the value is chosen in ADR 0002, At a Glance (P3.6)).
      */
     val GLANCE_PILL_BG: Int = 0x8C000000.toInt()
 
@@ -244,7 +244,7 @@ object Constants {
     /**
      * GLANCE_INACTIVE_STATES: the states an HA tile draws in its inactive
      * color (F-AAG-02). Everything else - `on`, `open`, `unlocked`, a sensor's
-     * number - is active (ADR 0031 item 3).
+     * number - is active (ADR 0032 item 3).
      */
     val GLANCE_INACTIVE_STATES: Set<String> = setOf(
         "off",
