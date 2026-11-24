@@ -15,6 +15,15 @@ object Constants {
     /** LOG_MAX_LINES: most log lines in one tabula/log frame. */
     const val LOG_MAX_LINES = 200
 
+    /** LOG_MIN_INTERVAL: ms between two log frames; the protocol's 1 s floor. */
+    const val LOG_MIN_INTERVAL_MS = 1000L
+
+    /** LOG_SUBSCRIPTION_TTL: ms a log subscription lives without a refresh. */
+    const val LOG_SUBSCRIPTION_TTL_MS = 600_000L
+
+    /** LOG_BUFFER_LINES: lines the device's log ring holds (P5.4, ADR 0002). */
+    const val LOG_BUFFER_LINES = 2000
+
     /**
      * VOICE_CHUNK_BYTES: PCM bytes in one binary voice frame — 160 samples of
      * 16 kHz, 16-bit mono, 10 ms of audio (PROTOCOL.md 4.10, ADR 0002).
