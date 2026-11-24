@@ -118,6 +118,8 @@ class Tablet:
         self.paired = paired
         self.name = name
         self.commands: list[dict[str, Any]] = []
+        # Command replies for frames this test sent (the directory, P9.4).
+        self.replies: list[dict[str, Any]] = []
         # command name -> (code, message) for a NACK instead of ok.
         self.nack: dict[str, tuple[str, str]] = {}
         self._msg_id = 100
@@ -134,6 +136,8 @@ class Tablet:
             except (AssertionError, TimeoutError, ConnectionError):
                 return
             if frame.get("type") != "event":
+                # A reply to a command this tablet asked for, not a device frame.
+                self.replies.append(frame)
                 continue
             command = frame["event"]
             self.commands.append(command)
@@ -169,6 +173,22 @@ class Tablet:
         """Register again on the same socket, as a relaunched app does."""
         self._msg_id += 1
         await self.send(register_frame(self.paired, caps, msg_id=self._msg_id, kind=kind))
+
+    async def ask(self, message: dict[str, Any], timeout: float = 5.0) -> dict[str, Any]:
+        """Send one HA WebSocket command on this tablet's connection and wait for its reply.
+
+        The tablet's own reader keeps the reply (it only answers TLP commands),
+        so this is safe while the reader runs.
+        """
+        self._msg_id += 1
+        request = {"id": self._msg_id, **message}
+        await self.send(request)
+        async with asyncio.timeout(timeout):
+            while True:
+                for index, frame in enumerate(self.replies):
+                    if frame.get("id") == request["id"]:
+                        return self.replies.pop(index)
+                await asyncio.sleep(0.01)
 
     async def next_command(self, name: str, timeout: float = 5.0) -> dict[str, Any]:
         """The next command of that name, consumed from the record."""
@@ -1355,3 +1375,142 @@ async def test_options_flow_refuses_an_unusable_person_map(
     # The editor says what to fix, not just that something is wrong.
     assert "give one of area or device" in flow["description_placeholders"]["problems"]
     assert INTERCOM_PERSONS not in hub.options
+
+
+# --- the directory the device's intercom screen lists (P9.4) -----------------
+
+
+def set_area(hass: HomeAssistant, tablet: Tablet, name: str | None) -> str | None:
+    """Put a tablet in an HA area (or none), the way the owner would in the UI."""
+    areas = ar.async_get(hass)
+    devices = dr.async_get(hass)
+    area = areas.async_get_area_by_name(name) if name is not None else None
+    area_id = (area or areas.async_create(name)).id if name is not None else None
+    devices.async_update_device(tablet.paired.ha_device_id, area_id=area_id)
+    return area_id
+
+
+async def directory_of(tablet: Tablet) -> list[dict[str, Any]]:
+    """Ask the integration what this tablet's screen should list."""
+    reply = await tablet.ask({"type": "tabula/intercom_directory"})
+    assert reply["success"] is True, reply
+    return reply["result"]["devices"]
+
+
+async def test_the_directory_lists_the_other_tablets_by_area(
+    hass_setup, make_tablet
+) -> None:
+    """The screen's list: every other intercom tablet, labelled by area.
+
+    P9.4 item 1 and ADR 0025 decision 6: the label is the HA area name, and the
+    device name stands in when the tablet has no area. The entry carries the HA
+    device registry id the `intercom_start_request` needs (P9.1 Result item 10).
+    """
+    kitchen = await make_tablet("Kitchen frame")
+    bedroom = await make_tablet("Bedroom frame")
+    hall = await make_tablet("Hall frame")
+    set_area(hass_setup, kitchen, "Kitchen")
+    bedroom_area = set_area(hass_setup, bedroom, "Bedroom")
+    set_area(hass_setup, hall, None)
+
+    listed = await directory_of(kitchen)
+
+    assert [entry["name"] for entry in listed] == ["Bedroom frame", "Hall frame"]
+    assert listed[0] == {
+        "device_id": bedroom.paired.ha_device_id,
+        "name": "Bedroom frame",
+        "area_id": bedroom_area,
+        "area_name": "Bedroom",
+        "can_talk": True,
+        "in_call": False,
+    }
+    # No area: the device's own name is the label, and area_id is null rather
+    # than invented.
+    assert listed[1]["area_id"] is None
+    assert listed[1]["area_name"] is None
+    # The caller never lists itself.
+    assert kitchen.paired.ha_device_id not in [entry["device_id"] for entry in listed]
+
+
+async def test_a_tablet_in_the_caller_s_area_is_not_listed(hass_setup, make_tablet) -> None:
+    """Two tablets in one room cannot call each other (ADR 0025 consequences).
+
+    The integration refuses such a call and skips such a broadcast, so the
+    screen does not offer it: the same exclusion in both places.
+    """
+    parlour = await make_tablet("Parlour frame")
+    same_room = await make_tablet("Parlour side table")
+    upstairs = await make_tablet("Landing frame")
+    for tablet in (parlour, same_room):
+        set_area(hass_setup, tablet, "Parlour")
+    set_area(hass_setup, upstairs, "Landing")
+
+    listed = await directory_of(parlour)
+
+    assert [entry["name"] for entry in listed] == ["Landing frame"]
+
+
+async def test_a_listen_only_tablet_is_listed_and_says_it_cannot_talk_back(
+    hass_setup, make_tablet
+) -> None:
+    """A tablet without the microphone is still callable (ADR 0025 decision 7)."""
+    caller = await make_tablet("Kitchen frame")
+    quiet = await make_tablet("Quiet frame", caps=LISTEN_ONLY_CAPS)
+    set_area(hass_setup, caller, "Kitchen")
+    set_area(hass_setup, quiet, "Study")
+
+    listed = await directory_of(caller)
+
+    assert [(entry["name"], entry["can_talk"]) for entry in listed] == [("Quiet frame", False)]
+
+
+async def test_a_tablet_without_the_intercom_capability_is_neither_listed_nor_served(
+    hass_setup, make_tablet
+) -> None:
+    """Capability gating on both sides (PROTOCOL.md 4.5, ADR 0025 decision 7)."""
+    caller = await make_tablet("Kitchen frame")
+    await make_tablet("Old frame", caps=NO_INTERCOM_CAPS)
+    set_area(hass_setup, caller, "Kitchen")
+    # The old tablet declares no intercom at all, so it is not a neighbour...
+    assert await directory_of(caller) == []
+
+    # ... and it cannot ask for a directory of its own.
+    plain = await make_tablet("Spare frame", caps=NO_INTERCOM_CAPS)
+    reply = await plain.ask({"type": "tabula/intercom_directory"})
+    assert reply["success"] is False
+    assert reply["error"]["code"] == "not_supported"
+
+
+async def test_a_tablet_already_in_a_call_is_listed_as_busy(hass_setup, make_tablet) -> None:
+    """The screen can show who cannot be reached right now (P9.4 item 1)."""
+    caller = await make_tablet("Kitchen frame")
+    busy = await make_tablet("Bedroom frame")
+    looker = await make_tablet("Study frame")
+    set_area(hass_setup, caller, "Kitchen")
+    set_area(hass_setup, busy, "Bedroom")
+    set_area(hass_setup, looker, "Study")
+
+    await start_call(hass_setup, caller, busy)
+    assert active_calls(hass_setup) == 1
+
+    listed = await directory_of(looker)
+
+    assert [(entry["name"], entry["in_call"]) for entry in listed] == [
+        ("Bedroom frame", True),
+        ("Kitchen frame", True),
+    ]
+
+
+async def test_the_directory_refuses_a_connection_that_is_not_a_tablet(
+    hass_setup, server, session
+) -> None:
+    """An empty list means "nobody to call"; a stranger gets an error, not that."""
+    user = await hass_setup.auth.async_create_system_user("Somebody")
+    refresh = await hass_setup.auth.async_create_refresh_token(user)
+    client = await ws_connect(session, server, refresh.token)
+
+    reply = await client.reply({"id": 2, "type": "tabula/intercom_directory"})
+
+    assert reply["success"] is False
+    assert reply["error"]["code"] == "unknown_device"
+    await client.close()
