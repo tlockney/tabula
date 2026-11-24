@@ -102,10 +102,14 @@ describe("the log helpers", () => {
   });
 });
 
-async function mountLogs(hass: unknown, overrides: Partial<PanelLogs> = {}) {
+async function mountLogs(
+  hass: unknown,
+  overrides: Partial<PanelLogs> = {},
+  deviceOverrides: Partial<ReturnType<typeof device>> = {},
+) {
   const element = document.createElement("tabula-logs") as TabulaLogs;
   (element as unknown as { hass: unknown }).hass = hass;
-  (element as unknown as { device: unknown }).device = device();
+  (element as unknown as { device: unknown }).device = device(deviceOverrides);
   document.body.append(element);
   await customElements.whenDefined("tabula-logs");
   for (let i = 0; i < 8; i += 1) {
@@ -115,11 +119,16 @@ async function mountLogs(hass: unknown, overrides: Partial<PanelLogs> = {}) {
   return { element, snapshot: snapshot(overrides) };
 }
 
-/** A fake hass whose panel calls answer with one snapshot and one stream push. */
+/** A fake hass whose panel calls answer with one snapshot and a live stream. */
 function fakeHass(snapshotValue: PanelLogs, pushes: { lines?: PanelLogLine[] }[] = []) {
   const calls: { type: string }[] = [];
+  let sink: ((message: { lines?: PanelLogLine[] }) => void) | undefined;
   return {
     calls,
+    /** Fire one stream message at the mounted view, as HA would. */
+    push(lines: PanelLogLine[]) {
+      sink?.({ lines });
+    },
     callWS: async <T>(msg: { type: string }) => {
       calls.push(msg);
       return snapshotValue as T;
@@ -128,6 +137,7 @@ function fakeHass(snapshotValue: PanelLogs, pushes: { lines?: PanelLogLine[] }[]
       subscribeEvents: async () => async () => {},
       subscribeMessage: async <T>(callback: (message: T) => void, msg: { type: string }) => {
         calls.push(msg);
+        sink = callback as (message: { lines?: PanelLogLine[] }) => void;
         for (const push of pushes) {
           callback(push as T);
         }
@@ -167,8 +177,7 @@ describe("the logs view", () => {
   });
 
   it("pauses the view but keeps collecting, and releases on resume", async () => {
-    const pushes = [{ lines: [logLine({ message: "while paused" })] }];
-    const hass = fakeHass(snapshot(), pushes);
+    const hass = fakeHass(snapshot());
     const { element } = await mountLogs(hass);
 
     const pause = element.shadowRoot?.querySelector<HTMLButtonElement>("[data-pause]");
@@ -176,7 +185,10 @@ describe("the logs view", () => {
     await element.updateComplete;
     expect(element.paused).toBe(true);
     expect(element.shadowRoot?.querySelector(".log-note")?.textContent).toContain("Paused");
-    // The line is held, not shown.
+
+    // A line that arrives while paused is held, not shown.
+    hass.push([logLine({ message: "while paused" })]);
+    await element.updateComplete;
     expect(element.lines.map((line) => line.message)).not.toContain("while paused");
 
     pause?.click();
@@ -200,9 +212,7 @@ describe("the logs view", () => {
     const hass = fakeHass(
       snapshot({ connected: false, last_seen: "2026-11-24T20:00:00Z", lines: [] }),
     );
-    const { element } = await mountLogs(hass);
-    (element as unknown as { device: unknown }).device = device({ connected: false });
-    await element.updateComplete;
+    const { element } = await mountLogs(hass, {}, { connected: false });
 
     expect(hass.calls.map((call) => call.type)).toEqual(["tabula/panel_logs"]);
     expect(element.streaming).toBe(false);

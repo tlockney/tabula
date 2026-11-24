@@ -221,11 +221,12 @@ export class TabulaLogs extends LitElement {
   private async startStream(): Promise<void> {
     const hass = this.hass;
     const device = this.device;
-    if (!hass?.connection || !device || this.unsubscribe) {
+    const connection = hass?.connection;
+    if (!connection?.subscribeMessage || !device || this.unsubscribe) {
       return;
     }
     try {
-      this.unsubscribe = await hass.connection.subscribeMessage(
+      this.unsubscribe = await connection.subscribeMessage(
         (message: Partial<PanelLogs> & { lines?: PanelLogLine[] }) => this.onMessage(message),
         {
           type: "tabula/panel_logs_subscribe",
@@ -251,7 +252,10 @@ export class TabulaLogs extends LitElement {
     }
   }
 
-  private onMessage(message: { lines?: PanelLogLine[]; subscription?: { active: boolean; expires_at: string | null } }): void {
+  private onMessage(message: {
+    lines?: PanelLogLine[];
+    subscription?: { active: boolean; expires_at: string | null };
+  }): void {
     if (message.lines) {
       // Paused: keep collecting so resuming shows what was missed.
       if (this.paused) {
@@ -336,12 +340,15 @@ export class TabulaLogs extends LitElement {
     const shown = filterLines(this.lines, this.filter(), this.newestFirst).length;
     return html`
       <div class="log-status" role="status">
-        <span class=${this.streaming ? "badge streaming" : "badge paused"} data-state=${this.streaming ? "streaming" : "stopped"}>
+        <span
+          class=${this.streaming ? "badge streaming" : "badge paused"}
+          data-state=${this.streaming ? "streaming" : "stopped"}
+        >
           ${state}
         </span>
         <span class="counts" data-counts>
-          ${shown} ${LOG_STRINGS.shown} · ${this.lines.length}/${this.capacity || LOG_VIEW_MAX_LINES}
-          ${LOG_STRINGS.capacity}
+          ${shown} ${LOG_STRINGS.shown} ·
+          ${this.lines.length}/${this.capacity || LOG_VIEW_MAX_LINES} ${LOG_STRINGS.capacity}
         </span>
         <button type="button" ?disabled=${!device.connected} @click=${this.toggleStream}>
           ${this.streaming ? LOG_STRINGS.stop : LOG_STRINGS.stream}
@@ -356,7 +363,12 @@ export class TabulaLogs extends LitElement {
         <button type="button" @click=${() => (this.newestFirst = !this.newestFirst)} data-order>
           ${this.newestFirst ? LOG_STRINGS.newestFirst : LOG_STRINGS.oldestFirst}
         </button>
-        <button type="button" class=${this.paused ? "selected" : ""} @click=${this.togglePause} data-pause>
+        <button
+          type="button"
+          class=${this.paused ? "selected" : ""}
+          @click=${this.togglePause}
+          data-pause
+        >
           ${this.paused ? LOG_STRINGS.pause : LOG_STRINGS.follow}
         </button>
         <input
@@ -373,14 +385,15 @@ export class TabulaLogs extends LitElement {
           )}
         </select>
         ${LOG_LEVELS.map(
-          (level) => html`<button
-            type="button"
-            class=${this.levels.includes(level) ? "level selected" : "level"}
-            @click=${() => this.toggleLevel(level)}
-            data-level=${level}
-          >
-            ${level}
-          </button>`,
+          (level) =>
+            html`<button
+              type="button"
+              class=${this.levels.includes(level) ? "level selected" : "level"}
+              @click=${() => this.toggleLevel(level)}
+              data-level=${level}
+            >
+              ${level}
+            </button>`,
         )}
         <button type="button" @click=${this.clearView} data-clear>${LOG_STRINGS.clear}</button>
         <button type="button" @click=${this.download} data-download>${LOG_STRINGS.download}</button>
@@ -418,11 +431,12 @@ export class TabulaLogs extends LitElement {
     return html`
       <ol class="log-lines" data-count=${visible.length}>
         ${visible.map(
-          (line) => html`<li class=${lineClass(line)}>
-            <time>${line.ts}</time>
-            <span class="tag">${line.tag}</span>
-            <span class="message">${line.message}</span>
-          </li>`,
+          (line) =>
+            html`<li class=${lineClass(line)}>
+              <time>${line.ts}</time>
+              <span class="tag">${line.tag}</span>
+              <span class="message">${line.message}</span>
+            </li>`,
         )}
       </ol>
     `;

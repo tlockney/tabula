@@ -9,7 +9,10 @@ export interface HomeAssistant {
 export interface HassConnection {
   subscribeEvents(callback: (event: unknown) => void, eventType: string): Promise<UnsubscribeFunc>;
   /** HA's websocket subscription (`subscribe_events` and friends, P5.4). */
-  subscribeMessage?<T>(callback: (message: T) => void, msg: { type: string; [key: string]: unknown }): Promise<UnsubscribeFunc>;
+  subscribeMessage?<T>(
+    callback: (message: T) => void,
+    msg: { type: string; [key: string]: unknown },
+  ): Promise<UnsubscribeFunc>;
 }
 
 export type UnsubscribeFunc = () => Promise<void>;

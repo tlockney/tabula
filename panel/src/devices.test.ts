@@ -212,15 +212,20 @@ describe("device page", () => {
     expect(rows(element)).toEqual([ONLINE.ha_device_id, OFFLINE.ha_device_id]);
   });
 
-  it("switches tabs and keeps the later ones as placeholders", async () => {
+  it("switches tabs and keeps the ones with no view yet as placeholders", async () => {
     const element = await mount(fakeHass(responder([ONLINE])), deviceRoute(ONLINE.ha_device_id));
     const tabs = [...(element.shadowRoot?.querySelectorAll("[role='tab']") ?? [])];
     expect(tabs).toHaveLength(4);
 
-    (tabs[2] as HTMLElement).click();
+    // The settings tab has no view yet; the logs tab is P5.4's own element.
+    (tabs[1] as HTMLElement).click();
     await settle(element);
     expect(text(element)).toContain("This tab arrives in a later release.");
     expect(text(element)).not.toContain("Current page");
+
+    (tabs[2] as HTMLElement).click();
+    await settle(element);
+    expect(element.shadowRoot?.querySelector("tabula-logs")).toBeTruthy();
 
     (tabs[0] as HTMLElement).click();
     await settle(element);
