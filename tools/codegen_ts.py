@@ -327,7 +327,9 @@ class Codegen:
             )
             return f"{item_cls}[]", default
         element = self.item_type(path, items)
-        self.record(path, prop, "array", array_items="scalar", items=self.item_metadata(path, items))
+        self.record(
+            path, prop, "array", array_items="scalar", items=self.item_metadata(path, items)
+        )
         return f"{element}[]", default
 
     def item_metadata(self, path: str, items: dict[str, Any]) -> dict[str, Any]:
@@ -552,7 +554,7 @@ class Codegen:
             " * editors read this, so a schema bump needs no new UI code).",
             " */",
             "export interface SettingsArrayItems {",
-            '  /** The item type: a scalar, or an object with properties below. */',
+            "  /** The item type: a scalar, or an object with properties below. */",
             '  readonly type: "string" | "integer" | "boolean" | "object";',
             "  /** Scalar items: the regex each item must match; null when unrestricted. */",
             "  readonly pattern: string | null;",
@@ -567,10 +569,10 @@ class Codegen:
             "/**",
             " * One property of an array-of-objects leaf's items (the schedule's slots",
             " * today). `nullable` is the schema's base-or-null union: the editor's",
-            " * explicit \"inherit\" state (F-SSV-18).",
+            ' * explicit "inherit" state (F-SSV-18).',
             " */",
             "export interface SettingsItemProperty {",
-            "  /** The property's name inside each item, e.g. \"start\". */",
+            '  /** The property\'s name inside each item, e.g. "start". */',
             "  readonly name: string;",
             "  /** The property's type; an enum property is a string. */",
             '  readonly type: "string" | "integer" | "boolean";',
@@ -584,7 +586,7 @@ class Codegen:
             "  readonly maxLength: number | null;",
             "  /** JSON Schema regex a string must match; null when unrestricted. */",
             "  readonly pattern: string | null;",
-            "  /** True when the schema also allows null (the \"inherit\" state). */",
+            '  /** True when the schema also allows null (the "inherit" state). */',
             "  readonly nullable: boolean;",
             "  /** The property's default, or NO_DEFAULT when the schema sets none. */",
             "  readonly default:",
