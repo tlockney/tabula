@@ -7,8 +7,8 @@
 #
 # Registry only (AGENTS.md rule 7): each leg builds its own venv under
 # build/ha-matrix/<phacc> from a fresh PyPI resolution, and the locked project
-# environment is never touched: the phacc/ha-ffmpeg/mutagen pins are read from
-# integration/pyproject.toml into the leg's requirements file, and the phacc
+# environment is never touched: the phacc/ha-ffmpeg/mutagen/frontend pins are
+# read from integration/pyproject.toml into the leg's requirements file, and the phacc
 # pin is flipped there with a uv override file (uv's documented mechanism for
 # "test against a different version without changing the lockfile") rather
 # than by editing uv.lock. homeassistant, pytest and pytest-asyncio are
@@ -30,8 +30,11 @@ pinned_phacc=$(pin pytest-homeassistant-custom-component)
 [ -n "$pinned_phacc" ] || { echo "ha_matrix: phacc pin not found in integration/pyproject.toml" >&2; exit 2; }
 pinned_ffmpeg=$(pin ha-ffmpeg)
 pinned_mutagen=$(pin mutagen)
-[ -n "$pinned_ffmpeg" ] && [ -n "$pinned_mutagen" ] || {
-  echo "ha_matrix: ha-ffmpeg/mutagen pins not found in integration/pyproject.toml" >&2
+# home-assistant-frontend is a dev dependency, not a phacc pin: the frontend and
+# panel_custom components fail to set up without it (P5.1 registers a panel).
+pinned_frontend=$(pin home-assistant-frontend)
+[ -n "$pinned_ffmpeg" ] && [ -n "$pinned_mutagen" ] && [ -n "$pinned_frontend" ] || {
+  echo "ha_matrix: ha-ffmpeg/mutagen/home-assistant-frontend pins not found in integration/pyproject.toml" >&2
   exit 2
 }
 
@@ -45,6 +48,7 @@ cat > "$leg/requirements.txt" <<EOF
 pytest-homeassistant-custom-component==$pinned_phacc
 ha-ffmpeg==$pinned_ffmpeg
 mutagen==$pinned_mutagen
+home-assistant-frontend==$pinned_frontend
 jsonschema[format-nongpl]>=4.23
 EOF
 echo "pytest-homeassistant-custom-component==$phacc" > "$leg/override.txt"

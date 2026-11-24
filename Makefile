@@ -15,6 +15,7 @@ export UV_CONFIG_FILE := $(CURDIR)/tools/uv.toml
 # Same for the env-var forms of resolution settings.
 unexport UV_EXCLUDE_NEWER UV_RESOLUTION UV_PRERELEASE UV_FORK_STRATEGY
 NPM := npm --prefix website
+PANEL_NPM := npm --prefix panel
 
 .PHONY: help
 help: ## List targets
@@ -28,11 +29,12 @@ setup: ## Install pinned tools and dependencies (idempotent)
 	@tools/bootstrap.sh
 	$(UV) sync --locked --all-packages --all-groups
 	$(NPM) ci --no-fund --no-audit
+	$(PANEL_NPM) ci --no-fund --no-audit
 
 # --- Quality ---
 
 .PHONY: check
-check: lint frames test android site ## Everything CI checks
+check: lint frames test android site panel-check ## Everything CI checks
 
 .PHONY: lint
 lint: ## Lint, format check and repo policy checks
@@ -45,6 +47,7 @@ lint: ## Lint, format check and repo policy checks
 fmt: ## Apply formatting and auto-fixable lint
 	$(UV) run ruff format .
 	$(UV) run ruff check --fix .
+	$(PANEL_NPM) run format
 
 .PHONY: test
 test: ## Run tests (repo, mock device, integration incl. conformance against it)
@@ -109,15 +112,37 @@ voice-desk: ## Desk wake-word harness: Mac-made clips through the shipped model 
 		python tools/desk/wake_word.py $(if $(JSON),--json,)
 
 .PHONY: codegen
-codegen: ## Regenerate the Kotlin settings classes from the schema
+codegen: ## Regenerate the Kotlin and TypeScript settings classes from the schema
 	$(UV) run python tools/codegen.py
+	$(UV) run python tools/codegen_ts.py
+
+.PHONY: codegen-ts
+codegen-ts: ## Regenerate the panel's TypeScript settings module from the schema
+	$(UV) run python tools/codegen_ts.py
 
 .PHONY: codegen-drift
-codegen-drift: ## Fail if the generated Kotlin settings classes are stale
+codegen-drift: ## Fail if the generated Kotlin or TypeScript settings files are stale
 	$(UV) run python tools/codegen.py --check
+	$(UV) run python tools/codegen_ts.py --check
 
 .PHONY: android
 android: codegen-drift android-test ## Codegen drift check and Android unit tests
+
+# --- Tabularium panel (Vite + TypeScript + Lit 3; packet P5.1) ---
+
+.PHONY: panel
+panel: ## Build the panel bundle and stage it into the integration
+	$(PANEL_NPM) run build
+	rm -rf integration/custom_components/tabula/panel
+	cp -R build/panel integration/custom_components/tabula/panel
+
+.PHONY: panel-check
+panel-check: ## Panel Prettier check, ESLint, tsc, Vitest and bundle build
+	$(PANEL_NPM) run check
+
+.PHONY: panel-dev
+panel-dev: ## Rebuild the panel bundle on every change (then reload, see docs/DEVELOPMENT.md)
+	$(PANEL_NPM) run dev
 
 # --- Protocol ---
 
@@ -158,4 +183,4 @@ worktree: ## Create .worktrees/$(BRANCH) on a new branch from origin/main
 
 .PHONY: clean
 clean: ## Remove build output
-	rm -rf build
+	rm -rf build integration/custom_components/tabula/panel
