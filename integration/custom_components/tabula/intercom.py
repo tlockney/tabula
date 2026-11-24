@@ -171,9 +171,7 @@ class IntercomManager:
         # Whose id this is decides whether the caller needs `intercom_start`:
         # the integration mints it, or the device already knows its own call.
         started_by_integration = call_id is None
-        self._check_caller(
-            caller, mode, started_by_integration=started_by_integration
-        )
+        self._check_caller(caller, mode, started_by_integration=started_by_integration)
         if self.call_for_device(caller.device_id) is not None:
             raise _invalid("intercom_caller_busy", device=_label(caller))
         targets = self._select_targets(caller, callees, mode)
@@ -307,9 +305,10 @@ class IntercomManager:
         """
         if not {CAP_LISTEN, CAP_TALK} <= set(caller.capabilities):
             raise _invalid("intercom_caller_cannot_call", device=_label(caller))
-        if self._needs_start_frame(
-            mode, started_by_integration
-        ) and CAP_CALLER not in caller.capabilities:
+        if (
+            self._needs_start_frame(mode, started_by_integration)
+            and CAP_CALLER not in caller.capabilities
+        ):
             raise _invalid("intercom_caller_unsupported", device=_label(caller))
         if not caller.connected:
             raise _invalid("intercom_caller_offline", device=_label(caller))
@@ -526,9 +525,7 @@ class IntercomManager:
         """
         call_id = data["call_id"]
         if CAP_TALK not in record.capabilities:
-            await self._async_refuse_started(
-                record, call_id, f"it does not declare {CAP_TALK}"
-            )
+            await self._async_refuse_started(record, call_id, f"it does not declare {CAP_TALK}")
             return
         callees = self._resolve_event_target(data)
         if data["mode"] == MODE_CALL and not callees:
@@ -539,9 +536,7 @@ class IntercomManager:
         except (HomeAssistantError, ServiceValidationError) as err:
             await self._async_refuse_started(record, call_id, str(err))
 
-    async def _async_refuse_started(
-        self, record: DeviceRecord, call_id: str, why: str
-    ) -> None:
+    async def _async_refuse_started(self, record: DeviceRecord, call_id: str, why: str) -> None:
         """End the call a device started that the integration refused.
 
         The device is in the call it minted, so it gets `intercom_end` on that
