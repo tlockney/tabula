@@ -14,6 +14,7 @@ import net.lockney.tabula.core.intercom.StartRequest
 import net.lockney.tabula.core.tlp.ErrorCode
 import net.lockney.tabula.core.tlp.EventFrame
 import net.lockney.tabula.core.tlp.IntercomEndArgs
+import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
 import net.lockney.tabula.core.tlp.IntercomRingArgs
 import net.lockney.tabula.core.tlp.IntercomStartArgs
@@ -69,6 +70,8 @@ class IntercomManager(
     scope: CoroutineScope,
     private val publishState: (StateDelta) -> Unit,
     private val onMicrophoneHold: (Boolean) -> Unit = {},
+    /** A call or broadcast arrived: the panel is woken (P9.4 item 2, F-SCR-14). */
+    private val onRing: () -> Unit = {},
     private val log: (String) -> Unit = {},
 ) : IntercomControl {
     private val channel = Channel<(Int) -> EventFrame>(EVENT_BUFFER)
@@ -136,16 +139,28 @@ class IntercomManager(
         return outcome
     }
 
+    /**
+     * The screen's start, with the same target rule the TLP path enforces
+     * (P9.4 item 1): an illegal shape never reaches the engine.
+     */
+    fun startRequest(request: StartRequest): StartOutcome =
+        start(request.mode, request.targetDeviceId, request.targetAreaId, request.peerName)
+
     /** Answers the ringing call, as the incoming-call screen's button does (P9.4). */
     fun answer(): Boolean = engine.answer()
 
     /** Declines the ringing call. */
     fun decline(): Boolean = engine.decline()
 
-    /** Hangs up the call this device is in, from the call screen's button. */
-    fun hangUp(): Boolean {
+    /**
+     * Hangs up the call this device is in, from the call screen's button or a
+     * broadcast's reply. One path for every end the screen starts, so it is
+     * logged like the rest (review of #176).
+     */
+    fun hangUp(reason: IntercomEndReason = IntercomEndReason.HANGUP): Boolean {
         val call = engine.info.value ?: return false
-        return engine.end(call.callId, net.lockney.tabula.core.tlp.IntercomEndReason.HANGUP)
+        log("intercom: hanging up ${call.callId} ($reason)")
+        return engine.end(call.callId, reason)
     }
 
     override fun start(args: IntercomStartArgs): CommandHandler.Reply {
@@ -169,6 +184,7 @@ class IntercomManager(
                 mode = args.mode,
             ),
         )
+        if (accepted) onRing()
         return if (accepted) {
             CommandHandler.Reply.Ok()
         } else {

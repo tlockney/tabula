@@ -37,7 +37,26 @@ object DashboardLinks {
      * navigation work; `restart-app` and `exit-app` are not linkable by design
      * (F-DSH-09), so they are absent here even though the app can run them.
      */
-    val TABULA_ACTIONS: Set<String> = setOf("reload", "clear-cache")
+    val TABULA_ACTIONS: Set<String> = setOf(
+        "reload",
+        "clear-cache",
+        // P9.4's intercom (ADR 0025 decision 6): the screen, and a call to a
+        // fixed device or area so a dashboard button, a markdown link or a
+        // gesture can ring one room without the list.
+        "intercom",
+        "intercom-call",
+        "intercom-area",
+        "intercom-broadcast",
+    )
+
+    /** An HA device registry id or an area id: both are one plain word. */
+    private val HA_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+    /** The actions that need an argument, and what it may look like. */
+    private val ACTION_ARGUMENT: Map<String, Regex> = mapOf(
+        "intercom-call" to HA_ID,
+        "intercom-area" to HA_ID,
+    )
 
     private val PACKAGE = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
@@ -49,9 +68,11 @@ object DashboardLinks {
             SCHEME_TABULA -> {
                 val action = uri.host.orEmpty()
                 val argument = uri.path?.trim('/')?.takeIf { it.isNotEmpty() }
+                val problem = argumentProblem(action, argument)
                 when {
                     action.isEmpty() -> LinkDecision.Blocked("empty tabula action")
                     action !in TABULA_ACTIONS -> LinkDecision.Blocked("Tabula has no '$action' action")
+                    problem != null -> LinkDecision.Blocked(problem)
                     else -> LinkDecision.RunTabulaAction(action, argument)
                 }
             }
@@ -65,6 +86,19 @@ object DashboardLinks {
                 else LinkDecision.Blocked("the link left the Home Assistant origin")
             else -> LinkDecision.Blocked("unsupported scheme '${uri.scheme ?: ""}'")
         }
+    }
+
+    /**
+     * Why a link's argument is not the one its action takes, or null when it
+     * is fine: an action that names a target needs exactly one id, so a bare
+     * `tabula://intercom-call` or a made-up argument is refused with a reason
+     * (F-DSH-09) instead of ringing the wrong thing.
+     */
+    private fun argumentProblem(action: String, argument: String?): String? {
+        val pattern = ACTION_ARGUMENT[action] ?: return null
+        if (argument == null) return "tabula://$action needs an id"
+        if (!pattern.matches(argument)) return "tabula://$action takes one id, not '$argument'"
+        return null
     }
 
     /** Whether [url] is on the HA origin — the gate for every external-auth answer. */

@@ -105,6 +105,21 @@ object TabulaStatus {
      */
     val entityDisplay = MutableStateFlow(net.lockney.tabula.ha.DisplayData())
 
+    /**
+     * What the intercom screen shows (P9.4): the directory, a ring, or the call
+     * that is up. Written by the service, which owns the engine; the activity
+     * draws it above every other overlay, the screensaver included.
+     */
+    val intercomScreen =
+        MutableStateFlow<net.lockney.tabula.core.intercom.IntercomScreen>(net.lockney.tabula.core.intercom.IntercomScreen.Closed)
+
+    /**
+     * A button on the intercom screen, or a dashboard link that opens it: the
+     * service acts on it, because the service is the engine's only owner.
+     */
+    val intercomAction =
+        MutableSharedFlow<net.lockney.tabula.core.intercom.IntercomAction>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
     /** A card was tapped; the service dismisses that card only (F-NTF-08). */
     val cardDismiss = MutableSharedFlow<String>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 

@@ -802,11 +802,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     registered here at component setup; they find the live hub per request and
     survive hub reloads (pairing.register_views, screenshots.register_views).
     """
-    from . import panel_api, screenshots, services, ws_api
+    from . import intercom_directory, panel_api, screenshots, services, ws_api
 
     ws_api.async_register(hass)
     panel_api.async_register(hass)
     services.async_register(hass)
+    # P9.4's screen lists the tablets it may call; the command answers a paired
+    # tablet on its own connection (not a TLP frame, so the protocol is untouched).
+    intercom_directory.async_register(hass)
     pairing.register_views(hass)
     screenshots.register_views(hass)
     return True

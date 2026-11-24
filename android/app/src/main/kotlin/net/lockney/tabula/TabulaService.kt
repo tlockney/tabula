@@ -84,6 +84,11 @@ class TabulaService : Service() {
     // The intercom (P9.3, ADR 0028): one engine for the app's lifetime, idle
     // until an explicit action or an HA ring, held by its wiring.
     private lateinit var intercom: IntercomManager
+    // The call engine itself, for the flows the screen reads (P9.4).
+    private lateinit var callEngine: net.lockney.tabula.core.intercom.CallEngine
+    // What the intercom screen draws (P9.4): the brain lives here, next to the
+    // engine, and the activity only renders what it publishes.
+    private lateinit var intercomUi: net.lockney.tabula.core.intercom.IntercomUi
     // Wake word (P7.1, ADR 0030): null until startVoice, off until the setting
     // says otherwise. The channel is the monitor's event source in the fan-in.
     private var voice: WakeWordMonitor? = null
@@ -168,13 +173,129 @@ class TabulaService : Service() {
                 AutoAnswerPolicy.of(store.settings.intercom).answers(caller)
             },
         )
+        callEngine = engine
         intercom = IntercomManager(
             engine = engine,
             scope = scope,
             publishState = { delta -> publishState?.invoke(delta) },
             onMicrophoneHold = { held -> micArbiter?.onCallHoldsMic(held) },
+            onRing = ::wakeForIntercom,
             log = { TabulaLog.i(TAG, it) },
         )
+        intercomUi = net.lockney.tabula.core.intercom.IntercomUi(
+            engine = engine,
+            start = intercom::startRequest,
+            canTalk = ::canTalk,
+            clockMs = android.os.SystemClock::elapsedRealtime,
+            hangUp = intercom::hangUp,
+        )
+        observeIntercom()
+    }
+
+    /**
+     * The screen's side of the intercom (packet P9.4): every engine change and
+     * every button re-renders, the directory is fetched when the screen opens,
+     * and the duration ticks once a second while a call is up.
+     */
+    private fun observeIntercom() {
+        scope.launch {
+            kotlinx.coroutines.flow.combine(callEngine.state, callEngine.info) { _, _ -> Unit }
+                .collect {
+                    // a broadcast's reply starts here, once the engine is idle
+                    intercomUi.onStateChanged()
+                    publishIntercom()
+                }
+        }
+        scope.launch {
+            TabulaStatus.intercomAction.collect { action ->
+                // Each press runs in its own coroutine: a fetch that waits on
+                // HA must never hold up the next press, Hang up included
+                // (review of #176)
+                scope.launch { handleIntercomAction(action) }
+            }
+        }
+        scope.launch {
+            // The visible clock: one refresh a second, and only while a call is
+            // up. Idle costs one comparison a second and publishes nothing.
+            while (true) {
+                kotlinx.coroutines.delay(net.lockney.tabula.core.Constants.INTERCOM_UI_TICK_MS.toLong())
+                if (callEngine.state.value != net.lockney.tabula.core.tlp.IntercomState.IDLE) {
+                    publishIntercom(intercomUi.tick())
+                }
+            }
+        }
+    }
+
+    /** One press from the screen or a dashboard link (P9.4). */
+    private suspend fun handleIntercomAction(
+        action: net.lockney.tabula.core.intercom.IntercomAction,
+    ) {
+        when (action) {
+            // Opening the list performs the action first, so the sheet is up
+            // at once with no peers and the answer fills it; a failed fetch
+            // leaves "HA is not reachable" on screen instead of nothing
+            // (review of #176, blocking 1)
+            net.lockney.tabula.core.intercom.IntercomAction.OpenDirectory -> {
+                intercomUi.perform(action)
+                publishIntercom()
+                fetchIntercomDirectory()
+            }
+
+            // A fixed target resolves its label from the list, so the call
+            // screen shows the same name the list would
+            is net.lockney.tabula.core.intercom.IntercomAction.CallTarget -> {
+                fetchIntercomDirectory()
+                intercomUi.perform(action)
+                publishIntercom()
+            }
+
+            else -> {
+                intercomUi.perform(action)
+                publishIntercom()
+            }
+        }
+    }
+
+    /** Ask HA for the tablets this device may call, over the device's own connection. */
+    private suspend fun fetchIntercomDirectory() {
+        val listed = net.lockney.tabula.ha.IntercomDirectory.fetch(haChannel.value)
+        if (listed == null) {
+            intercomUi.onDirectoryFailed(net.lockney.tabula.core.intercom.IntercomUi.UNREACHABLE)
+        } else {
+            intercomUi.onDirectory(
+                listed.map { entry ->
+                    net.lockney.tabula.core.intercom.IntercomPeer(
+                        deviceId = entry.deviceId,
+                        tabulaDeviceId = entry.tabulaDeviceId,
+                        name = entry.name,
+                        areaId = entry.areaId,
+                        areaName = entry.areaName,
+                        canTalk = entry.canTalk,
+                        inCall = entry.inCall,
+                    )
+                },
+            )
+        }
+        publishIntercom()
+    }
+
+    private fun publishIntercom(
+        screen: net.lockney.tabula.core.intercom.IntercomScreen = intercomUi.screen,
+    ) {
+        TabulaStatus.intercomScreen.value = screen
+    }
+
+    /**
+     * An incoming call wakes the panel (P9.4 item 2, F-SCR-14) and draws over
+     * whatever is showing, the screensaver included; it does not dismiss the
+     * screensaver, so a call at night does not leave the dashboard lit.
+     */
+    private fun wakeForIntercom() {
+        TabulaLog.i(TAG, "intercom: a call arrived; waking the panel")
+        screen.command(true, null)
+        // The ring names its caller by TLP id, and a broadcast's Reply needs
+        // that caller's HA id to call back: the list is what holds the pair
+        scope.launch { fetchIntercomDirectory() }
     }
 
     /** True while the app holds the microphone `intercom_talk` promises. */
@@ -473,6 +594,7 @@ class TabulaService : Service() {
         // a call cannot outlive the service: nothing is resumed on restart
         // (ADR 0028 guard 4)
         intercom.close()
+        TabulaStatus.intercomScreen.value = net.lockney.tabula.core.intercom.IntercomScreen.Closed
         screen.setOverride(null)
         TabulaStatus.screensaver.value = null
         TabulaStatus.notifications.value = emptyList()

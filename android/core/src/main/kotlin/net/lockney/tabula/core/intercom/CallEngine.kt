@@ -98,6 +98,13 @@ data class CallInfo(
      * which is what the microphone arbiter reads (ADR 0030, P9.3 item 8).
      */
     val usesMicrophone: Boolean,
+    /**
+     * True once the other side has answered, so the screen can stop saying
+     * "Calling". A callee's own answer sets it, a caller's relayed answer does,
+     * and ICE connecting sets it too - never a guess from [direction], which is
+     * fixed for the call's life (review of #176).
+     */
+    val answered: Boolean = false,
 )
 
 /** What the device asked for when it started a call on its own screen. */

@@ -44,6 +44,43 @@ class DashboardLinksTest {
     }
 
     @Test
+    fun `the intercom links open the screen and ring one target`() {
+        // P9.4 item 4, ADR 0025 decision 6: the screen, a fixed device, a
+        // fixed area and a broadcast, so a dashboard button or a gesture can
+        // reach the intercom without going through the list.
+        assertEquals(
+            LinkDecision.RunTabulaAction("intercom", null),
+            DashboardLinks.route("tabula://intercom", ha),
+        )
+        assertEquals(
+            LinkDecision.RunTabulaAction("intercom-call", "7d3f1c9e2b4a4f0e9c1d2b3a4f5e6d7c"),
+            DashboardLinks.route("tabula://intercom-call/7d3f1c9e2b4a4f0e9c1d2b3a4f5e6d7c", ha),
+        )
+        assertEquals(
+            LinkDecision.RunTabulaAction("intercom-area", "kitchen"),
+            DashboardLinks.route("tabula://intercom-area/kitchen", ha),
+        )
+        assertEquals(
+            LinkDecision.RunTabulaAction("intercom-broadcast", null),
+            DashboardLinks.route("tabula://intercom-broadcast", ha),
+        )
+    }
+
+    @Test
+    fun `an intercom link that names no target, or a bad one, is refused`() {
+        val bare = DashboardLinks.route("tabula://intercom-call", ha)
+        assertTrue(bare is LinkDecision.Blocked)
+        assertTrue("intercom-call" in bare.reason)
+
+        // A path can carry several segments; an area id or device id is one.
+        val twoSegments = DashboardLinks.route("tabula://intercom-call/a/b", ha)
+        assertTrue(twoSegments is LinkDecision.Blocked)
+
+        val spaces = DashboardLinks.route("tabula://intercom-area/kit chen", ha)
+        assertTrue(spaces is LinkDecision.Blocked)
+    }
+
+    @Test
     fun `unknown tabula actions are refused with a reason`() {
         val decision = DashboardLinks.route("tabula://exit-app", ha)
         assertTrue(decision is LinkDecision.Blocked)
