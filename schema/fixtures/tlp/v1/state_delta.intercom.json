@@ -1,0 +1,7 @@
+{
+  "id": 3,
+  "type": "tabula/state",
+  "state": {
+    "intercom_state": "ringing"
+  }
+}

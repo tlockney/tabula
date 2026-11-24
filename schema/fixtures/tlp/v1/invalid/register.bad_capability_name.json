@@ -1,0 +1,18 @@
+{
+  "id": 1,
+  "type": "tabula/register",
+  "device_id": "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b",
+  "protocol_version": 1,
+  "schema_version": 1,
+  "app_version": "0.1.0",
+  "manufacturer": "Tabula",
+  "model": "T1",
+  "os_version": "14",
+  "capabilities": [
+    "intercom:listen"
+  ],
+  "settings_revision": 0,
+  "state": {
+    "screen_on": true
+  }
+}

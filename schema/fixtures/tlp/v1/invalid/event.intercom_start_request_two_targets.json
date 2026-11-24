@@ -1,0 +1,11 @@
+{
+  "id": 22,
+  "type": "tabula/event",
+  "event": "intercom_start_request",
+  "data": {
+    "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+    "mode": "call",
+    "target_device_id": "9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50",
+    "target_area_id": "kitchen"
+  }
+}

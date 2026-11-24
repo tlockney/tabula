@@ -1,0 +1,8 @@
+{
+  "id": 22,
+  "type": "tabula/event",
+  "event": "intercom_answer",
+  "data": {
+    "call_id": "short"
+  }
+}

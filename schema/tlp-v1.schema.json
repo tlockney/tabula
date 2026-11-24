@@ -29,6 +29,9 @@
     "command_clear_cache",
     "command_log_subscription",
     "command_screenshot",
+    "command_intercom_ring",
+    "command_intercom_signal",
+    "command_intercom_end",
     "http_pair_request",
     "http_pair_response",
     "http_claim_request",
@@ -49,6 +52,38 @@
       "pattern": "^[0-9A-Za-z_-]{8,64}$",
       "description": "Opaque ID chosen by the integration; unique per device for the integration's lifetime (e.g. a ULID)."
     },
+    "intercom_call_id": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z_-]{8,64}$",
+      "description": "Opaque ID of one call, chosen by whoever starts it (the integration for an HA-started call, the device for intercom_start_request) and echoed by every peer. Unique per device for the integration's lifetime."
+    },
+    "intercom_mode": {
+      "enum": [
+        "call",
+        "broadcast"
+      ],
+      "description": "call is two-way (the caller's microphone and the answerer's, ADR 0025 decision 1); broadcast is one-way from the caller to each target, whose microphones stay closed (decision 2)."
+    },
+    "intercom_signal_kind": {
+      "enum": [
+        "offer",
+        "answer",
+        "candidate"
+      ],
+      "description": "Which WebRTC signal the payload carries: a session description or one ICE candidate."
+    },
+    "intercom_end_reason": {
+      "enum": [
+        "hangup",
+        "decline",
+        "timeout",
+        "limit",
+        "error",
+        "disconnect",
+        "command"
+      ],
+      "description": "Why a call ended. hangup: a person ended it; decline: the callee refused; timeout: the ring limit or the connect timeout passed; limit: the hard call limit (INTERCOM_CALL_LIMIT_S); error: the audio path failed; disconnect: the device lost its session, or restarted; command: the integration ended it."
+    },
     "capability": {
       "enum": [
         "screen",
@@ -63,7 +98,9 @@
         "logs",
         "screenshot",
         "illuminance",
-        "wake_word"
+        "wake_word",
+        "intercom.listen",
+        "intercom.talk"
       ]
     },
     "error_code": {
@@ -179,6 +216,15 @@
           "format": "date-time",
           "description": "Device clock at the last accepted wake-word detection. Omitted until the first detection; never null."
         },
+        "intercom_state": {
+          "enum": [
+            "idle",
+            "ringing",
+            "in_call",
+            "broadcasting"
+          ],
+          "description": "Where this device is in a call: idle (no call), ringing (a call is offered and unanswered), in_call (a two-way call is up, or this device is playing a broadcast), broadcasting (this device is sending a broadcast)."
+        },
         "current_page": {
           "type": [
             "string",
@@ -286,7 +332,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]{0,31}$"
+            "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){0,2}$"
           },
           "uniqueItems": true,
           "maxItems": 64,
@@ -423,7 +469,12 @@
             "screensaver_stopped",
             "media_finished",
             "page_changed",
-            "wake_word_detected"
+            "wake_word_detected",
+            "intercom_answer",
+            "intercom_decline",
+            "intercom_signal",
+            "intercom_ended",
+            "intercom_start_request"
           ]
         },
         "data": {
@@ -694,6 +745,190 @@
                   "probability"
                 ],
                 "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "intercom_answer"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "call_id": {
+                    "$ref": "#/$defs/intercom_call_id"
+                  }
+                },
+                "required": [
+                  "call_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "intercom_decline"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "call_id": {
+                    "$ref": "#/$defs/intercom_call_id"
+                  }
+                },
+                "required": [
+                  "call_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "intercom_signal"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "call_id": {
+                    "$ref": "#/$defs/intercom_call_id"
+                  },
+                  "kind": {
+                    "$ref": "#/$defs/intercom_signal_kind"
+                  },
+                  "payload": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "call_id",
+                  "kind",
+                  "payload"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "intercom_ended"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "call_id": {
+                    "$ref": "#/$defs/intercom_call_id"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/intercom_end_reason"
+                  }
+                },
+                "required": [
+                  "call_id",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "intercom_start_request"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "call_id": {
+                    "$ref": "#/$defs/intercom_call_id"
+                  },
+                  "mode": {
+                    "$ref": "#/$defs/intercom_mode"
+                  },
+                  "target_device_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                    "description": "The HA device registry id of the device to call (one target)."
+                  },
+                  "target_area_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_]{1,64}$",
+                    "description": "An HA area id: every intercom-capable device in that area, or the whole broadcast."
+                  }
+                },
+                "required": [
+                  "call_id",
+                  "mode"
+                ],
+                "additionalProperties": false,
+                "not": {
+                  "required": [
+                    "target_device_id",
+                    "target_area_id"
+                  ]
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "mode": {
+                          "const": "call"
+                        }
+                      }
+                    },
+                    "then": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "target_device_id"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "target_area_id"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
               }
             }
           }
@@ -1632,6 +1867,180 @@
       ],
       "additionalProperties": false,
       "description": "Capture the screen and upload it over HTTP (capability: screenshot, Phase 3)."
+    },
+    "command_intercom_ring": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "#/$defs/command_id"
+            },
+            "command": {
+              "const": "intercom_ring"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "call_id": {
+                  "$ref": "#/$defs/intercom_call_id"
+                },
+                "caller_device_id": {
+                  "$ref": "#/$defs/device_id"
+                },
+                "caller_name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "The caller's display name, for the incoming-call screen."
+                },
+                "mode": {
+                  "$ref": "#/$defs/intercom_mode"
+                }
+              },
+              "required": [
+                "call_id",
+                "caller_device_id",
+                "caller_name",
+                "mode"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "command_id",
+            "command",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "Offer a call to this device (capability: intercom.listen). It answers with intercom_answer or intercom_decline, or stays ringing until INTERCOM_RING_LIMIT_S passes."
+    },
+    "command_intercom_signal": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "#/$defs/command_id"
+            },
+            "command": {
+              "const": "intercom_signal"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "call_id": {
+                  "$ref": "#/$defs/intercom_call_id"
+                },
+                "kind": {
+                  "$ref": "#/$defs/intercom_signal_kind"
+                },
+                "payload": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "description": "The session description or ICE candidate's text, unchanged, at most INTERCOM_SIGNAL_MAX_BYTES UTF-8 bytes."
+                }
+              },
+              "required": [
+                "call_id",
+                "kind",
+                "payload"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "command_id",
+            "command",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "Relay one WebRTC signal to this device (capability: intercom.listen). HA never reads the payload; it is the peer's own signaling."
+    },
+    "command_intercom_end": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "#/$defs/command_id"
+            },
+            "command": {
+              "const": "intercom_end"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "call_id": {
+                  "$ref": "#/$defs/intercom_call_id"
+                },
+                "reason": {
+                  "$ref": "#/$defs/intercom_end_reason"
+                }
+              },
+              "required": [
+                "call_id",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "command_id",
+            "command",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "End the call on this device, from any state (capability: intercom.listen). Every device in the call gets one; a device not in that call answers ok and changes nothing."
     },
     "http_pair_request": {
       "type": "object",
