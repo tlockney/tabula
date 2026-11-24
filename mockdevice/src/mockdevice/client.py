@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import random
+import secrets
 import time
 from collections.abc import Callable
 from typing import Any
@@ -27,10 +28,14 @@ from mockdevice.constants import (
     REGISTER_TIMEOUT,
     SCHEMA_VERSION,
     STATE_MIN_INTERVAL,
+    VOICE_CHUNK_BYTES,
+    VOICE_FRAME_INTERVAL,
+    VOICE_TURN_MAX_S,
 )
-from mockdevice.device import CommandError, MockDevice
+from mockdevice.device import CommandError, MockDevice, VoiceTurn
 from mockdevice.pairing import AccessToken, CredentialRevoked, refresh_access_token
 from mockdevice.store import DeviceStore
+from mockdevice.voice import PcmSource, Tone, encode_frame
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,6 +157,9 @@ class TLPClient:
         backoff: Backoff | None = None,
         on_registered: Callable[[Frame], None] | None = None,
         schema_version: int = SCHEMA_VERSION,
+        voice_source: PcmSource | None = None,
+        voice_turn_max_s: float = VOICE_TURN_MAX_S,
+        voice_frame_interval: float = VOICE_FRAME_INTERVAL,
     ) -> None:
         self.ha_url = ha_url.rstrip("/")
         # The settings schema version it registers with: the mock stays on 1 by
@@ -181,11 +189,37 @@ class TLPClient:
         device.on_change = self._queue_state
         device.on_event = self._queue_event
         self._events: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
+        # Voice turns (P7.2, PROTOCOL.md 4.10): the PCM comes from memory, never
+        # from an audio device, and pacing is a sleep on the event loop.
+        self.voice_source = voice_source or Tone()
+        self.voice_turn_max_s = voice_turn_max_s
+        self.voice_frame_interval = voice_frame_interval
+        self.voice_frames_sent = 0
+        self.voice_bytes_sent = 0
+        self._voice_task: asyncio.Task[None] | None = None
 
     # --- public API -------------------------------------------------------
 
     def stop(self) -> None:
         self._stop.set()
+
+    def start_wake_word_turn(
+        self, handler_id: int, phrase: str = "okay_nabu", turn_id: str | None = None
+    ) -> VoiceTurn:
+        """Test hook: open a turn and stream as if the device's own wake word fired.
+
+        On a device that detects the phrase itself there is no `voice_start`
+        from HA: the app opens the turn and tells HA (ADR 0024 item 3). This
+        reaches that state without a microphone, so tests can drive it.
+        """
+        conn = self._conn
+        if conn is None or not self.registered.is_set():
+            raise RuntimeError("not connected")
+        turn = self.device.begin_voice_turn(
+            turn_id or f"wake-{secrets.token_hex(6)}", handler_id, "stt", phrase
+        )
+        self._stream_voice(conn, turn)
+        return turn
 
     async def run(self, session: aiohttp.ClientSession) -> None:
         """Connect, and reconnect with backoff, until stop() or a fatal error."""
@@ -250,6 +284,9 @@ class TLPClient:
                     if t.done() and not t.cancelled() and t.exception():
                         raise t.exception()  # type: ignore[misc]
             finally:
+                # The turn dies with its connection (PROTOCOL.md 4.10): no event
+                # to send, but the state goes back to idle for the next one.
+                self._end_voice(notify=False)
                 if conn.superseded:
                     self.superseded += 1
                 self._conn = None
@@ -335,6 +372,14 @@ class TLPClient:
                 await self._send_result(conn, command_id, "failed", "screenshot upload failed")
                 return
         await self._send_result(conn, command_id, None, None, data)
+        if command == "voice_start":
+            # Frames follow the acknowledgement (PROTOCOL.md 4.10), and only for
+            # this command's turn: a later command may already have closed it.
+            turn = self.device.voice_turn
+            if turn is not None and turn.turn_id == event["args"]["turn_id"]:
+                self._stream_voice(conn, turn)
+        elif command == "voice_stop":
+            self._stop_streaming()
         if command == "set_settings":
             self.store.settings = self.device.settings
             self.store.settings_revision = self.device.settings_revision
@@ -385,6 +430,49 @@ class TLPClient:
                 body["data"] = data
         with contextlib.suppress(ConnectionError, aiohttp.ClientError):
             await conn.send("command_result", body)
+
+    # --- voice turns (P7.2, PROTOCOL.md 4.10) -----------------------------
+
+    def _stream_voice(self, conn: Connection, turn: VoiceTurn) -> None:
+        self._stop_streaming()
+        self._voice_task = asyncio.create_task(self._voice_loop(conn, turn))
+
+    def _stop_streaming(self) -> None:
+        task, self._voice_task = self._voice_task, None
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+
+    async def _voice_loop(self, conn: Connection, turn: VoiceTurn) -> None:
+        """Send one chunk per 10 ms of audio until the turn closes (4.10).
+
+        The device stops itself at `VOICE_TURN_MAX_S` so a lost `voice_stop`
+        cannot stream forever (ADR 0031 item 4).
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.voice_turn_max_s
+        while self.device.voice_turn is turn:
+            if loop.time() >= deadline:
+                self._end_voice("timeout")
+                return
+            try:
+                pcm = self.voice_source.read(VOICE_CHUNK_BYTES)
+                await conn.ws.send_bytes(encode_frame(turn.handler_id, pcm))
+            except (ConnectionError, aiohttp.ClientError, OSError, ValueError) as e:
+                # No socket or no usable source: the turn is over, and there may
+                # be nobody left to tell (PROTOCOL.md 4.10).
+                _LOGGER.info("voice turn %s ended: %s", turn.turn_id, e)
+                self._end_voice("error")
+                return
+            self.voice_frames_sent += 1
+            self.voice_bytes_sent += len(pcm)
+            await asyncio.sleep(self.voice_frame_interval)
+
+    def _end_voice(self, reason: str = "error", notify: bool = True) -> None:
+        """Close the open turn and its task; safe when no turn is open."""
+        turn = self.device.voice_turn
+        self._stop_streaming()
+        if turn is not None:
+            self.device.end_voice_turn(turn.turn_id, reason, notify=notify)
 
     # --- state and events -------------------------------------------------
 

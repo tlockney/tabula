@@ -5,7 +5,7 @@
     "command_id": "01JCVOICE0000000000000000A",
     "command": "voice_start",
     "args": {
-      "turn_id": "01JCVTURN00000000000000AB",
+      "turn_id": "01JCVTURN00000000000000AA",
       "handler_id": 7,
       "start_stage": "wake_word"
     }

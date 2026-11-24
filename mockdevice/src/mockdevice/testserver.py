@@ -27,6 +27,7 @@ from mockdevice.constants import (
     PAIR_PENDING_TTL,
     PROTOCOL_VERSION,
     SCREENSHOT_MAX_BYTES,
+    VOICE_CHUNK_BYTES,
 )
 
 SUPPORTED_PROTOCOLS = {PROTOCOL_VERSION}
@@ -42,6 +43,7 @@ V1_CAPABILITIES = {
     "logs",
     "screenshot",
     "illuminance",
+    "voice",
 }
 
 
@@ -62,6 +64,9 @@ class Session:
     superseded: bool = False
     subscription_id: int | None = None
     last_id: int = 0
+    # Voice turns (P7.2): the binary handler IDs this connection registered and
+    # the PCM that arrived for each, as HA's ActiveConnection would hold them.
+    binary_handlers: dict[int, list[bytes]] = field(default_factory=dict)
 
 
 @dataclass
@@ -210,6 +215,22 @@ class TestServer:
             self._results.pop((id(session), command_id), None)
             self.pending_screenshots.pop(command_id, None)
 
+    def register_binary_handler(self, session: Session) -> tuple[int, list[bytes]]:
+        """Register a binary handler the way HA does for a voice turn (PROTOCOL.md 4.10).
+
+        Returns the one-byte ID and the sink that receives each frame's PCM, so
+        a test can assert on what the device streamed. IDs reuse freed slots,
+        as `ActiveConnection.async_register_binary_handler` does.
+        """
+        used = set(session.binary_handlers)
+        handler_id = next(i for i in range(1, 256) if i not in used)
+        sink: list[bytes] = []
+        session.binary_handlers[handler_id] = sink
+        return handler_id, sink
+
+    def unregister_binary_handler(self, session: Session, handler_id: int) -> None:
+        session.binary_handlers.pop(handler_id, None)
+
     # --- HTTP -------------------------------------------------------------
 
     async def _token(self, request: web.Request) -> web.Response:
@@ -352,6 +373,9 @@ class TestServer:
         session = Session(ws=ws, device_id=device_id)
         try:
             async for msg in ws:
+                if msg.type is WSMsgType.BINARY:
+                    self._binary(session, bytes(msg.data))
+                    continue
                 if msg.type is not WSMsgType.TEXT:
                     continue
                 frame = json.loads(msg.data)
@@ -367,6 +391,34 @@ class TestServer:
         if record and record.current is session:
             record.current = None
         return ws
+
+    def _binary(self, session: Session, payload: bytes) -> None:
+        """Route a binary frame by its first byte, as HA does (PROTOCOL.md 4.10).
+
+        Frames for an ID this connection never registered, or with a PCM length
+        that is not `VOICE_CHUNK_BYTES`, are recorded as problems: the sender is
+        strict, so a malformed frame must fail the test, not be tolerated.
+        """
+        if not payload:
+            self.problems.append("binary: empty frame")
+            return
+        handler_id, pcm = payload[0], payload[1:]
+        sink = session.binary_handlers.get(handler_id)
+        if sink is None:
+            self.problems.append(f"binary: handler {handler_id} is not registered")
+            return
+        if len(pcm) != VOICE_CHUNK_BYTES:
+            self.problems.append(
+                f"binary: {len(pcm)} PCM bytes for handler {handler_id}, "
+                f"expected {VOICE_CHUNK_BYTES}"
+            )
+            return
+        sink.append(pcm)
+        record = self.devices.get(session.device_id)
+        if record is not None:
+            stats = record.report.setdefault("voice", {"frames": 0, "bytes": 0})
+            stats["frames"] += 1
+            stats["bytes"] += len(pcm)
 
     @staticmethod
     def _error(msg_id: Any, code: str, message: str) -> Frame:

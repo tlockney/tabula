@@ -28,6 +28,7 @@ ALL_CAPABILITIES = [
     "screenshot",
     "illuminance",
     "wake_word",
+    "voice",
 ]
 
 # Which capability a command needs (docs/PROTOCOL.md 4.5); None = always available.
@@ -45,6 +46,8 @@ COMMAND_CAPABILITY: dict[str, str | None] = {
     "clear_cache": None,
     "log_subscription": "logs",
     "screenshot": "screenshot",
+    "voice_start": "voice",
+    "voice_stop": "voice",
 }
 
 
@@ -85,6 +88,16 @@ class Behavior:
     drop: set[str] = field(default_factory=set)
 
 
+@dataclass
+class VoiceTurn:
+    """An open voice turn (P7.2): what the client streams PCM for."""
+
+    turn_id: str
+    handler_id: int
+    start_stage: str
+    phrase: str | None = None
+
+
 class CommandError(Exception):
     def __init__(self, code: str, message: str) -> None:
         self.code = code
@@ -118,6 +131,8 @@ class MockDevice:
         # The latest capture (P3.13): bytes when the screen was on, None when it
         # was off (F-MGT-07). The client reads it after the command runs.
         self.last_screenshot: bytes | None = None
+        # The open voice turn, if any (P7.2). The client streams its PCM.
+        self.voice_turn: VoiceTurn | None = None
         self._connection_revision: int | None = None
         self.on_change: Callable[[dict[str, Any]], None] = lambda delta: None
         self.on_event: Callable[[str, dict[str, Any]], None] = lambda event, data: None
@@ -146,6 +161,8 @@ class MockDevice:
             # the capability is always declared, so the flag is always sent;
             # off until a settings push switches it on (P7.1, ADR 0030)
             "wake_word_active": False,
+            # idle, or listening while a turn streams (P7.2, ADR 0031 item 5)
+            "voice_turn": "idle",
             "app_version": __version__,
         }
 
@@ -160,6 +177,9 @@ class MockDevice:
         """A new connection registered: the stale-revision rule restarts (PROTOCOL.md 4.5)."""
         self._connection_revision = None
         self.log_streaming = False
+        # A turn belongs to the connection that opened it (PROTOCOL.md 4.10).
+        if self.voice_turn is not None:
+            self.end_voice_turn(self.voice_turn.turn_id, "error", notify=False)
         # A registration is a fresh launch: the mock lands on its start target
         # (F-DSH-02, P3.15). An invalid or off-origin path keeps the default
         # page, exactly as the app falls back.
@@ -288,6 +308,61 @@ class MockDevice:
             raise CommandError("unsupported_command", "wake word is off")
         self.on_event("wake_word_detected", {"phrase": phrase, "probability": probability})
         self.update(last_wake_word=now_iso())
+
+    # --- voice turns (P7.2, PROTOCOL.md 4.10) ------------------------------
+
+    def begin_voice_turn(
+        self,
+        turn_id: str,
+        handler_id: int,
+        start_stage: str,
+        phrase: str | None = None,
+    ) -> VoiceTurn:
+        """Open a turn: state listening, then the event (the client streams the PCM).
+
+        One turn per device: a second `voice_start` while one is open gets
+        `busy`, because the handler byte identifies a single turn on the wire.
+        """
+        if "voice" not in self.capabilities:
+            raise CommandError("unsupported_command", "voice not supported")
+        if not 1 <= handler_id <= 255:
+            raise CommandError("invalid_args", "handler_id must be a byte in 1..255")
+        if start_stage == "wake_word" and phrase:
+            raise CommandError("invalid_args", "a wake_word turn carries no phrase")
+        if self.voice_turn is not None:
+            raise CommandError("busy", f"turn {self.voice_turn.turn_id} is open")
+        turn = VoiceTurn(turn_id, handler_id, start_stage, phrase)
+        self.voice_turn = turn
+        self.update(voice_turn="listening")
+        data: dict[str, Any] = {"turn_id": turn_id}
+        if phrase:
+            data["phrase"] = phrase
+        self.on_event("voice_turn_started", data)
+        return turn
+
+    def end_voice_turn(self, turn_id: str, reason: str, notify: bool = True) -> bool:
+        """Close `turn_id` if it is the open one; False when it is not.
+
+        A stop for a closed turn is not an error (PROTOCOL.md 4.10): the
+        integration can send one after the device's own timeout.
+        """
+        turn = self.voice_turn
+        if turn is None or turn.turn_id != turn_id:
+            return False
+        self.voice_turn = None
+        self.update(voice_turn="idle")
+        if notify:
+            self.on_event("voice_turn_ended", {"turn_id": turn_id, "reason": reason})
+        return True
+
+    def _cmd_voice_start(self, args: dict[str, Any]) -> None:
+        self.begin_voice_turn(
+            args["turn_id"], args["handler_id"], args["start_stage"], args.get("wake_word_phrase")
+        )
+
+    def _cmd_voice_stop(self, args: dict[str, Any]) -> None:
+        # Idempotent (ADR 0031 item 4): the client stops streaming either way.
+        self.end_voice_turn(args["turn_id"], "command")
 
     def _cmd_screen(self, args: dict[str, Any]) -> None:
         changes: dict[str, Any] = {}

@@ -110,6 +110,10 @@ async def test_every_command_fixture_is_answered(server, store, start):
     for path in sorted(fixtures.glob("command_*.json")):
         if path.name.startswith("command_result"):
             continue
+        if path.name.startswith("command_voice_"):
+            # Voice commands have a lifecycle (start, stream, stop), so they are
+            # driven one turn at a time in test_voice.py rather than fired blind.
+            continue
         event = json.loads(path.read_text())["event"]
         result = await server.send_command(store.device_id, event["command"], event["args"])
         assert result["ok"] or result["error"]["code"] in {"failed", "unsupported_command"}, path
