@@ -75,7 +75,7 @@ data class CallInfo(
     val peerDeviceId: String?,
     val startedAtMs: Long,
     /**
-     * True while this call holds the microphone. A listen-only device, a
+     * True while this call captures once it is up. A listen-only device, a
      * broadcast's receiver and a ring nobody has answered yet are all false,
      * which is what the microphone arbiter reads (ADR 0030, P9.3 item 8).
      */

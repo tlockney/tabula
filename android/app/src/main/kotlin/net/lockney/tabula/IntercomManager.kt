@@ -79,7 +79,8 @@ class IntercomManager(
             // The wake-word detector releases the microphone to a call that
             // captures, and only to that kind of call (P9.3 item 8)
             combine(engine.state, engine.info) { state, info ->
-                state != IntercomState.IDLE && info?.usesMicrophone == true
+                (state == IntercomState.IN_CALL || state == IntercomState.BROADCASTING) &&
+                    info?.usesMicrophone == true
             }
                 .distinctUntilChanged()
                 .collect { holds -> onMicrophoneHold(holds) }
