@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13.2"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1320,6 +1320,19 @@ wheels = [
 ]
 
 [[package]]
+name = "hassil"
+version = "3.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+    { name = "unicode-rbnf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/87/bf/9630f99bcc3dca337e3905571d1e06f0317fcc1aec2d3b5a0933b810f9cf/hassil-3.5.0.tar.gz", hash = "sha256:bed39573626d76bfc0681a709a6b64e4de82a680371bd29238473f6711392597", size = 61144, upload-time = "2025-12-02T20:21:08.435Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/4e/94d688f7fb23b6e898922a077d7e32a6f412372ff285567d890a8791de7f/hassil-3.5.0-py3-none-any.whl", hash = "sha256:87b2a48164b2de1d693edbe4204b3a7c3b72dc7c5c3829774de8824ecc62ab96", size = 51788, upload-time = "2025-12-02T20:21:07.125Z" },
+]
+
+[[package]]
 name = "home-assistant-bluetooth"
 version = "1.13.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1329,6 +1342,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b4/0e/c05ee603cab1adb847a305bc8f1034cbdbc0a5d15169fcf68c0d6d21e33f/home_assistant_bluetooth-1.13.1.tar.gz", hash = "sha256:0ae0e2a8491cc762ee9e694b8bc7665f1e2b4618926f63969a23a2e3a48ce55e", size = 7607, upload-time = "2025-02-04T16:11:15.259Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/85/9b/9904cec885cc32c45e8c22cd7e19d9c342e30074fdb7c58f3d5b33ea1adb/home_assistant_bluetooth-1.13.1-py3-none-any.whl", hash = "sha256:cdf13b5b45f7744165677831e309ee78fbaf0c2866c6b5931e14d1e4e7dae5d7", size = 7915, upload-time = "2025-02-04T16:11:13.163Z" },
+]
+
+[[package]]
+name = "home-assistant-intents"
+version = "2026.1.28"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/6c/20ef8f2c2b4ba8998164fedc1722f9451b146c554743154380554044fcfa/home_assistant_intents-2026.1.28.tar.gz", hash = "sha256:baa2f017535729bb2f68add51be6e9c703627e1bf7048a48c58f2e4afba9cda1", size = 2808562, upload-time = "2026-01-28T21:17:12.123Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/4d/4bf5493cdc54cfdab313ba9af8d2d57bb8896a1022ac5c524432d3237983/home_assistant_intents-2026.1.28-py3-none-any.whl", hash = "sha256:dd593fd1471e49e0d7b296d5ef0cce69c67a73adb30324b239933a2bf6c3ca71", size = 2836855, upload-time = "2026-01-28T21:17:10.111Z" },
 ]
 
 [[package]]
@@ -2328,6 +2350,12 @@ wheels = [
 ]
 
 [[package]]
+name = "pymicro-vad"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2e/0f/a92acea368e2b37fbc706f6d049f04557497d981316a2f428b26f14666a9/pymicro_vad-1.0.1.tar.gz", hash = "sha256:60e0508b338b694c7ad71c633c0da6fcd2678a88abb8e948b80fa68934965111", size = 135575, upload-time = "2024-07-31T20:04:04.619Z" }
+
+[[package]]
 name = "pyobjc-core"
 version = "13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2420,6 +2448,12 @@ name = "pyric"
 version = "0.1.6.3"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/08/64/a99f27d3b4347486c7bfc0aa516016c46dc4c0f380ffccbd742a61af1eda/PyRIC-0.1.6.3.tar.gz", hash = "sha256:b539b01cafebd2406c00097f94525ea0f8ecd1dd92f7731f43eac0ef16c2ccc9", size = 870401, upload-time = "2016-12-04T07:54:48.374Z" }
+
+[[package]]
+name = "pyspeex-noise"
+version = "1.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/1d/7d2ebb8f73c2b2e929b4ba5370b35dbc91f37268ea53f4b6acd9afa532cb/pyspeex_noise-1.0.2.tar.gz", hash = "sha256:56a888ca2ef7fdea2316aa7fad3636d2fcf5f4450f3a0db58caa7c10a614b254", size = 49882, upload-time = "2024-08-27T17:00:34.859Z" }
 
 [[package]]
 name = "pytest"
@@ -3038,7 +3072,7 @@ name = "sqlalchemy"
 version = "2.0.41"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "greenlet", marker = "(python_full_version < '3.14' and platform_machine == 'AMD64') or (python_full_version < '3.14' and platform_machine == 'WIN32') or (python_full_version < '3.14' and platform_machine == 'aarch64') or (python_full_version < '3.14' and platform_machine == 'amd64') or (python_full_version < '3.14' and platform_machine == 'ppc64le') or (python_full_version < '3.14' and platform_machine == 'win32') or (python_full_version < '3.14' and platform_machine == 'x86_64')" },
+    { name = "greenlet", marker = "python_full_version < '3.14' and (platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64')" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/63/66/45b165c595ec89aa7dcc2c1cd222ab269bc753f1fc7a1e68f8481bd957bf/sqlalchemy-2.0.41.tar.gz", hash = "sha256:edba70118c4be3c2b1f90754d308d0b79c6fe2c0fdc52d8ddf603916f83f4db9", size = 9689424, upload-time = "2025-05-14T17:10:32.339Z" }
@@ -3132,8 +3166,12 @@ source = { virtual = "integration" }
 [package.dev-dependencies]
 dev = [
     { name = "ha-ffmpeg" },
+    { name = "hassil" },
+    { name = "home-assistant-intents" },
     { name = "homeassistant" },
     { name = "mutagen" },
+    { name = "pymicro-vad" },
+    { name = "pyspeex-noise" },
     { name = "pytest-homeassistant-custom-component" },
     { name = "tabula-mockdevice" },
 ]
@@ -3143,8 +3181,12 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "ha-ffmpeg", specifier = "==3.2.2" },
+    { name = "hassil", specifier = "==3.5.0" },
+    { name = "home-assistant-intents", specifier = "==2026.1.28" },
     { name = "homeassistant", specifier = "==2026.2.3" },
     { name = "mutagen", specifier = "==1.47.0" },
+    { name = "pymicro-vad", specifier = "==1.0.1" },
+    { name = "pyspeex-noise", specifier = "==1.0.2" },
     { name = "pytest-homeassistant-custom-component", specifier = "==0.13.316" },
     { name = "tabula-mockdevice", editable = "mockdevice" },
 ]
@@ -3270,6 +3312,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ca/48/36df80548d96ffdaa3ae124854bbd5a0a0b07da22a8d22b301e5ec17de6e/ulid_transform-1.5.2-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:6f29b8004fba0da7061b5eecf6101c6283377b6cd04f3626089cc67d9342c8fd", size = 1116228, upload-time = "2025-10-04T21:04:35.325Z" },
     { url = "https://files.pythonhosted.org/packages/9f/85/9cd506a4e0fe06946c3fd75b89c7d1e9a175a5ac11dfd8e4cc56658ff389/ulid_transform-1.5.2-cp314-cp314t-win32.whl", hash = "sha256:c09f58aff7a4974f560dd5fb19dd5144e8964371fcb1971bffa817c9abcb2232", size = 67476, upload-time = "2025-10-04T21:04:36.907Z" },
     { url = "https://files.pythonhosted.org/packages/41/a9/161ab974510c78a28155de33091a0063ed84b110e6d4fb866d5110112ce9/ulid_transform-1.5.2-cp314-cp314t-win_amd64.whl", hash = "sha256:445e14170301229a486e8815c2f9cec4a10b3e3cd4c9aa509689443d05e4f020", size = 72206, upload-time = "2025-10-04T21:04:38.286Z" },
+]
+
+[[package]]
+name = "unicode-rbnf"
+version = "2.5.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/a8/7fae3c3afa43a11d50a103eac8c849d5ed94fcb8c2524baefe4a0d210d18/unicode_rbnf-2.5.1.tar.gz", hash = "sha256:d0b3e77d1ce27666d3e67834518c53642ff191e674ee423faa89c37f554a7efb", size = 107263, upload-time = "2026-11-19T17:02:08.615Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/8d/e4bf9faeb03094d79b27da492f52f2a7972918affc96b147e1dc4da3041b/unicode_rbnf-2.5.1-py3-none-any.whl", hash = "sha256:3107f12ba9e2ffe11fc993adaed0e024e3897959c2bfa66ceeeafa7c9a2d107a", size = 152882, upload-time = "2026-11-19T17:02:07.198Z" },
 ]
 
 [[package]]
