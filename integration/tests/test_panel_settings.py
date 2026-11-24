@@ -479,6 +479,7 @@ async def test_a_write_reaches_the_device_in_one_push(
             lambda: record.current is not None and record.current.reported_settings_revision == 1
         )
     finally:
+        await admin.close()
         client.stop()
         await asyncio.wait_for(task, 10)
 
