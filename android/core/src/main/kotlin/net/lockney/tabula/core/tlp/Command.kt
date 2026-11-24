@@ -7,6 +7,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import net.lockney.tabula.core.Constants
 
 /**
  * Command frames the device receives on its tabula/subscribe subscription
@@ -33,6 +34,9 @@ object Commands {
     const val CLEAR_CACHE = "clear_cache"
     const val LOG_SUBSCRIPTION = "log_subscription"
     const val SCREENSHOT = "screenshot"
+    const val INTERCOM_RING = "intercom_ring"
+    const val INTERCOM_SIGNAL = "intercom_signal"
+    const val INTERCOM_END = "intercom_end"
 
     // P7.2: the codec knows the voice commands, but the app declares no `voice`
     // capability and captures nothing yet, so they stay out of [all]: a voice
@@ -43,6 +47,7 @@ object Commands {
     val all: Set<String> = setOf(
         SET_SETTINGS, SCREEN, NOTIFY, PLAY_MEDIA, MEDIA_CONTROL, SCREENSAVER,
         NAVIGATE, GO_HOME, RELOAD, RESTART_APP, CLEAR_CACHE, LOG_SUBSCRIPTION, SCREENSHOT,
+        INTERCOM_RING, INTERCOM_SIGNAL, INTERCOM_END,
     )
 }
 
@@ -97,6 +102,14 @@ data class CommandEvent(
 
     fun voiceStopArgs(json: Json): VoiceStopArgs =
         json.decodeFromJsonElement(VoiceStopArgs.serializer(), args)
+    fun intercomRingArgs(json: Json): IntercomRingArgs =
+        json.decodeFromJsonElement(IntercomRingArgs.serializer(), args)
+
+    fun intercomSignalArgs(json: Json): IntercomSignalArgs =
+        json.decodeFromJsonElement(IntercomSignalArgs.serializer(), args)
+
+    fun intercomEndArgs(json: Json): IntercomEndArgs =
+        json.decodeFromJsonElement(IntercomEndArgs.serializer(), args)
 }
 
 /** set_settings: full settings document at a revision (PROTOCOL 4.5, plan 5.6). */
@@ -251,5 +264,44 @@ data class VoiceStopArgs(
 ) {
     init {
         Wire.requireTurnId(turnId)
+    }
+}
+
+/** intercom_ring: a call or broadcast offered to this device (P9.1, PROTOCOL 4.5). */
+@Serializable
+data class IntercomRingArgs(
+    @SerialName("call_id") val callId: String,
+    @SerialName("caller_device_id") val callerDeviceId: String,
+    @SerialName("caller_name") val callerName: String,
+    val mode: IntercomMode,
+) {
+    init {
+        Wire.requireCallId(callId)
+        Wire.requireDeviceId(callerDeviceId)
+        Wire.requireLength("intercom_ring.caller_name", callerName, 1, 64)
+    }
+}
+
+/** intercom_signal: one session description or ICE candidate, relayed unchanged. */
+@Serializable
+data class IntercomSignalArgs(
+    @SerialName("call_id") val callId: String,
+    val kind: IntercomSignalKind,
+    val payload: String,
+) {
+    init {
+        Wire.requireCallId(callId)
+        Wire.requireSignalPayload("intercom_signal.payload", payload, Constants.INTERCOM_SIGNAL_MAX_BYTES)
+    }
+}
+
+/** intercom_end: end the call on this device, from any state. */
+@Serializable
+data class IntercomEndArgs(
+    @SerialName("call_id") val callId: String,
+    val reason: IntercomEndReason,
+) {
+    init {
+        Wire.requireCallId(callId)
     }
 }

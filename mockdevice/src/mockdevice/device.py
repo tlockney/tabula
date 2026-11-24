@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -12,7 +13,12 @@ from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 from mockdevice import __version__
-from mockdevice.constants import SCREENSHOT_JPEG
+from mockdevice.constants import (
+    INTERCOM_CALL_LIMIT_S,
+    INTERCOM_RING_LIMIT_S,
+    INTERCOM_SIGNAL_MAX_BYTES,
+    SCREENSHOT_JPEG,
+)
 
 ALL_CAPABILITIES = [
     "screen",
@@ -29,6 +35,12 @@ ALL_CAPABILITIES = [
     "illuminance",
     "wake_word",
     "voice",
+    # Intercom (P9.1, ADR 0025 decision 7): listen can receive audio, talk can
+    # capture. The mock carries no audio, so declaring both is a claim about
+    # its signaling only. Names are single-segment so an older integration
+    # ignores them instead of refusing the register frame (PROTOCOL 4.0).
+    "intercom_listen",
+    "intercom_talk",
 ]
 
 # Which capability a command needs (docs/PROTOCOL.md 4.5); None = always available.
@@ -48,6 +60,12 @@ COMMAND_CAPABILITY: dict[str, str | None] = {
     "screenshot": "screenshot",
     "voice_start": "voice",
     "voice_stop": "voice",
+    # Intercom commands are gated by listen: every device that can take part in
+    # a call can receive one, whether or not it can talk back (ADR 0025
+    # decision 7). intercom_start_request is the talk-side event.
+    "intercom_ring": "intercom_listen",
+    "intercom_signal": "intercom_listen",
+    "intercom_end": "intercom_listen",
 }
 
 
@@ -73,6 +91,11 @@ def same_origin(base_url: str, path: str) -> bool:
     """True if `path` resolved against the HA base URL stays on that origin."""
     base, target = urlsplit(base_url), urlsplit(urljoin(base_url, path))
     return (base.scheme, base.netloc) == (target.scheme, target.netloc)
+
+
+def new_call_id() -> str:
+    """A fresh call ID in the schema's form (8-64 chars of [0-9A-Za-z_-])."""
+    return "call-" + secrets.token_hex(8)
 
 
 def now_iso() -> str:
@@ -152,8 +175,6 @@ class MockDevice:
             "charging": True,
             "network": "wifi",
             "wifi_rssi": -54,
-            # the room's light (P3.16): the mock "has a light sensor"
-            "illuminance": 128.5,
             "current_page": "/lovelace/0",
             "volume": 50,
             "muted": False,
@@ -167,6 +188,21 @@ class MockDevice:
             **({"voice_turn": "idle"} if "voice" in self.capabilities else {}),
             "app_version": __version__,
         }
+        # PROTOCOL 4.4's coverage rule: a capability-gated key is only sent by a
+        # device that declares the capability, `register` included. state is
+        # strict for unknown keys even in a tolerant receiver, so a device
+        # without the key must not announce it.
+        if "intercom_listen" in self.capabilities:
+            self.state["intercom_state"] = "idle"
+        # The room's light (P3.16): the mock "has a light sensor", and like
+        # every gated key (PROTOCOL 4.4) it belongs only to a device that
+        # declares the capability that covers it.
+        if "illuminance" in self.capabilities:
+            self.state["illuminance"] = 128.5
+        # The call this device is in, if any (P9.1): its id, mode, caller and
+        # the two deadlines the tests drive with the injected clock.
+        self.intercom_call: dict[str, Any] | None = None
+        self.intercom_signals: list[dict[str, Any]] = []
 
     def update(self, **changes: Any) -> dict[str, Any]:
         delta = {k: v for k, v in changes.items() if self.state.get(k) != v}
@@ -177,6 +213,13 @@ class MockDevice:
 
     def begin_connection(self) -> None:
         """A new connection registered: the stale-revision rule restarts (PROTOCOL.md 4.5)."""
+        # No auto-resume after a reconnect or a restart (ADR 0028 guard 4): a
+        # call that was up or ringing when the session dropped does not come
+        # back, and the device says so on the new connection. The event is
+        # queued before register goes out, but the client's event loop starts
+        # only after _register returns, so nothing is sent pre-registration.
+        if self.intercom_call is not None:
+            self._end_intercom("disconnect")
         self._connection_revision = None
         self.log_streaming = False
         # A turn belongs to the connection that opened it (PROTOCOL.md 4.10).
@@ -264,6 +307,7 @@ class MockDevice:
         cap = COMMAND_CAPABILITY.get(command, "unknown")
         if cap == "unknown" or (cap is not None and cap not in self.capabilities):
             raise CommandError("unsupported_command", f"{command} not supported")
+        self.check_intercom_timers()
         result = getattr(self, f"_cmd_{command}")(args)
         self.log("info", "command", f"applied {command}")
         return result
@@ -284,6 +328,156 @@ class MockDevice:
         self.settings_revision = args["revision"]
         self._connection_revision = args["revision"]
         return {"revision": self.settings_revision}
+
+    # --- intercom (P9.1, ADR 0025) -----------------------------------------
+
+    def _intercom_state(self, state: str) -> None:
+        """Report a call-state change, on a device that declares intercom_listen."""
+        if "intercom_listen" in self.capabilities:
+            self.update(intercom_state=state)
+
+    def check_intercom_timers(self) -> str | None:
+        """Apply the ring limit and the hard call limit (ADR 0028 guards 2).
+
+        The mock opens no microphone and plays nothing, so the deadlines are
+        the whole of its timekeeping: a ring that nobody answers ends after
+        ``INTERCOM_RING_LIMIT_S`` and a call ends by itself after
+        ``INTERCOM_CALL_LIMIT_S``. Tests drive this with the injected clock;
+        every command checks it too, so a live mock notices on its next one.
+        Returns the reason the call ended, or None; the tests assert on it, no
+        production path reads it.
+        """
+        call = self.intercom_call
+        if call is None:
+            return None
+        now = self.clock()
+        if self.state.get("intercom_state") == "ringing" and now >= call["ring_deadline"]:
+            self._end_intercom("timeout")
+            return "timeout"
+        if now >= call["call_deadline"]:
+            self._end_intercom("limit")
+            return "limit"
+        return None
+
+    def _end_intercom(self, reason: str) -> None:
+        """Leave the call, whatever state it is in, and report why."""
+        call = self.intercom_call
+        self.intercom_call = None
+        self._intercom_state("idle")
+        if call is not None:
+            self.on_event("intercom_ended", {"call_id": call["call_id"], "reason": reason})
+
+    def _cmd_intercom_ring(self, args: dict[str, Any]) -> None:
+        """A call is offered: ring, or start a broadcast playing straight away.
+
+        A broadcast is one-way and live (ADR 0025 decision 2): nobody answers
+        it, so the device is in the call immediately and its microphone stays
+        closed. A call rings until someone answers, declines, or the ring limit
+        passes.
+        """
+        if self.intercom_call is not None:
+            raise CommandError("busy", "already in a call")
+        now = self.clock()
+        self.intercom_call = {
+            "call_id": args["call_id"],
+            "mode": args["mode"],
+            "caller_device_id": args["caller_device_id"],
+            "caller_name": args["caller_name"],
+            "ring_deadline": now + INTERCOM_RING_LIMIT_S,
+            "call_deadline": now + INTERCOM_CALL_LIMIT_S,
+        }
+        self._intercom_state("ringing" if args["mode"] == "call" else "in_call")
+
+    def _cmd_intercom_signal(self, args: dict[str, Any]) -> None:
+        """Relay one signal for the current call; the mock has no audio to set up."""
+        self._require_call(args["call_id"])
+        if len(args["payload"].encode()) > INTERCOM_SIGNAL_MAX_BYTES:
+            raise CommandError("invalid_args", "signal payload is over the size limit")
+        self.intercom_signals.append({"kind": args["kind"], "payload": args["payload"]})
+        self.intercom_call["last_signal_at"] = self.clock()
+
+    def _cmd_intercom_end(self, args: dict[str, Any]) -> None:
+        """End the call. A device not in that call answers ok and changes nothing."""
+        call = self.intercom_call
+        if call is None or call["call_id"] != args["call_id"]:
+            return
+        self._end_intercom(args["reason"])
+
+    def _require_call(self, call_id: str) -> dict[str, Any]:
+        call = self.intercom_call
+        if call is None or call["call_id"] != call_id:
+            raise CommandError("invalid_args", "not in that call")
+        return call
+
+    def answer_intercom_call(self) -> None:
+        """Answer a ringing call, as a person tapping answer does (P9.3 wires the screen).
+
+        Answers with intercom_answer and (re)starts the hard call limit: ADR
+        0002 says the limit runs from the moment the call is up, so answering
+        is what starts it, not ringing. A call that is never answered is ended
+        by the ring limit instead.
+        """
+        call = self._ringing_call()
+        call["call_deadline"] = self.clock() + INTERCOM_CALL_LIMIT_S
+        self._intercom_state("in_call")
+        self.on_event("intercom_answer", {"call_id": call["call_id"]})
+
+    def decline_intercom_call(self) -> None:
+        """Decline a ringing call: back to idle, and the caller hears why."""
+        call = self._ringing_call()
+        self.intercom_call = None
+        self._intercom_state("idle")
+        self.on_event("intercom_decline", {"call_id": call["call_id"]})
+
+    def _ringing_call(self) -> dict[str, Any]:
+        call = self.intercom_call
+        if call is None or self.state.get("intercom_state") != "ringing":
+            raise CommandError("invalid_args", "no call is ringing")
+        return call
+
+    def hang_up(self, reason: str = "command") -> None:
+        """End whatever call is up, as the integration's intercom_end would."""
+        if self.intercom_call is not None:
+            self._end_intercom(reason)
+
+    def send_intercom_signal(self, kind: str, payload: str) -> None:
+        """Emit intercom_signal for the current call, the device's side of the relay."""
+        call = self.intercom_call
+        if call is None:
+            raise CommandError("invalid_args", "no call is up")
+        if len(payload.encode()) > INTERCOM_SIGNAL_MAX_BYTES:
+            raise CommandError("invalid_args", "signal payload is over the size limit")
+        self.on_event(
+            "intercom_signal", {"call_id": call["call_id"], "kind": kind, "payload": payload}
+        )
+
+    def start_intercom_call(
+        self,
+        mode: str,
+        target_device_id: str | None = None,
+        target_area_id: str | None = None,
+    ) -> None:
+        """Ask HA for a call started on this device's screen (ADR 0025 decision 6).
+
+        The device proposes the target and the call id; HA resolves the targets
+        and rings them, so nothing changes here yet. Starting a call means
+        capturing one, so only a device that declares ``intercom_talk`` sends
+        this event (PROTOCOL 4.7, ADR 0025 decision 7). The remaining checks
+        match the event schema: a call needs exactly one target, and the two
+        targets exclude each other.
+        """
+        if "intercom_talk" not in self.capabilities:
+            raise CommandError("unsupported_command", "intercom_talk is not declared")
+        if target_device_id is not None and target_area_id is not None:
+            raise CommandError("invalid_args", "a call has one target, device or area")
+        if mode == "call" and target_device_id is None and target_area_id is None:
+            raise CommandError("invalid_args", "a call needs one target")
+        data: dict[str, Any] = {"call_id": new_call_id(), "mode": mode}
+        if target_device_id is not None:
+            data["target_device_id"] = target_device_id
+        if target_area_id is not None:
+            data["target_area_id"] = target_area_id
+        self.on_event("intercom_start_request", data)
 
     # --- wake word (P7.1, ADR 0030) ---------------------------------------
 

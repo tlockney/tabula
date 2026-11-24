@@ -85,7 +85,7 @@ These appear as bounds in `schema/tlp-v1.schema.json` and are chosen here:
 | `play_media.url` | 4096 chars | Signed media URLs carry long query strings. |
 | `wifi_rssi` | −127 to 0 dBm | The range Android reports. |
 | `illuminance` | 0–100000 lx | Sunlight is about 100000 lx and Android light sensors top out below it, so the bound admits every real reading while keeping the number sane. The floor is why a supported key with no value yet is omitted rather than sent as a placeholder (PROTOCOL.md 4.2): the schema requires a number, never null or negative. |
-| `capabilities` (register) | 64 items, names `[a-z][a-z0-9_]{0,31}` | Room for many future capabilities while bounding the frame. |
+| `capabilities` (register) | 64 items, names `[a-z][a-z0-9_]{0,31}` | Room for many future capabilities while bounding the frame. One segment, no dots: an integration that predates a name must be able to ignore it, and a name it cannot parse as a capability rejects the whole `register` frame (PROTOCOL 4.0, 8). |
 | `credential.refresh_token` | at least 32 chars | HA refresh tokens are far longer; a shorter one is a bug. |
 
 ### Screen control (P2.3)
@@ -330,6 +330,42 @@ Chosen in ADR 0028 from the measurements in that ADR and the packet's Result.
 | --- | --- | --- |
 | `INTERCOM_RING_LIMIT_S` | 45 s | Long enough to cross a house and answer hands-free, which is why intercom exists; short enough that a call into an empty room ends within a minute. A phone rings about 30 s; 45 s adds one walk-over. |
 | `INTERCOM_CONNECT_TIMEOUT_S` | 10 s | ICE on the LAN took 0.3–0.6 s in the spike, so 10 s is an order of magnitude of margin. Past it a caller is told the call could not connect instead of waiting on one that never starts. Same value as `COMMAND_TIMEOUT`, because both mean "the device did not answer". |
+| `INTERCOM_CALL_LIMIT_S` | 300 s | The hard call limit ADR 0028 guard 2 requires: every call ends by itself this long after it is up, answered or not, so a call feeding back cannot run unattended for an hour. Five minutes is longer than any conversation this household has across rooms and far shorter than an hour; **provisional** — the owner confirms or changes it (P9.1 Result). |
+| `INTERCOM_SIGNAL_MAX_BYTES` | 4096 B | The largest one `intercom_signal` payload: an offer, an answer or one ICE candidate. Measured from a synthetic 38-line Opus offer of the shape the spike logged (`sdpLines=38`, an `audio/opus` m-line, 4 extmaps, 8 codecs, a sha-256 fingerprint and two SSRC lines): 1322 bytes of SDP, 1396 inside the frame once escaped. A candidate is about 120 B. 4 KiB is about three times the measured offer, leaves room for another codec or extmap, and keeps one relayed frame far under `FRAME_MAX_BYTES`. |
+
+The capability names on the wire are `intercom_listen` and `intercom_talk`. ADR 0025 decision 7 names the concepts `intercom.listen` and `intercom.talk`; the wire spelling is single-segment because a dotted name is not a capability an older integration can ignore (PROTOCOL 4.0, 8, and P9.1's Result).
+
+### At a Glance (P3.6)
+
+The row's sizes, colors and fitting bounds (F-AAG-01 to F-AAG-03, F-SSV-10). Same rules: chosen here only; ADR 0032 carries the decisions they serve. Sizes are sp at `at_a_glance.scale` 100.
+
+| Constant | Value | Reasoning |
+| --- | --- | --- |
+| `GLANCE_VALUE_BASE_SP` | 28 sp | The value is what the row is for, so it is the largest text: at density 1.5 that is about 42 px on a 1200 px panel, legible across a room, and a quarter of the clock time's 120 sp so the row never competes with the face. |
+| `GLANCE_NAME_BASE_SP` | 18 sp | Two thirds of the value's height: enough to identify which door, small enough that the value still leads. |
+| `GLANCE_ICON_BASE_SP` | 30 sp | Slightly taller than the value's cap height, so the icon box reads as a chip's anchor; a square of the same box carries the active/inactive fill HA's tiles use. |
+| `GLANCE_CHIP_PADDING_SP` | 14 sp | Horizontal padding inside the pill: at 28 sp a 14 sp inset is half the value's height, which is what makes a pill look like a container instead of a frame. |
+| `GLANCE_CHIP_GAP_SP` | 12 sp | Slightly under the padding, so chips on one line group without touching. |
+| `GLANCE_LINE_GAP_SP` | 10 sp | Less than the horizontal gap: two lines read as one row wrapped, not as two separate rows. |
+| `GLANCE_CHIP_RADIUS_SP` | 12 sp | The pill's corner radius (and half of it on the icon box), just under the padding, so the corners look drawn rather than bitten. |
+| `GLANCE_ROW_GAP_SP` | 20 sp | The gap under the clock's date line: about two thirds of the date line's 32 sp, close enough that the row belongs to the face and far enough that the two do not merge. |
+| `GLANCE_ROW_EDGE_SP` | 24 sp | The row's minimum distance from the panel's side edges: the panel's bezel covers a few millimetres, and a chip that reaches the very edge looks cut off. |
+| `GLANCE_MAX_CHIPS` | 6 | The schema's `at_a_glance.entities` bound, and the number that still reads as "a few" (F-AAG-01) on a wall panel: six chips on two lines in portrait, six on one line only on a wide panel, which the fit's floor handles. |
+| `GLANCE_MAX_LINES_LANDSCAPE` | 1 | A landscape panel has width to spare and height is what the clock needs, so the row never takes two lines there (F-AAG-01: the two-line wrap is portrait's). |
+| `GLANCE_MAX_LINES_PORTRAIT` | 2 | F-AAG-01's "wraps onto two lines in portrait". A third line would cover a quarter of a portrait panel and start competing with the clock. |
+| `GLANCE_MIN_TEXT_SCALE` | 0.75 | The shrink floor: three quarters of 28 sp is 21 sp, still legible from a couch, so shrinking is worth more than truncating down to that point. Below it names start losing their meaning. |
+| `GLANCE_SHRINK_STEP` | 0.05 | Five percent steps take the floor to 75 % in five tries, and a 5 % change is the smallest step that is visible on a panel; a finer grid would re-measure for nothing. |
+| `GLANCE_ELLIPSIS` | "…" | One character, and the conventional marker that a name was shortened (F-AAG-01's truncation). |
+| `GLANCE_VALUE_LARGE_SCALE` | 1.25 | F-AAG-02's "hide names (larger values)": a quarter larger, which is the room the name's line frees up. |
+| `GLANCE_PILL_BG` | 0x8C000000 (ARGB) | A 55 % black pill: over a white-ish photo the white text still has about 4.5:1 contrast, and over the clock's black background the pill is invisible, so the pill only shows where it is needed. |
+| `GLANCE_TEXT` | 0xFFFFFFFF | White, the clock's own day text color: the row and the face must read as one screen (F-AAG-02: text color never changes with state). |
+| `GLANCE_ICON_ACTIVE` | 0xFFFFB300 | Amber 600, the tone HA's tiles use for an active state: warm enough to catch the eye on both a black panel and a photo. |
+| `GLANCE_ICON_ACTIVE_BG` | 0x33FFB300 | The same amber at 20 %: the tile look — a tinted box under a colored icon — without a second color. |
+| `GLANCE_ICON_INACTIVE` | 0xFFBDBDBD | Neutral grey, one step above the 50 % grey a disabled control uses, so an inactive chip still reads at a glance. |
+| `GLANCE_ICON_INACTIVE_BG` | 0x1FFFFFFF | The same box at 12 % white: visible on black, unobtrusive over a photo. |
+| `GLANCE_NIGHT_TEXT` | 0xFFB05A5A | The night scheme's single dim accent (F-SSV-10): a desaturated dark red at roughly a third of white's luminance, so the row is readable in a dark room without lighting it. P3.4's clock scheme uses the same tone. |
+| `GLANCE_NIGHT_PILL_BG` | 0xCC000000 | A near-opaque black pill at night, so the row does not pick up a photo's brightness behind it (F-SSV-10 hides the background image by default). |
+| `GLANCE_INACTIVE_STATES` | off, unknown, unavailable, locked, closed, not_home, idle, standby, disconnected, disarmed | The states HA's tiles draw as inactive (ADR 0032 item 3). `locked`, `closed` and `disarmed` are the settled, safe states; `unlocked`, `open`, `on` and every numeric sensor value are active, so the chips someone glances for are the ones that stand out. |
 
 ### Settings bounds in the settings schema
 

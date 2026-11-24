@@ -31,5 +31,15 @@
   "state_delta.negative_illuminance": "state/illuminance",
   "state_delta.null_last_wake_word": "state/last_wake_word",
   "state_delta.page_with_query": "state/current_page",
-  "state_delta.unknown_key": "state"
+  "state_delta.unknown_key": "state",
+  "command_intercom_end.unknown_reason": "event/args/reason",
+  "command_intercom_ring.bad_mode": "event/args/mode",
+  "command_intercom_signal.empty_payload": "event/args/payload",
+  "event.intercom_answer_bad_call_id": "data/call_id",
+  "event.intercom_ended_bad_reason": "data/reason",
+  "event.intercom_start_request_call_without_target": "data",
+  "event.intercom_start_request_two_targets": "data",
+  "register.bad_capability_name": "capabilities/0",
+  "register.dotted_capability": "capabilities/0",
+  "state_delta.intercom_state_unknown": "state/intercom_state"
 }

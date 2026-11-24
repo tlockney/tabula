@@ -1,0 +1,13 @@
+{
+  "id": 21,
+  "type": "event",
+  "event": {
+    "command_id": "c-0012-signal",
+    "command": "intercom_signal",
+    "args": {
+      "call_id": "01JC9Z6Q2H3W7K5N8T4V0BXDRA",
+      "kind": "candidate",
+      "payload": "candidate:344558182 1 udp 2122194687 192.168.1.129 60043 typ host generation 0 ufrag Tsda network-id 3 network-cost 10"
+    }
+  }
+}

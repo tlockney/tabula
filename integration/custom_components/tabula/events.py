@@ -37,6 +37,13 @@ BUS_EVENT_TYPES: dict[str, str] = {
     # P7.2: a voice turn opened or closed; the audio itself is binary (4.10).
     "voice_turn_started": "tabula_voice",
     "voice_turn_ended": "tabula_voice",
+    # Intercom (P9.1): the signaling events reach the bus so an automation can
+    # follow a call; the services and entities that start one arrive with P9.2.
+    "intercom_answer": "tabula_intercom",
+    "intercom_decline": "tabula_intercom",
+    "intercom_signal": "tabula_intercom",
+    "intercom_ended": "tabula_intercom",
+    "intercom_start_request": "tabula_intercom",
 }
 
 

@@ -120,6 +120,22 @@ object Constants {
      * sends none; inside the schema's 10-95 range (P3.13, 0002-constants.md). */
     const val SCREENSHOT_JPEG_QUALITY = 80
 
+    // --- Intercom (docs/decisions/0002-constants.md, "Intercom") ------------------
+
+    /** INTERCOM_RING_LIMIT_S: s an unanswered call rings before it ends (P9.1). */
+    const val INTERCOM_RING_LIMIT_S = 45
+
+    /** INTERCOM_CONNECT_TIMEOUT_S: s from the offer to connected audio (P9.1). */
+    const val INTERCOM_CONNECT_TIMEOUT_S = 10
+
+    /** INTERCOM_CALL_LIMIT_S: the hard call limit, from the moment a call is up
+     * (P9.1). Provisional: the owner confirms or changes it. */
+    const val INTERCOM_CALL_LIMIT_S = 300
+
+    /** INTERCOM_SIGNAL_MAX_BYTES: the largest one offer, answer or candidate
+     * payload, in UTF-8 bytes (P9.1). */
+    const val INTERCOM_SIGNAL_MAX_BYTES = 4096
+
     /**
      * CARD_BACKGROUND: a notification card's near-opaque dark body, ARGB
      * (P2.5). Not const: the literal needs the Long-to-Int narrowing.
@@ -168,4 +184,100 @@ object Constants {
      * slower than the threshold is reported at most this often (P3.16).
      */
     const val ILLUMINANCE_MIN_INTERVAL_MS = 30_000L
+
+    // --- At a Glance row (docs/decisions/0002-constants.md, "At a Glance (P3.6)") --
+
+    /** GLANCE_VALUE_BASE_SP: a chip's value text size at scale=100 %, before the fit's own shrink (P3.6). */
+    const val GLANCE_VALUE_BASE_SP = 28f
+
+    /** GLANCE_NAME_BASE_SP: a chip's name text size at scale=100 % (P3.6). */
+    const val GLANCE_NAME_BASE_SP = 18f
+
+    /** GLANCE_ICON_BASE_SP: a chip's icon glyph box at scale=100 % (P3.6). */
+    const val GLANCE_ICON_BASE_SP = 30f
+
+    /** GLANCE_CHIP_PADDING_SP: a chip's horizontal padding at scale=100 % (P3.6). */
+    const val GLANCE_CHIP_PADDING_SP = 14f
+
+    /** GLANCE_CHIP_GAP_SP: the gap between two chips on a line, at scale=100 % (P3.6). */
+    const val GLANCE_CHIP_GAP_SP = 12f
+
+    /** GLANCE_LINE_GAP_SP: the gap between the row's two lines, at scale=100 % (P3.6). */
+    const val GLANCE_LINE_GAP_SP = 10f
+
+    /** GLANCE_CHIP_RADIUS_SP: the pill's corner radius and the icon box's, at scale=100 % (P3.6). */
+    const val GLANCE_CHIP_RADIUS_SP = 12f
+
+    /** GLANCE_ROW_GAP_SP: the gap between the clock's date line and the row beneath it (P3.6). */
+    const val GLANCE_ROW_GAP_SP = 20f
+
+    /** GLANCE_ROW_EDGE_SP: the row's minimum distance from the panel's side edges (P3.6). */
+    const val GLANCE_ROW_EDGE_SP = 24f
+
+    /** GLANCE_MAX_CHIPS: chips the row draws, the schema's `at_a_glance.entities` bound (P3.6). */
+    const val GLANCE_MAX_CHIPS = 6
+
+    /** GLANCE_MAX_LINES_LANDSCAPE: lines the row may use in landscape (P3.6, F-AAG-01). */
+    const val GLANCE_MAX_LINES_LANDSCAPE = 1
+
+    /** GLANCE_MAX_LINES_PORTRAIT: lines the row wraps onto in portrait (P3.6, F-AAG-01). */
+    const val GLANCE_MAX_LINES_PORTRAIT = 2
+
+    /** GLANCE_MIN_TEXT_SCALE: the floor the fit's text shrink stops at before names are truncated (P3.6). */
+    const val GLANCE_MIN_TEXT_SCALE = 0.75f
+
+    /** GLANCE_SHRINK_STEP: the text shrink step the fit tries, 100 % down to the floor (P3.6). */
+    const val GLANCE_SHRINK_STEP = 0.05f
+
+    /** GLANCE_ELLIPSIS: the marker a name truncated at the shrink floor ends with (P3.6). */
+    const val GLANCE_ELLIPSIS = "…"
+
+    /** GLANCE_VALUE_LARGE_SCALE: how much larger a value is drawn when names are hidden (F-AAG-02, P3.6). */
+    const val GLANCE_VALUE_LARGE_SCALE = 1.25f
+
+    /**
+     * GLANCE_PILL_BG: the chip pill's body, ARGB (P3.6, F-AAG-02). Half-opaque
+     * black so the white text and the icon keep contrast over any clock
+     * background image (the value is chosen in ADR 0002, At a Glance (P3.6)).
+     */
+    val GLANCE_PILL_BG: Int = 0x8C000000.toInt()
+
+    /** GLANCE_TEXT: the chip's text color, day scheme (F-AAG-02: never changes with state). */
+    val GLANCE_TEXT: Int = 0xFFFFFFFF.toInt()
+
+    /** GLANCE_ICON_ACTIVE: the icon tint while the entity is in an active state, as HA's tiles show it (F-AAG-02). */
+    val GLANCE_ICON_ACTIVE: Int = 0xFFFFB300.toInt()
+
+    /** GLANCE_ICON_ACTIVE_BG: the icon box behind an active icon, as HA's tiles show it (F-AAG-02). */
+    val GLANCE_ICON_ACTIVE_BG: Int = 0x33FFB300
+
+    /** GLANCE_ICON_INACTIVE: the icon tint while the entity is off, closed, locked, unknown or unavailable (F-AAG-02). */
+    val GLANCE_ICON_INACTIVE: Int = 0xFFBDBDBD.toInt()
+
+    /** GLANCE_ICON_INACTIVE_BG: the icon box behind an inactive icon (F-AAG-02). */
+    val GLANCE_ICON_INACTIVE_BG: Int = 0x1FFFFFFF
+
+    /** GLANCE_NIGHT_TEXT: the row's single dim accent color at night, text and icons alike (F-SSV-10, P3.6). */
+    val GLANCE_NIGHT_TEXT: Int = 0xFFB05A5A.toInt()
+
+    /** GLANCE_NIGHT_PILL_BG: the pill's body at night, so the row does not light the room (F-SSV-10). */
+    val GLANCE_NIGHT_PILL_BG: Int = 0xCC000000.toInt()
+
+    /**
+     * GLANCE_INACTIVE_STATES: the states an HA tile draws in its inactive
+     * color (F-AAG-02). Everything else - `on`, `open`, `unlocked`, a sensor's
+     * number - is active (ADR 0032 item 3).
+     */
+    val GLANCE_INACTIVE_STATES: Set<String> = setOf(
+        "off",
+        "unknown",
+        "unavailable",
+        "locked",
+        "closed",
+        "not_home",
+        "idle",
+        "standby",
+        "disconnected",
+        "disarmed",
+    )
 }

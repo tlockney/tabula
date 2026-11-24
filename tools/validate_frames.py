@@ -48,6 +48,10 @@ SHARED_DEFS = {
     "error",
     "state",
     "log_line",
+    "intercom_call_id",
+    "intercom_mode",
+    "intercom_signal_kind",
+    "intercom_end_reason",
 }
 
 

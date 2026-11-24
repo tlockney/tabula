@@ -43,6 +43,12 @@ BACKOFF_BASE = 1.0  # s
 BACKOFF_MAX = 60.0  # s
 BACKOFF_RESET_AFTER = 60.0  # s
 
+# Intercom (P9.1; values chosen in docs/decisions/0002-constants.md)
+INTERCOM_RING_LIMIT_S = 45  # a ringing call nobody answers ends
+INTERCOM_CONNECT_TIMEOUT_S = 10  # offer to connected audio
+INTERCOM_CALL_LIMIT_S = 300  # the hard call limit, from the moment the call is up
+INTERCOM_SIGNAL_MAX_BYTES = 4096  # one offer, answer or candidate's payload
+
 # Logs
 LOG_MAX_LINES = 200
 LOG_MIN_INTERVAL = 1.0  # s
