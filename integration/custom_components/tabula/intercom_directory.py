@@ -53,7 +53,6 @@ def directory(hass: HomeAssistant, hub: TabulaHub, caller: DeviceRecord) -> list
     id), whether it can talk back and whether it is already in a call. The
     caller itself and its own area's tablets are not listed.
     """
-    devices = dr.async_get(hass)
     areas = ar.async_get(hass)
     caller_area = area_of(hass, caller)
     listed: list[dict[str, Any]] = []
@@ -77,7 +76,9 @@ def directory(hass: HomeAssistant, hub: TabulaHub, caller: DeviceRecord) -> list
             }
         )
     # The screen's order is the list's: by the label it shows, then by name.
-    listed.sort(key=lambda item: ((item["area_name"] or item["name"]).casefold(), item["name"].casefold()))
+    listed.sort(
+        key=lambda item: ((item["area_name"] or item["name"]).casefold(), item["name"].casefold())
+    )
     return listed
 
 

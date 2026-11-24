@@ -1397,9 +1397,7 @@ async def directory_of(tablet: Tablet) -> list[dict[str, Any]]:
     return reply["result"]["devices"]
 
 
-async def test_the_directory_lists_the_other_tablets_by_area(
-    hass_setup, make_tablet
-) -> None:
+async def test_the_directory_lists_the_other_tablets_by_area(hass_setup, make_tablet) -> None:
     """The screen's list: every other intercom tablet, labelled by area.
 
     P9.4 item 1 and ADR 0025 decision 6: the label is the HA area name, and the
