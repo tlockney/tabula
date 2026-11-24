@@ -58,6 +58,7 @@ class MainActivity : Activity() {
     private lateinit var screensaver: ScreensaverView
     private lateinit var gallery: GalleryView
     private lateinit var cards: NotificationCardsView
+    private lateinit var intercom: IntercomScreenView
 
     /** The touch being dispatched, so [onUserInteraction] can tell a card tap from other activity (F-NTF-12). */
     private var dispatchingTouch: android.view.MotionEvent? = null
@@ -115,6 +116,13 @@ class MainActivity : Activity() {
         addContentView(cards, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
+        // the intercom draws above everything, the screensaver included: a
+        // ring must be visible over a dark screen, and a call's banner stays
+        // for as long as the call does (P9.4 items 2 and 3)
+        intercom = IntercomScreenView(this)
+        addContentView(intercom, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
         ScreenWindow.attach(this, scope)
         observe()
         TabulaService.start(this)
@@ -149,6 +157,9 @@ class MainActivity : Activity() {
         super.onUserInteraction()
         val touch = dispatchingTouch
         if (touch != null && cards.cardAt(touch.x, touch.y)) return
+        // a tap on the ring or the call banner is not idling the kiosk: the
+        // screensaver stays behind the call (P9.4 item 2, like a card's tap)
+        if (intercom.isShowing) return
         // an edge tap on a photo slideshow steps a slide and restarts the
         // interval instead of dismissing (F-SSV-04's exception, F-SSV-12)
         if (touch != null && gallery.edgeTap(touch.x)) return
@@ -258,6 +269,10 @@ class MainActivity : Activity() {
         }
         scope.launch {
             TabulaStatus.notifications.collect { cards.render(it) }
+        }
+        scope.launch {
+            // what the service's intercom brain decided to draw (P9.4)
+            TabulaStatus.intercomScreen.collect { intercom.render(it) }
         }
         scope.launch {
             TabulaStatus.phase.collect { render(it) }

@@ -61,6 +61,8 @@ class IntercomManager(
     scope: CoroutineScope,
     private val publishState: (StateDelta) -> Unit,
     private val onMicrophoneHold: (Boolean) -> Unit = {},
+    /** A call or broadcast arrived: the panel is woken (P9.4 item 2, F-SCR-14). */
+    private val onRing: () -> Unit = {},
     private val log: (String) -> Unit = {},
 ) : IntercomControl {
     private val channel = Channel<(Int) -> EventFrame>(EVENT_BUFFER)
@@ -128,6 +130,13 @@ class IntercomManager(
         return outcome
     }
 
+    /**
+     * The screen's start, with the same target rule the TLP path enforces
+     * (P9.4 item 1): an illegal shape never reaches the engine.
+     */
+    fun startRequest(request: StartRequest): StartOutcome =
+        start(request.mode, request.targetDeviceId, request.targetAreaId, request.peerName)
+
     /** Answers the ringing call, as the incoming-call screen's button does (P9.4). */
     fun answer(): Boolean = engine.answer()
 
@@ -149,6 +158,7 @@ class IntercomManager(
                 mode = args.mode,
             ),
         )
+        if (accepted) onRing()
         return if (accepted) {
             CommandHandler.Reply.Ok()
         } else {

@@ -261,7 +261,7 @@ class DashboardView(
             return when (val decision = DashboardLinks.route(request.url.toString(), origin)) {
                 LinkDecision.LoadInWebView -> false
                 is LinkDecision.RunTabulaAction -> {
-                    runAction(decision.action)
+                    runAction(decision.action, decision.argument)
                     true // the page itself does not navigate (F-DSH-09)
                 }
                 is LinkDecision.OpenApp -> {
@@ -342,13 +342,30 @@ class DashboardView(
 
     // --- tabula:// actions ------------------------------------------------------
 
-    private fun runAction(action: String) {
+    private fun runAction(action: String, argument: String?) {
         TabulaLog.i(TAG, "dashboard: tabula action $action")
         when (action) {
             "reload" -> view.reload()
             "clear-cache" -> view.clearCache(true)
+            // P9.4: the screen and fixed-target calls (ADR 0025 decision 6). The
+            // service acts; the dashboard only hands it the action, and the
+            // intercom overlay draws above the page (F-DSH-09).
+            "intercom" -> intercom(net.lockney.tabula.core.intercom.IntercomAction.OpenDirectory)
+            "intercom-call" -> intercom(
+                net.lockney.tabula.core.intercom.IntercomAction.CallTarget(deviceId = argument),
+            )
+
+            "intercom-area" -> intercom(
+                net.lockney.tabula.core.intercom.IntercomAction.CallTarget(areaId = argument),
+            )
+
+            "intercom-broadcast" -> intercom(net.lockney.tabula.core.intercom.IntercomAction.Broadcast)
             else -> toast("Tabula has no '$action' action") // unreachable: route() filtered it
         }
+    }
+
+    private fun intercom(action: net.lockney.tabula.core.intercom.IntercomAction) {
+        TabulaStatus.intercomAction.tryEmit(action)
     }
 
     private fun openApp(packageName: String) {

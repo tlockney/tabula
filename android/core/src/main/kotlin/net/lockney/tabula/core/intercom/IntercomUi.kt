@@ -114,6 +114,12 @@ sealed interface IntercomAction {
  */
 class IntercomUi(
     private val engine: CallEngine,
+    /**
+     * How a call is started. The app passes the wiring's own entry point, so
+     * the screen gets the same target rule and logging as every other start
+     * (P9.3's `IntercomManager.start`); the tests use the engine directly.
+     */
+    private val start: (StartRequest) -> StartOutcome = { engine.start(it) },
     private val canTalk: () -> Boolean,
     private val clockMs: () -> Long,
     private val callLimitMs: Long = Constants.INTERCOM_CALL_LIMIT_S * 1000L,
@@ -154,7 +160,7 @@ class IntercomUi(
         val waiting = pendingReply
         if (waiting != null && engine.state.value == IntercomState.IDLE) {
             pendingReply = null
-            start(waiting)
+            begin(waiting)
         }
         screen = render()
     }
@@ -178,7 +184,7 @@ class IntercomUi(
                 note = null
             }
 
-            is IntercomAction.Call -> start(
+            is IntercomAction.Call -> begin(
                 StartRequest(
                     mode = IntercomMode.CALL,
                     targetDeviceId = action.peer.deviceId,
@@ -191,7 +197,7 @@ class IntercomUi(
                     (action.deviceId != null && listed.deviceId == action.deviceId) ||
                         (action.areaId != null && listed.areaId == action.areaId)
                 }
-                start(
+                begin(
                     StartRequest(
                         mode = IntercomMode.CALL,
                         targetDeviceId = action.deviceId,
@@ -201,7 +207,7 @@ class IntercomUi(
                 )
             }
 
-            IntercomAction.Broadcast -> start(StartRequest(mode = IntercomMode.BROADCAST))
+            IntercomAction.Broadcast -> begin(StartRequest(mode = IntercomMode.BROADCAST))
 
             IntercomAction.Answer -> {
                 note = null
@@ -248,8 +254,8 @@ class IntercomUi(
         engine.end(current.callId, IntercomEndReason.HANGUP)
     }
 
-    private fun start(request: StartRequest) {
-        note = when (val outcome = engine.start(request)) {
+    private fun begin(request: StartRequest) {
+        note = when (val outcome = start(request)) {
             is StartOutcome.Started -> null
             StartOutcome.Busy -> BUSY
             StartOutcome.CannotTalk -> NO_MICROPHONE
