@@ -48,7 +48,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 source "$(dirname "$0")/prompt.sh"
 
 ha_state() { # ha_state <entity_id> -> prints the state
-    curl -fsS -H "Authorization: Bearer ***" "${TABULA_HA_URL%/}/api/states/$1" \
+    curl -fsS -H "Authorization: Bearer ${TABULA_HA_TOKEN}" "${TABULA_HA_URL%/}/api/states/$1" \
         | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])'
 }
 row_lines() { adb logcat -d -s TabulaGlance:I 2>/dev/null | grep -c "row: " || true; }
