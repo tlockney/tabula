@@ -22,6 +22,7 @@ from homeassistant.components.assist_pipeline import (
     PipelineEventType,
     PipelineStage,
 )
+from homeassistant.components.assist_satellite import AssistSatelliteAnnouncement
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from mockdevice.client import TLPClient
@@ -29,6 +30,7 @@ from mockdevice.device import ALL_CAPABILITIES, MockDevice
 from mockdevice.store import DeviceStore
 
 PHRASE = "okay_nabu"
+PREANNOUNCE_FILENAME = "preannounce.mp3"
 TTS_URL = "/api/tts_proxy/reply.mp3"
 VOICE_CAPS = [*frame_fixture("register")["capabilities"], "voice"]
 CHUNK = 320  # VOICE_CHUNK_BYTES: 10 ms of 16 kHz, 16-bit mono (ADR 0002)
@@ -84,10 +86,14 @@ class FakePipeline:
         chunks: int = 4,
         tts_url: str | None = TTS_URL,
         error: str | None = None,
+        tts_urls: list[str] | None = None,
     ) -> None:
         self.chunks = chunks
         self.tts_url = tts_url
         self.error = error
+        # A reply per url, for the case of a second tts-end before the first
+        # reply has finished playing.
+        self.tts_urls = tts_urls if tts_urls is not None else ([tts_url] if tts_url else [])
         self.calls: list[dict] = []
         self.audio: list[bytes] = []
 
@@ -131,16 +137,17 @@ class FakePipeline:
                 {"intent_output": {"conversation_id": "01JCVINTENT000000000000A0"}},
             )
         )
-        if self.tts_url is None:
+        if not self.tts_urls:
             event_callback(PipelineEvent(PipelineEventType.RUN_END))
             return
         event_callback(PipelineEvent(PipelineEventType.TTS_START))
-        event_callback(
-            PipelineEvent(
-                PipelineEventType.TTS_END,
-                {"tts_output": {"url": self.tts_url, "media_id": "media-source://tts/reply"}},
+        for url in self.tts_urls:
+            event_callback(
+                PipelineEvent(
+                    PipelineEventType.TTS_END,
+                    {"tts_output": {"url": url, "media_id": "media-source://tts/reply"}},
+                )
             )
-        )
         event_callback(PipelineEvent(PipelineEventType.RUN_END))
 
 
@@ -335,7 +342,11 @@ async def test_a_duplicate_wake_word_cancels_the_turn(
 
 
 async def test_announce_plays_through_the_media_path(hass_setup, server, hub, session, paired):
-    """``assist_satellite.announce`` reaches the device as a play_media command."""
+    """``assist_satellite.announce`` reaches the device as play_media commands.
+
+    On HA releases that resolve a pre-announcement the chime goes out first, as
+    its own command; the announcement itself is always the last one.
+    """
     hass_setup.config.internal_url = server
     client = await ws_connect(session, server, paired.refresh_token)
     device = Device(client, paired)
@@ -353,13 +364,53 @@ async def test_announce_plays_through_the_media_path(hass_setup, server, hub, se
             blocking=True,
         )
     )
+    urls = []
+    # HA 2026.x has the pre-announcement field; the 2025.1 floor does not.
+    if "preannounce_media_id" in AssistSatelliteAnnouncement.__dataclass_fields__:
+        pre = await device.command("play_media")
+        assert pre["args"]["announce"] is True
+        assert pre["args"]["url"].endswith(PREANNOUNCE_FILENAME)
+        await device.ack(pre)
+        urls.append(pre["args"]["url"])
     play = await device.command("play_media")
-    args = play["args"]
-    assert args["announce"] is True
-    assert args["url"].endswith("/api/tts_proxy/announce.mp3")
+    assert play["args"]["announce"] is True
+    assert play["args"]["url"].endswith("/api/tts_proxy/announce.mp3")
     await device.ack(play)
+    urls.append(play["args"]["url"])
     await call
+    assert len(urls) in (1, 2)
+    assert urls[-1].endswith("/api/tts_proxy/announce.mp3")
     await device.state(media_state="playing")
+    await until(lambda: state_of(hass_setup, paired) == "idle")
+    await device.close()
+
+
+async def test_a_second_reply_replaces_the_one_still_playing(
+    hass_setup, server, hub, session, paired, fake_pipeline
+):
+    """A tts-end arriving while the previous reply plays is not dropped."""
+    other_url = "/api/tts_proxy/reply-2.mp3"
+    fake_pipeline(chunks=1, tts_urls=[TTS_URL, other_url])
+    client = await ws_connect(session, server, paired.refresh_token)
+    device = Device(client, paired)
+    await device.register(VOICE_CAPS)
+    await device.subscribe()
+    await hass_setup.async_block_till_done()
+
+    start = await open_turn(device)
+    await device.ack(start)
+    await device.audio(start["args"]["handler_id"], frames=1)
+    stop = await device.command("voice_stop")
+    await device.ack(stop)
+
+    first = await device.command("play_media")
+    assert first["args"]["url"] == TTS_URL
+    await device.ack(first)
+    # The first reply is still open (no media_finished): the second must play.
+    second = await device.command("play_media")
+    assert second["args"]["url"] == other_url
+    await device.ack(second)
+    await device.event("media_finished", {"reason": "ended"})
     await until(lambda: state_of(hass_setup, paired) == "idle")
     await device.close()
 

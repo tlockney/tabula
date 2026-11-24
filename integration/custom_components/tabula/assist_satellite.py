@@ -365,20 +365,27 @@ class TabulaSatellite(TabulaEntity, AssistSatelliteEntity):
 
     @callback
     def _schedule_reply(self, url: str) -> None:
-        if self._reply is not None and not self._reply.done():
-            return
-        self._reply = self.hass.loop.create_future()
+        """Play one reply, replacing any reply still being awaited.
+
+        A second ``tts-end`` while the first reply is open (a turn started while
+        the previous reply still plays) must not be dropped: the newest reply is
+        the one the user is waiting for, and the superseded one is over (ADR
+        0034 item 6).
+        """
+        self._resolve_reply()
+        reply = self.hass.loop.create_future()
+        self._reply = reply
         self._reply_playing = False
         assert self.platform.config_entry is not None
         self.platform.config_entry.async_create_background_task(
-            self.hass, self._async_play_reply(url), f"{self.entity_id}_reply"
+            self.hass, self._async_play_reply(url, reply), f"{self.entity_id}_reply"
         )
 
-    async def _async_play_reply(self, url: str) -> None:
+    async def _async_play_reply(self, url: str, reply: asyncio.Future) -> None:
         """Play the pipeline's reply, then let the entity return to idle."""
         try:
             await self._async_play_url(url, announce=False)
-            await self._async_wait_for_playback()
+            await self._async_wait_for_playback(reply)
         except HomeAssistantError as err:
             _LOGGER.warning("Reply to %s did not play: %s", self.device_id[:8], err)
         except TimeoutError:
@@ -386,19 +393,19 @@ class TabulaSatellite(TabulaEntity, AssistSatelliteEntity):
                 "Reply on %s reported no end within %ss", self.device_id[:8], VOICE_REPLY_TIMEOUT
             )
         finally:
-            self._reply = None
-            self._reply_playing = False
-            self.tts_response_finished()
+            # Only the reply that is still current resets the entity: a newer
+            # one may already have taken over (see _schedule_reply).
+            if self._reply is reply:
+                self._reply = None
+                self._reply_playing = False
+                self.tts_response_finished()
 
     async def _async_play_url(self, url: str, *, announce: bool) -> None:
         """Fetch and play one URL through the device's media path (ADR 0024 item 4)."""
         args = {"url": str(yarl.URL(url)), "media_type": "audio", "announce": announce}
         await self.async_command("play_media", args)
 
-    async def _async_wait_for_playback(self) -> None:
-        reply = self._reply
-        if reply is None:
-            return
+    async def _async_wait_for_playback(self, reply: asyncio.Future) -> None:
         async with asyncio.timeout(VOICE_REPLY_TIMEOUT):
             await asyncio.shield(reply)
 
@@ -430,10 +437,17 @@ class TabulaSatellite(TabulaEntity, AssistSatelliteEntity):
     async def async_announce(self, announcement: AssistSatelliteAnnouncement) -> None:
         """Play an announcement on the device's media path.
 
+        HA 2026.x resolves a pre-announcement (a short chime) and expects the
+        satellite to play it first; where the running HA has no such field the
+        lookup is empty and only the announcement plays.
+
         Returns once the device accepts playback: the reply's end is the
         device's to report, and there is no length bound to wait against for
         arbitrary announcement media (ADR 0034 item 6).
         """
+        preannounce = getattr(announcement, "preannounce_media_id", None)
+        if preannounce:
+            await self._async_play_url(preannounce, announce=True)
         await self._async_play_url(announcement.media_id, announce=True)
 
     async def async_start_conversation(
