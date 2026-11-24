@@ -90,6 +90,9 @@ class TabulaCommands(
             val parsed = Tlp.json.decodeFromJsonElement(LogSubscriptionArgs.serializer(), event.args)
             control.subscribe(parsed.enabled, parsed.level)
         } ?: undeclared(event.command)
+        Commands.INTERCOM_START -> intercom?.let { control ->
+            control.start(event.intercomStartArgs(Tlp.json))
+        } ?: undeclared(event.command)
         Commands.INTERCOM_RING -> intercom?.let { control ->
             control.ring(event.intercomRingArgs(Tlp.json))
         } ?: undeclared(event.command)

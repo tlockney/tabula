@@ -67,6 +67,10 @@ class WebRtcCallEngine(
 fun intercomCapabilities(canTalk: Boolean): List<String> = buildList {
     add("intercom_listen")
     if (canTalk) add("intercom_talk")
+    // This app can be the calling end of a call HA started, a broadcast
+    // included (P9.1b, ADR 0037 decision 2); a build that cannot is refused
+    // those calls rather than half-running them.
+    add("intercom_caller")
 }
 
 /**

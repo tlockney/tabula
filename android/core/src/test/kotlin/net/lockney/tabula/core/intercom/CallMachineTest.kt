@@ -8,6 +8,7 @@ import kotlin.test.assertTrue
 import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
+import net.lockney.tabula.core.tlp.IntercomPeer
 import net.lockney.tabula.core.tlp.IntercomSignalKind
 import net.lockney.tabula.core.tlp.IntercomState
 
@@ -552,6 +553,111 @@ class CallMachineTest {
         assertEquals(IntercomState.IDLE, machine.state.value)
         assertEquals(1, locks.released)
         assertTrue(events().filterIsInstance<EngineEvent.Ended>().isEmpty())
+    }
+
+
+    // --- the caller's own frame and per-peer connections (P9.1b) --------------
+
+    private fun peer(deviceId: String, name: String) = IntercomPeer(deviceId, name)
+
+    @Test
+    fun `prepare adopts the call and opens one connection per peer`() {
+        val outcome = machine.prepare(
+            CALL_TEST,
+            IntercomMode.BROADCAST,
+            listOf(peer("aa", "Kitchen"), peer("bb", "Bedroom")),
+        )
+        assertEquals(PrepareOutcome.Prepared(CALL_TEST), outcome)
+        assertEquals(IntercomState.BROADCASTING, machine.state.value)
+        assertEquals(CallDirection.OUTGOING, machine.info.value?.direction)
+        assertEquals("Kitchen", machine.info.value?.peerName)
+        assertEquals(2, peers.created.size)
+        assertTrue(peers.created.all { it.offered })
+        // Each offer is a signal of its own connection, labelled by its peer id
+        val signals = events().filterIsInstance<EngineEvent.Signal>()
+        assertEquals(setOf("aa", "bb"), signals.mapNotNull { it.peerDeviceId }.toSet())
+        assertEquals(1, locks.acquired)
+    }
+
+    @Test
+    fun `an answer is routed by its peer and an unknown peer is ignored`() {
+        machine.prepare(CALL_TEST, IntercomMode.CALL, listOf(peer("aa", "Kitchen")))
+        // A two-device call's answer carries no peer id and reaches the one peer
+        assertTrue(machine.signal(CALL_TEST, IntercomSignalKind.ANSWER, "v=0 answer"))
+        assertEquals("v=0 answer", peers.created.single().answerReceived)
+
+        // A broadcast's answer names its connection
+        val broadcast = CALL_TEST + "-b"
+        machine.end(CALL_TEST, IntercomEndReason.HANGUP)
+        machine.prepare(broadcast, IntercomMode.BROADCAST, listOf(peer("aa", "Kitchen"), peer("bb", "Bedroom")))
+        assertTrue(machine.signal(broadcast, IntercomSignalKind.ANSWER, "v=0 answer", "bb"))
+        assertEquals("v=0 answer", peers.created.last().answerReceived)
+        assertNull(peers.created[peers.created.size - 2].answerReceived)
+
+        // A peer id this call does not hold is ignored, and the call survives
+        assertTrue(machine.signal(broadcast, IntercomSignalKind.ANSWER, "v=0 other", "cc"))
+        assertEquals(IntercomState.BROADCASTING, machine.state.value)
+        assertTrue(events().filterIsInstance<EngineEvent.Ended>().isEmpty())
+    }
+
+    @Test
+    fun `an end closes every connection of the star`() {
+        machine.prepare(CALL_TEST, IntercomMode.BROADCAST, listOf(peer("aa", "Kitchen"), peer("bb", "Bedroom")))
+        assertTrue(machine.end(CALL_TEST, IntercomEndReason.COMMAND))
+        assertEquals(IntercomState.IDLE, machine.state.value)
+        assertTrue(peers.created.all { it.closed })
+        assertEquals(1, locks.released)
+    }
+
+    @Test
+    fun `prepare merges the peer list of a call it already holds`() {
+        machine.prepare(CALL_TEST, IntercomMode.BROADCAST, listOf(peer("aa", "Kitchen"), peer("bb", "Bedroom")))
+        val first = peers.created.toList()
+
+        // bb is gone, cc is new: aa keeps its connection and is not offered to again
+        assertEquals(
+            PrepareOutcome.Prepared(CALL_TEST),
+            machine.prepare(CALL_TEST, IntercomMode.BROADCAST, listOf(peer("aa", "Kitchen"), peer("cc", "Hall"))),
+        )
+        assertEquals(3, peers.created.size)
+        assertFalse(first[0].closed)
+        assertTrue(first[1].closed)
+        assertEquals(1, peers.created.count { it.offered })
+        assertEquals(1, locks.acquired)
+    }
+
+    @Test
+    fun `prepare for another call is busy and changes nothing`() {
+        machine.prepare(CALL_TEST, IntercomMode.CALL, listOf(peer("aa", "Kitchen")))
+        assertEquals(
+            PrepareOutcome.Busy,
+            machine.prepare("call-other", IntercomMode.CALL, listOf(peer("bb", "Bedroom"))),
+        )
+        assertEquals(CALL_TEST, machine.info.value?.callId)
+        assertEquals(1, peers.created.size)
+    }
+
+    @Test
+    fun `a prepared caller closes its connections when its call ends`() {
+        machine.prepare(CALL_TEST, IntercomMode.CALL, listOf(peer("aa", "Kitchen")))
+        scheduler.advance(Constants.INTERCOM_CALL_LIMIT_S * 1000L)
+        assertEquals(IntercomState.IDLE, machine.state.value)
+        assertTrue(peers.created.single().closed)
+        assertEquals(listOf<EngineEvent>(EngineEvent.Ended(CALL_TEST, IntercomEndReason.LIMIT)),
+            events().filterIsInstance<EngineEvent.Ended>())
+    }
+
+    @Test
+    fun `a callee never labels its signals`() {
+        // A receiver neither sends nor sees peer_device_id (ADR 0037 decision 3)
+        ring()
+        machine.answer()
+        events()
+        val calleePeer = peers.last!!
+        calleePeer.local(IntercomSignalKind.ANSWER, "v=0 answer")
+        val signals = events().filterIsInstance<EngineEvent.Signal>()
+        assertEquals(1, signals.size)
+        assertNull(signals.single().peerDeviceId)
     }
 
     companion object {

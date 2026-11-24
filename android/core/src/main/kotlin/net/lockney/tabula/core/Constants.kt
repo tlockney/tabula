@@ -145,6 +145,10 @@ object Constants {
      * payload, in UTF-8 bytes (P9.1). */
     const val INTERCOM_SIGNAL_MAX_BYTES = 4096
 
+    /** INTERCOM_BROADCAST_MAX_TARGETS: one broadcast's receivers, provisional
+     * until a broadcast is measured on hardware (P9.1b, ADR 0037 decision 7). */
+    const val INTERCOM_BROADCAST_MAX_TARGETS = 8
+
     /**
      * CARD_BACKGROUND: a notification card's near-opaque dark body, ARGB
      * (P2.5). Not const: the literal needs the Long-to-Int narrowing.

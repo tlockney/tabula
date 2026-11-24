@@ -4,6 +4,7 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.StateFlow
 import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
+import net.lockney.tabula.core.tlp.IntercomPeer
 import net.lockney.tabula.core.tlp.IntercomSignalKind
 import net.lockney.tabula.core.tlp.IntercomState
 
@@ -34,6 +35,13 @@ interface CallEngine {
     /** Starts a two-way call or a broadcast on this device's own initiative. */
     fun start(request: StartRequest): StartOutcome
 
+    /**
+     * HA says this device is the calling end of a call it started: adopt it, or
+     * merge the peer list of the one it already holds (P9.1b, ADR 0037
+     * decision 2). One connection per peer, offered to each.
+     */
+    fun prepare(callId: String, mode: IntercomMode, peers: List<IntercomPeer>): PrepareOutcome
+
     /** One `intercom_ring` from HA; false when this device is already in a call. */
     fun ring(request: RingRequest): Boolean
 
@@ -46,8 +54,18 @@ interface CallEngine {
     /** Ends the call named by [callId], for any reason; other ids are ignored. */
     fun end(callId: String, reason: IntercomEndReason): Boolean
 
-    /** One relayed signal; false when it belongs to another call. */
-    fun signal(callId: String, kind: IntercomSignalKind, payload: String): Boolean
+    /**
+     * One relayed signal; false when it belongs to another call.
+     * [peerDeviceId] names the connection it came from, and is how a caller
+     * with several peers tells their answers apart (ADR 0037 decision 3);
+     * absent for a two-device call and for anything a receiver sends.
+     */
+    fun signal(
+        callId: String,
+        kind: IntercomSignalKind,
+        payload: String,
+        peerDeviceId: String? = null,
+    ): Boolean
 
     /** The TLP session registered: a call that waited out the grace stays up. */
     fun onTransportUp()
@@ -98,6 +116,20 @@ data class RingRequest(
     val mode: IntercomMode,
 )
 
+/**
+ * The result of [CallEngine.prepare]: one call at a time, as [CallEngine.start]
+ * has, without the microphone or target outcomes that do not apply here.
+ */
+sealed interface PrepareOutcome {
+    data class Prepared(val callId: String) : PrepareOutcome
+
+    /** This device is already in a different call (PROTOCOL 4.5). */
+    data object Busy : PrepareOutcome
+
+    /** A connection could not be created; the call is already over. */
+    data object Unavailable : PrepareOutcome
+}
+
 /** The result of [CallEngine.start]; one call at a time, and talk needs a microphone. */
 sealed interface StartOutcome {
     data class Started(val callId: String) : StartOutcome
@@ -128,6 +160,8 @@ sealed interface EngineEvent {
         val callId: String,
         val kind: IntercomSignalKind,
         val payload: String,
+        /** The connection it belongs to, for a caller with more than one peer. */
+        val peerDeviceId: String? = null,
     ) : EngineEvent
 
     data class Ended(val callId: String, val reason: IntercomEndReason) : EngineEvent
