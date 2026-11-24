@@ -15,6 +15,12 @@ object Constants {
     /** LOG_MAX_LINES: most log lines in one tabula/log frame. */
     const val LOG_MAX_LINES = 200
 
+    /**
+     * VOICE_CHUNK_BYTES: PCM bytes in one binary voice frame — 160 samples of
+     * 16 kHz, 16-bit mono, 10 ms of audio (PROTOCOL.md 4.10, ADR 0002).
+     */
+    const val VOICE_CHUNK_BYTES = 320
+
     // --- Client behavior (docs/decisions/0002-constants.md) ---------------------------
     // Every value below is chosen in that ADR; do not change one without editing
     // the ADR in the same pull request. Seconds unless the name says otherwise.

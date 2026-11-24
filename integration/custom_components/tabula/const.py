@@ -51,6 +51,9 @@ COMMAND_CAPABILITIES: dict[str, frozenset[str]] = {
     "clear_cache": frozenset(),
     "log_subscription": frozenset({"logs"}),
     "screenshot": frozenset({"screenshot"}),
+    # P7.2: voice turns carry their audio as binary frames on this socket (4.10).
+    "voice_start": frozenset({"voice"}),
+    "voice_stop": frozenset({"voice"}),
 }
 
 # Per-device system users (ADR 0001 items 2-4): local_only=True by default,

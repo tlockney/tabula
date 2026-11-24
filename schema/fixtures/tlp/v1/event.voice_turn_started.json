@@ -1,0 +1,9 @@
+{
+  "id": 15,
+  "type": "tabula/event",
+  "event": "voice_turn_started",
+  "data": {
+    "turn_id": "01JCVTURN00000000000000AA",
+    "phrase": "okay_nabu"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": 19,
+  "type": "tabula/event",
+  "event": "voice_turn_ended",
+  "data": {
+    "turn_id": "01JCVTURN00000000000000AA",
+    "reason": "bored"
+  }
+}

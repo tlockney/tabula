@@ -26,6 +26,7 @@ object Tlp {
         "command_media_control", "command_screensaver", "command_navigate", "command_go_home",
         "command_reload",
         "command_restart_app", "command_clear_cache", "command_log_subscription", "command_screenshot",
+        "command_voice_start", "command_voice_stop",
         "command_intercom_ring", "command_intercom_signal", "command_intercom_end",
         "http_pair_request", "http_pair_response", "http_claim_request", "http_claim_pending",
         "http_claim_response", "http_error", "http_screenshot_response",
@@ -57,6 +58,8 @@ object Tlp {
         "command_clear_cache" -> commandFrame(text, Commands.CLEAR_CACHE) { it.emptyArgs(strict) }
         "command_log_subscription" -> commandFrame(text, Commands.LOG_SUBSCRIPTION) { it.logSubscriptionArgs(strict) }
         "command_screenshot" -> commandFrame(text, Commands.SCREENSHOT) { it.screenshotArgs(strict) }
+        "command_voice_start" -> commandFrame(text, Commands.VOICE_START) { it.voiceStartArgs(strict) }
+        "command_voice_stop" -> commandFrame(text, Commands.VOICE_STOP) { it.voiceStopArgs(strict) }
         "command_intercom_ring" -> commandFrame(text, Commands.INTERCOM_RING) { it.intercomRingArgs(strict) }
         "command_intercom_signal" ->
             commandFrame(text, Commands.INTERCOM_SIGNAL) { it.intercomSignalArgs(strict) }
