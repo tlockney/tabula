@@ -100,7 +100,8 @@ async def test_command_ack_updates_state(server, store, start, command, args, ch
 
 async def test_every_command_fixture_is_answered(server, store, start):
     """Each command fixture gets exactly one valid result (ACK or a NACK the protocol allows)."""
-    await start(store)
+    device = MockDevice(base_url=server.url)
+    await start(store, device)
     await server.wait_registered(store.device_id)
     import json
 
@@ -111,14 +112,20 @@ async def test_every_command_fixture_is_answered(server, store, start):
         if path.name.startswith("command_result"):
             continue
         event = json.loads(path.read_text())["event"]
-        result = await server.send_command(store.device_id, event["command"], event["args"])
-        # Only a ring may be busy: the fixture set rings the same device twice,
-        # and a device already in a call answers a new ring that way. Every
-        # other command's NACKs stay as tight as before.
-        allowed = {"failed", "unsupported_command"}
+        # Fixtures must not depend on each other's order, so put the device in
+        # the state the fixture assumes instead of relying on the glob order: a
+        # ring needs an idle device, and a signal belongs to a call that is up.
+        call_id = event["args"].get("call_id")
         if event["command"] == "intercom_ring":
-            allowed = allowed | {"busy"}
-        assert result["ok"] or result["error"]["code"] in allowed, path
+            device.hang_up()
+        elif (
+            event["command"] == "intercom_signal"
+            and (device.intercom_call or {}).get("call_id") != call_id
+        ):
+            device.hang_up()
+            await device.handle("intercom_ring", intercom_ring(call_id))
+        result = await server.send_command(store.device_id, event["command"], event["args"])
+        assert result["ok"] or result["error"]["code"] in {"failed", "unsupported_command"}, path
 
 
 async def test_set_settings_persists(server, store, start):
@@ -377,8 +384,11 @@ async def test_intercom_is_negotiated_and_commands_are_gated(server, store, star
     # PROTOCOL 4.4: a gated state key belongs only to a device that declares the
     # capability. `state` is strict for unknown keys even in a tolerant
     # receiver, so announcing the key would get the whole register refused.
-    assert [k for k in record.state if k.startswith("intercom")] == []
-    assert [k for k in device.state if k.startswith("intercom")] == []
+    # Every gated key, not only the intercom ones: a device without the
+    # capability must not announce the key that covers it (PROTOCOL 4.4).
+    gated = ("intercom_state", "illuminance")
+    assert [k for k in record.state if k in gated] == []
+    assert [k for k in device.state if k in gated] == []
 
     for command, args in (
         ("intercom_ring", intercom_ring()),

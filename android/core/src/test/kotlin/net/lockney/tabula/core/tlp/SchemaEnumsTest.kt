@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.lockney.tabula.core.Constants
 import net.lockney.tabula.core.TestRepo
 import java.io.File
 import kotlin.test.Test
@@ -36,22 +37,20 @@ class SchemaEnumsTest {
         assertEquals(expected.sorted(), wireNames(serializer, values).sorted())
     }
 
-    /** One event's `data.reason` enum, from the schema's per-event allOf block. */
-    private fun eventDataEnum(event: String, prop: String): List<String> {
+    /** The data object of one event, from the schema's per-event allOf block. */
+    private fun eventData(event: String): kotlinx.serialization.json.JsonObject {
         val blocks = schema.getValue("\$defs").jsonObject.getValue("event").jsonObject
             .getValue("allOf").jsonArray
-        val block = blocks.first {
+        return blocks.first {
             it.jsonObject.getValue("if").jsonObject.getValue("properties").jsonObject
                 .getValue("event").jsonObject.getValue("const").jsonPrimitive.content == event
-        }
-        return enumOf(
-            block.jsonObject.getValue("then").jsonObject
-                .getValue("properties").jsonObject
-                .getValue("data").jsonObject,
-            "properties",
-            prop,
-        )
+        }.jsonObject.getValue("then").jsonObject
+            .getValue("properties").jsonObject.getValue("data").jsonObject
     }
+
+    /** One event's `data.<prop>` enum. */
+    private fun eventDataEnum(event: String, prop: String): List<String> =
+        enumOf(eventData(event), "properties", prop)
 
     @Test
     fun `capability names match the schema`() {
@@ -164,5 +163,22 @@ class SchemaEnumsTest {
                 "properties", "event", "properties", "args", "properties", "level",
             ),
         )
+    }
+
+    @Test
+    fun `the signal byte cap matches the schema's payload bound`() {
+        // INTERCOM_SIGNAL_MAX_BYTES is the byte bound the codecs enforce; the
+        // schema bounds the same field in characters. It is one number in five
+        // places (two schema copies, ADR 0002, Constants.kt, the mock), so this
+        // keeps them from drifting apart.
+        val commandBound = definition("command_intercom_signal")
+            .getValue("properties").jsonObject.getValue("event").jsonObject
+            .getValue("properties").jsonObject.getValue("args").jsonObject
+            .getValue("properties").jsonObject.getValue("payload").jsonObject
+            .getValue("maxLength").jsonPrimitive.content.toInt()
+        val eventBound = eventData("intercom_signal").getValue("properties").jsonObject
+            .getValue("payload").jsonObject.getValue("maxLength").jsonPrimitive.content.toInt()
+        assertEquals(Constants.INTERCOM_SIGNAL_MAX_BYTES, commandBound)
+        assertEquals(Constants.INTERCOM_SIGNAL_MAX_BYTES, eventBound)
     }
 }

@@ -451,6 +451,16 @@ async def test_an_oversized_signal_is_refused():
     assert err.value.code == "invalid_args"
 
 
+def test_start_request_needs_intercom_talk():
+    """Starting a call means capturing one: no talk, no intercom_start_request."""
+    for capabilities in (["screen"], ["intercom_listen"]):
+        device, _, events = intercom_device(capabilities=capabilities)
+        with pytest.raises(CommandError) as err:
+            device.start_intercom_call("broadcast")
+        assert err.value.code == "unsupported_command"
+        assert events == []
+
+
 async def test_start_request_carries_one_target_and_a_call_id():
     device, _, events = intercom_device()
     device.start_intercom_call("call", target_device_id="9c1e4b7f2a3d4c5e8f9a0b1c2d3e4f50")

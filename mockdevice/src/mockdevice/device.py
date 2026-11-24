@@ -160,8 +160,6 @@ class MockDevice:
             "charging": True,
             "network": "wifi",
             "wifi_rssi": -54,
-            # the room's light (P3.16): the mock "has a light sensor"
-            "illuminance": 128.5,
             "current_page": "/lovelace/0",
             "volume": 50,
             "muted": False,
@@ -177,6 +175,11 @@ class MockDevice:
         # without the key must not announce it.
         if "intercom_listen" in self.capabilities:
             self.state["intercom_state"] = "idle"
+        # The room's light (P3.16): the mock "has a light sensor", and like
+        # every gated key (PROTOCOL 4.4) it belongs only to a device that
+        # declares the capability that covers it.
+        if "illuminance" in self.capabilities:
+            self.state["illuminance"] = 128.5
         # The call this device is in, if any (P9.1): its id, mode, caller and
         # the two deadlines the tests drive with the injected clock.
         self.intercom_call: dict[str, Any] | None = None
@@ -410,6 +413,11 @@ class MockDevice:
             raise CommandError("invalid_args", "no call is ringing")
         return call
 
+    def hang_up(self, reason: str = "command") -> None:
+        """End whatever call is up, as the integration's intercom_end would."""
+        if self.intercom_call is not None:
+            self._end_intercom(reason)
+
     def send_intercom_signal(self, kind: str, payload: str) -> None:
         """Emit intercom_signal for the current call, the device's side of the relay."""
         call = self.intercom_call
@@ -430,10 +438,14 @@ class MockDevice:
         """Ask HA for a call started on this device's screen (ADR 0025 decision 6).
 
         The device proposes the target and the call id; HA resolves the targets
-        and rings them, so nothing changes here yet. The checks match the event
-        schema: a call needs exactly one target, and the two targets exclude
-        each other.
+        and rings them, so nothing changes here yet. Starting a call means
+        capturing one, so only a device that declares ``intercom_talk`` sends
+        this event (PROTOCOL 4.7, ADR 0025 decision 7). The remaining checks
+        match the event schema: a call needs exactly one target, and the two
+        targets exclude each other.
         """
+        if "intercom_talk" not in self.capabilities:
+            raise CommandError("unsupported_command", "intercom_talk is not declared")
         if target_device_id is not None and target_area_id is not None:
             raise CommandError("invalid_args", "a call has one target, device or area")
         if mode == "call" and target_device_id is None and target_area_id is None:
