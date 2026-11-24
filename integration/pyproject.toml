@@ -11,6 +11,10 @@ dependencies = []
 dev = [
   "homeassistant==2026.2.3",
   "pytest-homeassistant-custom-component==0.13.316",
+  # the frontend and panel_custom components tabula depends on need the built
+  # frontend package or their setup fails (panel tests, P5.1); pin matches the
+  # frontend manifest of homeassistant 2026.2.3.
+  "home-assistant-frontend==20260128.6",
   # tts and its ffmpeg dependency, for the tts.speak tests (P1.4); pins match
   # the tts and ffmpeg manifests of homeassistant 2026.2.3.
   "ha-ffmpeg==3.2.2",

@@ -1,0 +1,32 @@
+{
+  "name": "tabula-panel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Tabularium: Tabula's management panel, built into a static bundle the integration serves.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "vite build",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test -- --run && npm run build",
+    "dev": "vite build --watch --mode development",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lit": "^3.3.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.15.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.10.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.74.0",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}

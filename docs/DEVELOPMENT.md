@@ -58,6 +58,24 @@ Any VM that can reach PyPI and npm works.
 
 Hardware steps (ADB against a real tablet) cannot run in a cloud VM. Packets mark them `Verification: hardware`; see AGENTS.md.
 
+## Panel
+
+The Tabularium is a Vite + TypeScript + Lit 3 app in `panel/`, built into one ES module and served by the hub entry (packet P5.1; plan 5.9).
+
+```sh
+make panel         # build build/panel/panel.js and stage it into the integration
+make panel-check   # Prettier check, ESLint, tsc --noEmit, Vitest, then the build
+make panel-dev     # rebuild the bundle on every change
+```
+
+`make setup` installs the panel's npm dependencies from `panel/package-lock.json`; `make check` runs `panel-check`, so a TypeScript error fails CI like a Python one. `make fmt` formats the panel sources with Prettier.
+
+**Delivery.** Home Assistant serves only files inside a component's own directory, so `make panel` stages the build into `integration/custom_components/tabula/panel/` (gitignored, never committed). A source checkout must run `make panel` before the integration is started, or before a release is packaged. Without a staged bundle the integration loads normally, logs a warning and skips the panel.
+
+**Dev loop.** The bundle is fetched by the HA frontend as a module, so there is no dev server against a live HA instance: change the sources, run `make panel`, then reload the integration (or hard-reload the browser tab to pick up the new `?v=` module URL).
+
+**Generated file.** `panel/src/generated/settings.ts` is written by `tools/codegen_ts.py` from `schema/settings.schema.json` (`make codegen-ts`, `make codegen` for both languages) and gated by `make codegen-drift`. Do not edit it by hand, and do not format it: Prettier and ESLint ignore the directory.
+
 ## CI
 
 `.github/workflows/ci.yml` runs `make setup` and `make check` on every pull request and on pushes to `main`. Component packets extend `make check`; they do not add CI-only steps.
