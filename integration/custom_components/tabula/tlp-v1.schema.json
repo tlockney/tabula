@@ -80,9 +80,10 @@
         "limit",
         "error",
         "disconnect",
-        "command"
+        "command",
+        "busy"
       ],
-      "description": "Why a call ended. hangup: a person ended it; decline: the callee refused; timeout: the ring limit or the connect timeout passed; limit: the hard call limit (INTERCOM_CALL_LIMIT_S); error: the audio path failed; disconnect: the device lost its session, or restarted; command: the integration ended it."
+      "description": "Why a call ended. hangup: a person ended it; decline: the callee refused; timeout: the ring limit or the connect timeout passed; limit: the hard call limit (INTERCOM_CALL_LIMIT_S); error: the audio path failed; disconnect: the device lost its session, or restarted; command: the integration ended it; busy: the callee was already in a call, so the integration ended the caller's side."
     },
     "capability": {
       "enum": [
@@ -99,8 +100,8 @@
         "screenshot",
         "illuminance",
         "wake_word",
-        "intercom.listen",
-        "intercom.talk"
+        "intercom_listen",
+        "intercom_talk"
       ]
     },
     "error_code": {
@@ -332,7 +333,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){0,2}$"
+            "pattern": "^[a-z][a-z0-9_]{0,31}$"
           },
           "uniqueItems": true,
           "maxItems": 64,
@@ -821,7 +822,8 @@
                   "payload": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 4096
+                    "maxLength": 4096,
+                    "description": "The session description or ICE candidate's text, unchanged. maxLength is the schema's character bound; senders enforce the byte bound INTERCOM_SIGNAL_MAX_BYTES, which the same value covers for the ASCII these payloads are."
                   }
                 },
                 "required": [
@@ -1929,7 +1931,7 @@
         "event"
       ],
       "additionalProperties": false,
-      "description": "Offer a call to this device (capability: intercom.listen). It answers with intercom_answer or intercom_decline, or stays ringing until INTERCOM_RING_LIMIT_S passes."
+      "description": "Offer a call to this device (capability: intercom_listen). For mode call it answers with intercom_answer or intercom_decline, or stays ringing until INTERCOM_RING_LIMIT_S passes; a broadcast is not answered and is in the call at once."
     },
     "command_intercom_signal": {
       "type": "object",
@@ -1963,7 +1965,7 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 4096,
-                  "description": "The session description or ICE candidate's text, unchanged, at most INTERCOM_SIGNAL_MAX_BYTES UTF-8 bytes."
+                  "description": "The device's own session description or ICE candidate, unchanged. maxLength is the schema's character bound; senders enforce the byte bound INTERCOM_SIGNAL_MAX_BYTES, which the same value covers for the ASCII these payloads are."
                 }
               },
               "required": [
@@ -1988,7 +1990,7 @@
         "event"
       ],
       "additionalProperties": false,
-      "description": "Relay one WebRTC signal to this device (capability: intercom.listen). HA never reads the payload; it is the peer's own signaling."
+      "description": "Relay one WebRTC signal to this device (capability: intercom_listen). HA never reads the payload; it is the peer's own signaling."
     },
     "command_intercom_end": {
       "type": "object",
@@ -2040,7 +2042,7 @@
         "event"
       ],
       "additionalProperties": false,
-      "description": "End the call on this device, from any state (capability: intercom.listen). Every device in the call gets one; a device not in that call answers ok and changes nothing."
+      "description": "End the call on this device, from any state (capability: intercom_listen). Every device in the call gets one; a device not in that call answers ok and changes nothing."
     },
     "http_pair_request": {
       "type": "object",

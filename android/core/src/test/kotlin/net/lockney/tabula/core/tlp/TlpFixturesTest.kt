@@ -173,6 +173,7 @@ internal fun JsonElement.canonical(): JsonElement = when (this) {
 
     else -> this
 }
+
 /** P9.1: the intercom fixtures carry what the state machine reads, typed. */
 class IntercomFixturesTest {
     private val fixtures = File(net.lockney.tabula.core.TestRepo.root(), "schema/fixtures/tlp/v1")
@@ -213,10 +214,18 @@ class IntercomFixturesTest {
     }
 
     @Test
-    fun `the state fixture carries intercom_state`() {
-        val file = File(fixtures, "state_delta.intercom.json")
-        val state = (Tlp.decodeFrame("state_delta", file.readText()) as StateFrame).state
-        assertTrue(state.intercomState == IntercomState.RINGING)
+    fun `the state fixtures carry every intercom state`() {
+        // One fixture per enum value, so a new value cannot arrive in the
+        // schema without the codec being asked for it.
+        val expected = mapOf(
+            "state_delta.intercom.json" to IntercomState.RINGING,
+            "state_delta.intercom.in_call.json" to IntercomState.IN_CALL,
+            "state_delta.intercom.broadcasting.json" to IntercomState.BROADCASTING,
+        )
+        for ((name, value) in expected) {
+            val state = (Tlp.decodeFrame("state_delta", File(fixtures, name).readText()) as StateFrame).state
+            assertTrue(state.intercomState == value, name)
+        }
     }
 
     @Test

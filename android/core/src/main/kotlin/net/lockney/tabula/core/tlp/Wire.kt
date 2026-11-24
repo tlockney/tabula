@@ -10,11 +10,8 @@ import java.time.OffsetDateTime
 internal object Wire {
     val deviceId = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     val commandId = Regex("^[0-9A-Za-z_-]{8,64}$")
-    /**
-     * A capability name: one to three dot-separated segments (PROTOCOL 4.0), so
-     * `screen` and `intercom.listen` are both names.
-     */
-    val capability = Regex("^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){0,2}$")
+    /** A capability name: one lowercase segment (PROTOCOL 4.0, 8). */
+    val capability = Regex("^[a-z][a-z0-9_]{0,31}$")
 
     /** Frontend path with no query string or fragment, single leading slash (state, page_changed). */
     val pagePath = Regex("^/(?![/\\\\])[^\\s\\\\?#]*$")

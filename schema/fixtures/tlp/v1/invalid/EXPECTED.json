@@ -26,6 +26,7 @@
   "log.too_many_lines": "lines",
   "register.bad_capability_name": "capabilities/0",
   "register.bad_device_id": "device_id",
+  "register.dotted_capability": "capabilities/0",
   "register.missing_capabilities": "",
   "register_result.no_capabilities": "result",
   "state_delta.bad_datetime": "state/next_screensaver",

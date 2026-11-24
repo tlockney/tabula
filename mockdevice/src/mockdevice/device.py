@@ -36,9 +36,10 @@ ALL_CAPABILITIES = [
     "wake_word",
     # Intercom (P9.1, ADR 0025 decision 7): listen can receive audio, talk can
     # capture. The mock carries no audio, so declaring both is a claim about
-    # its signaling only.
-    "intercom.listen",
-    "intercom.talk",
+    # its signaling only. Names are single-segment so an older integration
+    # ignores them instead of refusing the register frame (PROTOCOL 4.0).
+    "intercom_listen",
+    "intercom_talk",
 ]
 
 # Which capability a command needs (docs/PROTOCOL.md 4.5); None = always available.
@@ -59,9 +60,9 @@ COMMAND_CAPABILITY: dict[str, str | None] = {
     # Intercom commands are gated by listen: every device that can take part in
     # a call can receive one, whether or not it can talk back (ADR 0025
     # decision 7). intercom_start_request is the talk-side event.
-    "intercom_ring": "intercom.listen",
-    "intercom_signal": "intercom.listen",
-    "intercom_end": "intercom.listen",
+    "intercom_ring": "intercom_listen",
+    "intercom_signal": "intercom_listen",
+    "intercom_end": "intercom_listen",
 }
 
 
@@ -187,7 +188,9 @@ class MockDevice:
         """A new connection registered: the stale-revision rule restarts (PROTOCOL.md 4.5)."""
         # No auto-resume after a reconnect or a restart (ADR 0028 guard 4): a
         # call that was up or ringing when the session dropped does not come
-        # back, and the device says so on the new connection.
+        # back, and the device says so on the new connection. The event is
+        # queued before register goes out, but the client's event loop starts
+        # only after _register returns, so nothing is sent pre-registration.
         if self.intercom_call is not None:
             self._end_intercom("disconnect")
         self._connection_revision = None
@@ -376,8 +379,10 @@ class MockDevice:
     def answer_intercom_call(self) -> None:
         """Answer a ringing call, as a person tapping answer does (P9.3 wires the screen).
 
-        Answers with intercom_answer and starts the hard call limit, which runs
-        from the moment the call is up (ADR 0028 guard 2).
+        Answers with intercom_answer and (re)starts the hard call limit: ADR
+        0002 says the limit runs from the moment the call is up, so answering
+        is what starts it, not ringing. A call that is never answered is ended
+        by the ring limit instead.
         """
         call = self._ringing_call()
         call["call_deadline"] = self.clock() + INTERCOM_CALL_LIMIT_S

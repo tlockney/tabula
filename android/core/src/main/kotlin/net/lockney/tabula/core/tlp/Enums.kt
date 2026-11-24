@@ -66,10 +66,12 @@ enum class Capability {
     // P7.1: declared only while voice.wake_word_enabled is on and RECORD_AUDIO
     // is granted (ADR 0030 item 2).
     @SerialName("wake_word") WAKE_WORD,
-    // P9.1: intercom (ADR 0025 decision 7). listen can receive audio, talk can
-    // capture; a device with neither is left out of call targets.
-    @SerialName("intercom.listen") INTERCOM_LISTEN,
-    @SerialName("intercom.talk") INTERCOM_TALK,
+    // P9.1: intercom (ADR 0025 decision 7, whose dotted names are the concept;
+    // the wire spelling is single-segment so an older integration ignores the
+    // name instead of refusing the frame, PROTOCOL 4.0). listen can receive
+    // audio, talk can capture; a device with neither is left out of targets.
+    @SerialName("intercom_listen") INTERCOM_LISTEN,
+    @SerialName("intercom_talk") INTERCOM_TALK,
 }
 
 /** Tabula error codes (command_result.error.code, docs/PROTOCOL.md 6). */
@@ -115,6 +117,7 @@ enum class DismissReason {
     @SerialName("timeout") TIMEOUT,
     @SerialName("replaced") REPLACED,
     @SerialName("command") COMMAND,
+    @SerialName("busy") BUSY,
 }
 
 /** screensaver_started trigger. */
@@ -169,6 +172,7 @@ enum class IntercomEndReason {
     @SerialName("error") ERROR,
     @SerialName("disconnect") DISCONNECT,
     @SerialName("command") COMMAND,
+    @SerialName("busy") BUSY,
 }
 
 /** media_finished reason. */

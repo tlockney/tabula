@@ -42,8 +42,8 @@ V1_CAPABILITIES = {
     "logs",
     "screenshot",
     "illuminance",
-    "intercom.listen",
-    "intercom.talk",
+    "intercom_listen",
+    "intercom_talk",
 }
 
 

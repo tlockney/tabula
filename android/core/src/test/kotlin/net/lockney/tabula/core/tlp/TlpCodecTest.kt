@@ -228,15 +228,16 @@ class TlpCodecTest {
     }
 
     @Test
-    fun `a dotted capability name is a capability`() {
-        // PROTOCOL 4.0: names are one to three dot-separated segments, so a
-        // device declaring intercom.listen keeps registering.
-        register().copy(capabilities = listOf("screen", "intercom.listen", "intercom.talk"))
-        assertFailsWith<IllegalArgumentException> {
-            register().copy(capabilities = listOf("intercom:listen"))
-        }
-        assertFailsWith<IllegalArgumentException> {
-            register().copy(capabilities = listOf("intercom.listen.extra.more"))
+    fun `capability names stay one segment`() {
+        // PROTOCOL 4.0, 8: a name an older integration cannot parse as a
+        // capability would have its whole register refused, so the intercom
+        // capabilities ride as intercom_listen / intercom_talk. A dotted name
+        // stays invalid, which is what keeps that promise honest.
+        register().copy(capabilities = listOf("screen", "intercom_listen", "intercom_talk"))
+        for (bad in listOf("intercom.listen", "intercom:listen", "intercom_listen_extra.more")) {
+            assertFailsWith<IllegalArgumentException>(bad) {
+                register().copy(capabilities = listOf(bad))
+            }
         }
     }
 

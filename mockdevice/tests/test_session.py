@@ -112,8 +112,12 @@ async def test_every_command_fixture_is_answered(server, store, start):
             continue
         event = json.loads(path.read_text())["event"]
         result = await server.send_command(store.device_id, event["command"], event["args"])
-        # busy: a second ring while the fixture's first call is still ringing.
-        allowed = {"failed", "unsupported_command", "busy"}
+        # Only a ring may be busy: the fixture set rings the same device twice,
+        # and a device already in a call answers a new ring that way. Every
+        # other command's NACKs stay as tight as before.
+        allowed = {"failed", "unsupported_command"}
+        if event["command"] == "intercom_ring":
+            allowed = allowed | {"busy"}
         assert result["ok"] or result["error"]["code"] in allowed, path
 
 
@@ -383,5 +387,5 @@ async def test_intercom_is_negotiated_and_commands_are_gated(server, store, star
 async def test_a_declared_intercom_device_is_accepted(server, store, start):
     await start(store)
     record = await server.wait_registered(store.device_id)
-    assert {"intercom.listen", "intercom.talk"} <= set(record.capabilities)
+    assert {"intercom_listen", "intercom_talk"} <= set(record.capabilities)
     assert record.state.get("intercom_state") == "idle"
