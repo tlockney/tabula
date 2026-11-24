@@ -28,6 +28,7 @@ object Tlp {
         "command_restart_app", "command_clear_cache", "command_log_subscription", "command_screenshot",
         "command_voice_start", "command_voice_stop",
         "command_intercom_ring", "command_intercom_signal", "command_intercom_end",
+        "command_intercom_start",
         "http_pair_request", "http_pair_response", "http_claim_request", "http_claim_pending",
         "http_claim_response", "http_error", "http_screenshot_response",
     )
@@ -64,6 +65,8 @@ object Tlp {
         "command_intercom_signal" ->
             commandFrame(text, Commands.INTERCOM_SIGNAL) { it.intercomSignalArgs(strict) }
         "command_intercom_end" -> commandFrame(text, Commands.INTERCOM_END) { it.intercomEndArgs(strict) }
+        "command_intercom_start" ->
+            commandFrame(text, Commands.INTERCOM_START) { it.intercomStartArgs(strict) }
         "http_pair_request" -> strict.decodeFromString(HttpPairRequest.serializer(), text)
         "http_pair_response" -> strict.decodeFromString(HttpPairResponse.serializer(), text)
         "http_claim_request" -> strict.decodeFromString(HttpClaimRequest.serializer(), text)

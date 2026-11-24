@@ -2,9 +2,11 @@ package net.lockney.tabula.core.tlp
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import net.lockney.tabula.core.Constants
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -253,5 +255,46 @@ class TlpCodecTest {
         val args = frame.event.intercomRingArgs(Tlp.strict)
         assertEquals(IntercomMode.BROADCAST, args.mode)
         assertEquals("Office Kiosk", args.callerName)
+    }
+
+    @Test
+    fun `intercom start carries one peer for a call and at most the cap`() {
+        val id = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+        val peer = IntercomPeer("7d1e2f3a-4b5c-4d6e-8f70-1a2b3c4d5e6f", "Kitchen Frame")
+        val other = IntercomPeer("9a8b7c6d-5e4f-4a3b-9c8d-7e6f5a4b3c2d", "Office Kiosk")
+        val cap = Constants.INTERCOM_BROADCAST_MAX_TARGETS
+        val many = (1..cap).map {
+            IntercomPeer(
+                "00000000-1111-4111-8111-1111111111${it.toString().padStart(2, '0')}",
+                "Room $it",
+            )
+        }
+
+        IntercomStartArgs(id, IntercomMode.CALL, listOf(peer))
+        IntercomStartArgs(id, IntercomMode.BROADCAST, many)
+        assertFailsWith<IllegalArgumentException> {
+            IntercomStartArgs(id, IntercomMode.CALL, listOf(peer, other))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            IntercomStartArgs(id, IntercomMode.BROADCAST, emptyList())
+        }
+        assertFailsWith<IllegalArgumentException> {
+            IntercomStartArgs(id, IntercomMode.BROADCAST, many + other)
+        }
+        assertFailsWith<IllegalArgumentException> { IntercomPeer("not-a-uuid", "Kitchen Frame") }
+        assertFailsWith<IllegalArgumentException> { IntercomPeer(peer.deviceId, "") }
+        assertFailsWith<IllegalArgumentException> { IntercomPeer(peer.deviceId, "x".repeat(65)) }
+    }
+
+    @Test
+    fun `a null peer id encodes to no member`() {
+        val id = "01JC9Z6Q2H3W7K5N8T4V0BXDRA"
+        val plain = IntercomSignalArgs(callId = id, kind = IntercomSignalKind.OFFER, payload = "v=0")
+        val encoded = Tlp.strict.encodeToJsonElement(IntercomSignalArgs.serializer(), plain).jsonObject
+        assertFalse("peer_device_id" in encoded, "a two-device call omits the member")
+
+        val labelled = plain.copy(peerDeviceId = "7d1e2f3a-4b5c-4d6e-8f70-1a2b3c4d5e6f")
+        val withPeer = Tlp.strict.encodeToJsonElement(IntercomSignalArgs.serializer(), labelled).jsonObject
+        assertTrue("peer_device_id" in withPeer)
     }
 }

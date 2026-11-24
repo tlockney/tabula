@@ -499,6 +499,138 @@ def test_intercom_state_is_only_sent_by_a_device_that_declares_it():
     assert "intercom_state" not in MockDevice(capabilities=["intercom_talk"]).state
 
 
+# --- the caller's own frame (P9.1b, ADR 0037 decision 2) -----------------------
+
+KITCHEN = "7d1e2f3a-4b5c-4d6e-8f70-1a2b3c4d5e6f"
+OFFICE = "9a8b7c6d-5e4f-4a3b-9c8d-7e6f5a4b3c2d"
+HALL = "1b2c3d4e-5f60-4a1b-8c2d-3e4f5a6b7c8d"
+
+
+def peers(*ids: str) -> list[dict]:
+    names = {KITCHEN: "Kitchen Frame", OFFICE: "Office Kiosk", HALL: "Hall"}
+    return [{"device_id": i, "name": names.get(i, i)} for i in ids]
+
+
+def started(mode: str = "call", call_id: str = CALL, peer_list: list[dict] | None = None) -> dict:
+    return {
+        "call_id": call_id,
+        "mode": mode,
+        "peers": peers(KITCHEN) if peer_list is None else peer_list,
+    }
+
+
+async def test_intercom_caller_is_declared_and_gates_the_frame():
+    """A build that does not declare intercom_caller is never the prepared caller."""
+    assert "intercom_caller" in MockDevice().capabilities
+    device, _, _ = intercom_device(capabilities=["intercom_listen", "intercom_talk"])
+    with pytest.raises(CommandError) as err:
+        await device.handle("intercom_start", started())
+    assert err.value.code == "unsupported_command"
+
+
+async def test_intercom_start_is_adopted_by_an_idle_device():
+    """The frame is the only way a caller learns an HA-started call's id."""
+    device, clock, events = intercom_device()
+    await device.handle("intercom_start", started())
+    assert device.state["intercom_state"] == "in_call"
+    assert device.intercom_call["call_id"] == CALL
+    assert device.intercom_call["role"] == "caller"
+    assert device.intercom_call["peers"] == peers(KITCHEN)
+    assert events == []
+
+    # The hard limit runs from the preparation, and the call ends on its id.
+    clock.now += INTERCOM_CALL_LIMIT_S
+    assert device.check_intercom_timers() == "limit"
+    assert events == [("intercom_ended", {"call_id": CALL, "reason": "limit"})]
+
+
+async def test_intercom_start_merges_the_peer_list_of_a_call_it_holds():
+    """A peer it lacks is added, one the list no longer names is dropped."""
+    device, _, _ = intercom_device()
+    await device.handle("intercom_start", started("broadcast", peer_list=peers(KITCHEN, OFFICE)))
+    assert device.state["intercom_state"] == "broadcasting"
+    assert device.intercom_call["peers"] == peers(KITCHEN, OFFICE)
+
+    await device.handle("intercom_start", started("broadcast", peer_list=peers(OFFICE, HALL)))
+    assert device.intercom_call["call_id"] == CALL
+    assert device.intercom_call["peers"] == peers(OFFICE, HALL)
+
+
+async def test_intercom_start_for_another_call_is_busy():
+    """A late frame can never move a live call."""
+    device, _, _ = intercom_device()
+    await device.handle("intercom_start", started())
+    with pytest.raises(CommandError) as err:
+        await device.handle("intercom_start", started(call_id="01JC9Z6Q2H3W7K5N8T4V0BXDRA2"))
+    assert err.value.code == "busy"
+    assert device.intercom_call["call_id"] == CALL
+
+
+async def test_intercom_start_enforces_the_peer_rules():
+    """The mock keeps its own copy of the cap and of the one-peer rule for call."""
+    device, _, _ = intercom_device()
+    nine = [
+        {"device_id": f"{i:08x}-1111-4111-8111-{i:012x}", "name": f"Frame {i}"}
+        for i in range(1, 10)
+    ]
+    for args in (
+        started("broadcast", peer_list=[]),
+        started("broadcast", peer_list=nine),
+        started("call", peer_list=peers(KITCHEN, OFFICE)),
+    ):
+        with pytest.raises(CommandError) as err:
+            await device.handle("intercom_start", args)
+        assert err.value.code == "invalid_args"
+    assert device.intercom_call is None
+
+
+async def test_a_labeled_signal_is_recorded_and_an_unknown_peer_refused():
+    """peer_device_id names one connection of the caller's, never a stranger's."""
+    device, _, _ = intercom_device()
+    await device.handle("intercom_start", started("broadcast", peer_list=peers(KITCHEN, OFFICE)))
+    offer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+    await device.handle(
+        "intercom_signal",
+        {"call_id": CALL, "kind": "offer", "payload": offer, "peer_device_id": KITCHEN},
+    )
+    assert device.intercom_signals == [
+        {"kind": "offer", "payload": offer, "peer_device_id": KITCHEN}
+    ]
+
+    with pytest.raises(CommandError) as err:
+        await device.handle(
+            "intercom_signal",
+            {"call_id": CALL, "kind": "offer", "payload": offer, "peer_device_id": HALL},
+        )
+    assert err.value.code == "invalid_args"
+
+
+async def test_a_two_device_call_signal_carries_no_peer():
+    """v1 frames stay v1 where one connection is enough (ADR 0037 decision 8)."""
+    device, _, events = intercom_device()
+    await device.handle("intercom_ring", ring())
+    offer = "v=0\r\n"
+    await device.handle("intercom_signal", {"call_id": CALL, "kind": "offer", "payload": offer})
+    assert device.intercom_signals == [{"kind": "offer", "payload": offer}]
+    device.send_intercom_signal("answer", offer)
+    assert events[-1] == ("intercom_signal", {"call_id": CALL, "kind": "answer", "payload": offer})
+
+
+async def test_a_broadcast_caller_names_each_peer_it_sends_to():
+    """A caller with several peers must pass the peer, or its signal has nowhere to go."""
+    device, _, events = intercom_device()
+    await device.handle("intercom_start", started("broadcast", peer_list=peers(KITCHEN, OFFICE)))
+    with pytest.raises(CommandError) as err:
+        device.send_intercom_signal("offer", "v=0\r\n")
+    assert err.value.code == "invalid_args"
+
+    device.send_intercom_signal("offer", "v=0\r\n", peer_device_id=KITCHEN)
+    assert events[-1] == (
+        "intercom_signal",
+        {"call_id": CALL, "kind": "offer", "payload": "v=0\r\n", "peer_device_id": KITCHEN},
+    )
+
+
 async def test_intercom_state_is_idle_until_a_call():
     device, _, deltas = intercom_device()
     deltas.clear()

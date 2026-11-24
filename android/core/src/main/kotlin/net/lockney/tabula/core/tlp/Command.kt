@@ -38,6 +38,9 @@ object Commands {
     const val INTERCOM_SIGNAL = "intercom_signal"
     const val INTERCOM_END = "intercom_end"
 
+    /** The caller's own frame: the call id and the peers it is calling (P9.1b). */
+    const val INTERCOM_START = "intercom_start"
+
     // P7.2: the codec knows the voice commands, but the app declares no `voice`
     // capability and captures nothing yet, so they stay out of [all]: a voice
     // command still answers unsupported_command (PROTOCOL 4.5).
@@ -47,7 +50,7 @@ object Commands {
     val all: Set<String> = setOf(
         SET_SETTINGS, SCREEN, NOTIFY, PLAY_MEDIA, MEDIA_CONTROL, SCREENSAVER,
         NAVIGATE, GO_HOME, RELOAD, RESTART_APP, CLEAR_CACHE, LOG_SUBSCRIPTION, SCREENSHOT,
-        INTERCOM_RING, INTERCOM_SIGNAL, INTERCOM_END,
+        INTERCOM_RING, INTERCOM_SIGNAL, INTERCOM_END, INTERCOM_START,
     )
 }
 
@@ -110,6 +113,9 @@ data class CommandEvent(
 
     fun intercomEndArgs(json: Json): IntercomEndArgs =
         json.decodeFromJsonElement(IntercomEndArgs.serializer(), args)
+
+    fun intercomStartArgs(json: Json): IntercomStartArgs =
+        json.decodeFromJsonElement(IntercomStartArgs.serializer(), args)
 }
 
 /** set_settings: full settings document at a revision (PROTOCOL 4.5, plan 5.6). */
@@ -288,10 +294,46 @@ data class IntercomSignalArgs(
     @SerialName("call_id") val callId: String,
     val kind: IntercomSignalKind,
     val payload: String,
+    @SerialName("peer_device_id") val peerDeviceId: String? = null,
 ) {
     init {
         Wire.requireCallId(callId)
         Wire.requireSignalPayload("intercom_signal.payload", payload, Constants.INTERCOM_SIGNAL_MAX_BYTES)
+        peerDeviceId?.let { Wire.requireDeviceId(it) }
+    }
+}
+
+/** intercom_start: the peers this device is calling, and the name to show for each. */
+@Serializable
+data class IntercomPeer(
+    @SerialName("device_id") val deviceId: String,
+    val name: String,
+) {
+    init {
+        Wire.requireDeviceId(deviceId)
+        Wire.requireLength("intercom_start.peers.name", name, 1, 64)
+    }
+}
+
+/**
+ * intercom_start: this device is the calling end of a call the integration
+ * started (P9.1b, ADR 0037 decision 2). 1..INTERCOM_BROADCAST_MAX_TARGETS
+ * peers, exactly one of them when the mode is `call`.
+ */
+@Serializable
+data class IntercomStartArgs(
+    @SerialName("call_id") val callId: String,
+    val mode: IntercomMode,
+    val peers: List<IntercomPeer>,
+) {
+    init {
+        Wire.requireCallId(callId)
+        require(peers.size in 1..Constants.INTERCOM_BROADCAST_MAX_TARGETS) {
+            "intercom_start.peers must be 1-${Constants.INTERCOM_BROADCAST_MAX_TARGETS}, is ${peers.size}"
+        }
+        require(mode != IntercomMode.CALL || peers.size == 1) {
+            "intercom_start: a call has exactly one peer, is ${peers.size}"
+        }
     }
 }
 

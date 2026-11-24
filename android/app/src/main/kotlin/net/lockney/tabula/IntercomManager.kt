@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import net.lockney.tabula.core.intercom.CallEngine
 import net.lockney.tabula.core.intercom.EngineEvent
+import net.lockney.tabula.core.intercom.PrepareOutcome
 import net.lockney.tabula.core.intercom.StartOutcome
 import net.lockney.tabula.core.intercom.StartRequest
 import net.lockney.tabula.core.tlp.ErrorCode
@@ -16,6 +17,7 @@ import net.lockney.tabula.core.tlp.IntercomEndArgs
 import net.lockney.tabula.core.tlp.IntercomEndReason
 import net.lockney.tabula.core.tlp.IntercomMode
 import net.lockney.tabula.core.tlp.IntercomRingArgs
+import net.lockney.tabula.core.tlp.IntercomStartArgs
 import net.lockney.tabula.core.tlp.IntercomSignalArgs
 import net.lockney.tabula.core.tlp.IntercomState
 import net.lockney.tabula.core.tlp.StateDelta
@@ -26,6 +28,12 @@ import net.lockney.tabula.ha.CommandHandler
  * commands, the connection guards and the state key.
  */
 interface IntercomControl {
+    /**
+     * `intercom_start`: this device is the calling end of a call the
+     * integration started, and here are the peers it resolved (P9.1b).
+     */
+    fun start(args: IntercomStartArgs): CommandHandler.Reply
+
     /** `intercom_ring`: an offered call or broadcast. */
     fun ring(args: IntercomRingArgs): CommandHandler.Reply
 
@@ -155,6 +163,18 @@ class IntercomManager(
         return engine.end(call.callId, reason)
     }
 
+    override fun start(args: IntercomStartArgs): CommandHandler.Reply {
+        val outcome = engine.prepare(args.callId, args.mode, args.peers)
+        when (outcome) {
+            is PrepareOutcome.Prepared ->
+                log("intercom: preparing ${outcome.callId} (${args.mode}, ${args.peers.size} peer(s))")
+            PrepareOutcome.Busy -> return CommandHandler.Reply.Error(ErrorCode.BUSY, "already in a call")
+            PrepareOutcome.Unavailable ->
+                return CommandHandler.Reply.Error(ErrorCode.FAILED, "the audio connection could not be created")
+        }
+        return CommandHandler.Reply.Ok()
+    }
+
     override fun ring(args: IntercomRingArgs): CommandHandler.Reply {
         val accepted = engine.ring(
             net.lockney.tabula.core.intercom.RingRequest(
@@ -175,7 +195,7 @@ class IntercomManager(
     }
 
     override fun signal(args: IntercomSignalArgs): CommandHandler.Reply =
-        if (engine.signal(args.callId, args.kind, args.payload)) {
+        if (engine.signal(args.callId, args.kind, args.payload, args.peerDeviceId)) {
             CommandHandler.Reply.Ok()
         } else {
             // The mock's rule: a signal for a call this device is not in
@@ -207,7 +227,15 @@ class IntercomManager(
             is EngineEvent.Answered -> ({ id: Int -> EventFrame.intercomAnswer(id, event.callId) })
             is EngineEvent.Declined -> ({ id: Int -> EventFrame.intercomDecline(id, event.callId) })
             is EngineEvent.Signal ->
-                ({ id: Int -> EventFrame.intercomSignal(id, event.callId, event.kind, event.payload) })
+                ({ id: Int ->
+                    EventFrame.intercomSignal(
+                        id,
+                        event.callId,
+                        event.kind,
+                        event.payload,
+                        event.peerDeviceId,
+                    )
+                })
 
             is EngineEvent.Ended -> ({ id: Int -> EventFrame.intercomEnded(id, event.callId, event.reason) })
             is EngineEvent.StartRequested -> ({ id: Int ->
