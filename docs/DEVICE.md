@@ -837,3 +837,33 @@ happens. Paste the whole output of each run into the packet Result.
   the API 28 targets this is unrestricted. On Android 14+ devices the type
   has runtime prerequisites — revisit in an ADR before targeting newer
   devices (P2.7 or later).
+
+## Hardware check (P3.6, At a Glance row)
+
+Install a P3.6 build (or later), provision and pair, and configure the row on
+the tablet's HA entry (the options flow):
+
+- `at_a_glance.entities`: a lock and a door or garage sensor, e.g.
+  `["lock.front_door","binary_sensor.garage_door"]`
+- `at_a_glance.style` pill, `scale` 100, `hide_names` off, the default font
+
+Leave Tabula in front with the panel on and run:
+
+```sh
+TABULA_HA_URL=http://ha:8123 TABULA_HA_TOKEN=<token> \
+ANDROID_SERIAL=<serial> tools/device/check_p36.sh
+```
+
+The script starts nothing itself: it reads HA's REST states and dumps the
+tablet's log buffer, and the verifier starts the screensaver from HA, changes
+one entity and dismisses the screensaver at each prompt. It checks: the row
+draws with one chip per configured entity and each entity's live value
+(`TabulaGlance` `row:` and `chip <id>: <value>` lines, plus the verifier's
+eye for the placement under the date line); a state change in HA reaches the
+chip within a few seconds (a new chip line with the new value); and
+dismissing the screensaver closes the subscription (`TabulaService`
+`entity data: closed`, F-AAG-04). Night mode is not run here - the row's
+night flag is the never-night default until P3.4 lands - so hiding and
+recoloring are checked in P3.4's run. Paste the whole output into the packet
+Result.
+

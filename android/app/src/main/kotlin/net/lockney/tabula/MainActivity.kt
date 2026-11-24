@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import net.lockney.tabula.core.screensaver.FadeRule
 import net.lockney.tabula.core.screensaver.PixelShift
 import net.lockney.tabula.core.tlp.ScreensaverMode
+import net.lockney.tabula.ha.GlanceFeed
 import kotlin.math.roundToInt
 
 /**
@@ -237,12 +238,23 @@ class MainActivity : Activity() {
             // (F-SSV-09: the revision change is the signal, P3.3)
             TabulaStatus.settingsRevision.collect {
                 if (screensaver.showingFace) screensaver.applyClock(store.settings.screensaver.clock)
+                // the row's settings and night-mode options can change with any write (P3.6)
+                renderGlance()
                 // the switch can be flipped from HA while the kiosk is already
                 // showing, so the prompt cannot live in onCreate alone; asking
                 // here keeps the setting's promise that turning it on is what
                 // asks (ADR 0030 item 3, F-KSK-21)
                 requestRecordAudioIfNeeded()
             }
+        }
+        scope.launch {
+            // the At a Glance row reads the subscription's states and HA's
+            // display data (F-AAG-03, P3.6), so a state change lands on the
+            // chips without the dashboard being involved (F-AAG-04)
+            TabulaStatus.entityStates.collect { renderGlance() }
+        }
+        scope.launch {
+            TabulaStatus.entityDisplay.collect { renderGlance() }
         }
         scope.launch {
             TabulaStatus.notifications.collect { cards.render(it) }
@@ -260,6 +272,8 @@ class MainActivity : Activity() {
             // (issue #127): the attempt keeps retrying behind the form
             TabulaStatus.pairingNotice.collect { render(TabulaStatus.phase.value) }
         }
+        // the row's settings are known before the first entity update arrives (P3.6)
+        renderGlance()
         scope.launch {
             TabulaStatus.pairing.collect { view ->
                 val codeText = native.findViewWithTag<TextView>("code")
@@ -268,6 +282,20 @@ class MainActivity : Activity() {
                 idText?.text = view?.let { "Device ${it.deviceIdShort}" } ?: ""
             }
         }
+    }
+
+    /**
+     * Feed the At a Glance row (F-AAG-01 to F-AAG-03, P3.6): the settings,
+     * the night-mode options whose hide-overlays decides whether night hides
+     * it, and the live values in the settings' own order.
+     */
+    private fun renderGlance() {
+        val settings = store.settings
+        screensaver.applyGlance(
+            settings.atAGlance,
+            settings.screensaver.nightMode,
+            GlanceFeed.of(TabulaStatus.entityStates.value, TabulaStatus.entityDisplay.value, settings.atAGlance.entities),
+        )
     }
 
     private fun render(phase: Phase) {

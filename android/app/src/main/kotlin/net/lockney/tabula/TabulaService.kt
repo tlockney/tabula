@@ -175,6 +175,10 @@ class TabulaService : Service() {
         screensaver.applySettings(store.settings)
         screensaver.setPanelOn(panel.isOn)
         screensaver.start()
+        // the overlays draw from the connection's own flows (F-AAG-04, P3.6): the
+        // activity reads the live states and HA's display data from here
+        scope.launch { entityData.states.collect { TabulaStatus.entityStates.value = it } }
+        scope.launch { entityData.display.collect { TabulaStatus.entityDisplay.value = it } }
         scope.launch { TabulaStatus.userActivity.collect { screensaver.onActivity() } }
         scope.launch { TabulaStatus.foreground.collect { screensaver.setForeground(it) } }
     }
