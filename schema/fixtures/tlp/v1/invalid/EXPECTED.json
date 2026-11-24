@@ -11,9 +11,14 @@
   "command_result.ack_with_error": "",
   "command_result.nack_without_error": "",
   "command_screen.no_args": "event/args",
+  "command_voice_start.bad_turn_id": "event/args/turn_id",
+  "command_voice_start.handler_id_out_of_range": "event/args/handler_id",
+  "command_voice_start.phrase_with_wake_word": "event/args",
   "event.bad_reason": "data/reason",
-  "event.wake_word_probability_range": "data/probability",
+  "event.voice_turn_ended.bad_reason": "data/reason",
+  "event.voice_turn_started.no_turn_id": "data",
   "event.wake_word_bad_phrase": "data/phrase",
+  "event.wake_word_probability_range": "data/probability",
   "http_claim_request.short_nonce": "nonce",
   "http_pair_request.short_code": "code",
   "log.too_many_lines": "lines",
@@ -23,8 +28,8 @@
   "state_delta.bad_datetime": "state/next_screensaver",
   "state_delta.brightness_range": "state/brightness",
   "state_delta.empty": "state",
-  "state_delta.page_with_query": "state/current_page",
-  "state_delta.unknown_key": "state",
+  "state_delta.negative_illuminance": "state/illuminance",
   "state_delta.null_last_wake_word": "state/last_wake_word",
-  "state_delta.negative_illuminance": "state/illuminance"
+  "state_delta.page_with_query": "state/current_page",
+  "state_delta.unknown_key": "state"
 }

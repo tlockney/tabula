@@ -29,6 +29,8 @@
     "command_clear_cache",
     "command_log_subscription",
     "command_screenshot",
+    "command_voice_start",
+    "command_voice_stop",
     "http_pair_request",
     "http_pair_response",
     "http_claim_request",
@@ -49,6 +51,17 @@
       "pattern": "^[0-9A-Za-z_-]{8,64}$",
       "description": "Opaque ID chosen by the integration; unique per device for the integration's lifetime (e.g. a ULID)."
     },
+    "turn_id": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z_-]{8,64}$",
+      "description": "Opaque voice-turn ID chosen by the integration; unique per device for the integration's lifetime."
+    },
+    "handler_id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255,
+      "description": "HA binary handler ID (one byte) that prefixes every PCM frame of the turn (PROTOCOL.md 4.10)."
+    },
     "capability": {
       "enum": [
         "screen",
@@ -63,7 +76,8 @@
         "logs",
         "screenshot",
         "illuminance",
-        "wake_word"
+        "wake_word",
+        "voice"
       ]
     },
     "error_code": {
@@ -178,6 +192,13 @@
           "type": "string",
           "format": "date-time",
           "description": "Device clock at the last accepted wake-word detection. Omitted until the first detection; never null."
+        },
+        "voice_turn": {
+          "enum": [
+            "idle",
+            "listening"
+          ],
+          "description": "listening while the device has an open voice turn and is streaming PCM on the binary channel; idle otherwise. Always present while the voice capability is declared. Speaking is media_state, not this key (ADR 0024)."
         },
         "current_page": {
           "type": [
@@ -423,7 +444,9 @@
             "screensaver_stopped",
             "media_finished",
             "page_changed",
-            "wake_word_detected"
+            "wake_word_detected",
+            "voice_turn_started",
+            "voice_turn_ended"
           ]
         },
         "data": {
@@ -692,6 +715,70 @@
                 "required": [
                   "phrase",
                   "probability"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "voice_turn_started"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "turn_id": {
+                    "$ref": "#/$defs/turn_id"
+                  },
+                  "phrase": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_]{1,32}$",
+                    "description": "The wake-word phrase the turn began with. Omitted when the turn began without one."
+                  }
+                },
+                "required": [
+                  "turn_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "voice_turn_ended"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "turn_id": {
+                    "$ref": "#/$defs/turn_id"
+                  },
+                  "reason": {
+                    "enum": [
+                      "command",
+                      "timeout",
+                      "error"
+                    ],
+                    "description": "command: the integration sent voice_stop. timeout: the device's own turn limit elapsed. error: the microphone or codec failed mid-turn."
+                  }
+                },
+                "required": [
+                  "turn_id",
+                  "reason"
                 ],
                 "additionalProperties": false
               }
@@ -1632,6 +1719,149 @@
       ],
       "additionalProperties": false,
       "description": "Capture the screen and upload it over HTTP (capability: screenshot, Phase 3)."
+    },
+    "command_voice_start": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "#/$defs/command_id"
+            },
+            "command": {
+              "const": "voice_start"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "turn_id": {
+                  "$ref": "#/$defs/turn_id"
+                },
+                "handler_id": {
+                  "$ref": "#/$defs/handler_id"
+                },
+                "start_stage": {
+                  "enum": [
+                    "stt",
+                    "wake_word"
+                  ],
+                  "description": "Pipeline stage the audio joins. stt: the wake word was detected on the device. wake_word: HA's own wake-word engine runs on the stream."
+                },
+                "wake_word_phrase": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]{1,32}$",
+                  "description": "The phrase that started the turn, when the device detected one. Absent for wake_word turns."
+                }
+              },
+              "required": [
+                "turn_id",
+                "handler_id",
+                "start_stage"
+              ],
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "start_stage": {
+                        "const": "wake_word"
+                      }
+                    },
+                    "required": [
+                      "start_stage"
+                    ]
+                  },
+                  "then": {
+                    "not": {
+                      "required": [
+                        "wake_word_phrase"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "command_id",
+            "command",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "Open a voice turn and start streaming PCM on the binary channel (capability: voice)."
+    },
+    "command_voice_stop": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "#/$defs/command_id"
+            },
+            "command": {
+              "const": "voice_stop"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "turn_id": {
+                  "$ref": "#/$defs/turn_id"
+                },
+                "reason": {
+                  "enum": [
+                    "ended",
+                    "cancelled",
+                    "timeout"
+                  ],
+                  "description": "ended: the pipeline has the audio it needs. cancelled: a person or automation aborted the turn. timeout: the pipeline gave up waiting."
+                }
+              },
+              "required": [
+                "turn_id",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "command_id",
+            "command",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "Close a voice turn (capability: voice). Idempotent: a stop for a turn that is not open is acknowledged."
     },
     "http_pair_request": {
       "type": "object",

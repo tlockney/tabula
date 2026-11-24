@@ -38,7 +38,17 @@ SETTINGS_V1_BUNDLED = (
 )
 
 
-SHARED_DEFS = {"device_id", "command_id", "capability", "error_code", "error", "state", "log_line"}
+SHARED_DEFS = {
+    "device_id",
+    "command_id",
+    "turn_id",
+    "handler_id",
+    "capability",
+    "error_code",
+    "error",
+    "state",
+    "log_line",
+}
 
 
 def load_schema(path: Path = SCHEMA) -> dict[str, Any]:

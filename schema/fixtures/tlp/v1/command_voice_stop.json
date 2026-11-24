@@ -1,0 +1,12 @@
+{
+  "id": 23,
+  "type": "event",
+  "event": {
+    "command_id": "01JCVOICE0000000000000000A",
+    "command": "voice_stop",
+    "args": {
+      "turn_id": "01JCVTURN00000000000000AA",
+      "reason": "ended"
+    }
+  }
+}
