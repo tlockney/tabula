@@ -3,6 +3,7 @@
 packet|1d76db|Tracks a work packet in docs/packets/
 task|5319e7|Work too small for a packet
 bug|d73a4a|Something behaves wrongly
+idea|c5b3f5|Recorded for future consideration; not designed and not ready for delegation
 side:build|0e8a16|Build side (works from the repo only)
 side:spec|fbca04|Spec side (writes docs/FEATURES.md only)
 tier:light|c2e0c6|Mechanical; a test or diff shows correctness
