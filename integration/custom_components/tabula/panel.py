@@ -37,8 +37,8 @@ _LOGGER = logging.getLogger(__name__)
 # Where `make panel` stages the build (build/panel/panel.js).
 BUNDLE_DIR = Path(__file__).parent / "panel"
 BUNDLE_FILE = "panel.js"
-# The version in the URL busts the browser cache after an upgrade without
-# touching the static path's caching headers.
+# The module URL, cache-busted per load by the integration version and the
+# bundle's digest; the static path's own caching headers stay untouched.
 MODULE_URL = f"{PANEL_STATIC_URL_PATH}/{BUNDLE_FILE}"
 
 

@@ -6,6 +6,7 @@ assertions read HA's own panel registry rather than a mock of it.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
 import pytest
@@ -78,9 +79,9 @@ async def test_registers_the_panel_once_with_the_expected_arguments(hass_setup, 
     assert custom["name"] == PANEL_WEBCOMPONENT
     assert custom["embed_iframe"] is False
     # The manifest version plus the bundle's content hash, so a new bundle
-    # busts the browser cache even without a version bump.
-    digest = panel.bundle_digest()
-    assert len(digest) == 12
+    # busts the browser cache even without a version bump. The digest is
+    # computed here from the fixture's bytes, not from the function under test.
+    digest = hashlib.sha256(BUNDLE.encode()).hexdigest()[:12]
     assert custom["module_url"] == f"{PANEL_STATIC_URL_PATH}/panel.js?v=0.1.0-{digest}"
     # The static path serves the same directory the bundle is read from.
     assert len(static_resources(hass_setup)) == 2, "the bundle's static path is registered"
