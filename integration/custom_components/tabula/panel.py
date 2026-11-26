@@ -12,6 +12,7 @@ admin-only `tabula/panel_*` WebSocket commands (panel_api.py).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -36,9 +37,19 @@ _LOGGER = logging.getLogger(__name__)
 # Where `make panel` stages the build (build/panel/panel.js).
 BUNDLE_DIR = Path(__file__).parent / "panel"
 BUNDLE_FILE = "panel.js"
-# The version in the URL busts the browser cache after an upgrade without
-# touching the static path's caching headers.
+# The module URL, cache-busted per load by the integration version and the
+# bundle's digest; the static path's own caching headers stay untouched.
 MODULE_URL = f"{PANEL_STATIC_URL_PATH}/{BUNDLE_FILE}"
+
+
+def bundle_digest() -> str:
+    """A short content hash of the staged bundle (blocking: run in the executor).
+
+    The module URL carries it, so a new bundle is a new URL even when the
+    integration's version string has not changed, and browsers and HA's
+    service worker never keep serving a stale panel.
+    """
+    return hashlib.sha256((BUNDLE_DIR / BUNDLE_FILE).read_bytes()).hexdigest()[:12]
 
 
 def bundle_present() -> bool:
@@ -74,13 +85,14 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
         hass.data[DATA_PANEL_STATIC_PATH] = True
 
     integration = await async_get_integration(hass, DOMAIN)
+    digest = await hass.async_add_executor_job(bundle_digest)
     await panel_custom.async_register_panel(
         hass,
         frontend_url_path=PANEL_URL_PATH,
         webcomponent_name=PANEL_WEBCOMPONENT,
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
-        module_url=f"{MODULE_URL}?v={integration.version}",
+        module_url=f"{MODULE_URL}?v={integration.version}-{digest}",
         embed_iframe=False,
         require_admin=True,
     )
