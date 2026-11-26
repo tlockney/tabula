@@ -65,7 +65,7 @@ export class TabulaPanel extends LitElement {
     hass: { attribute: false },
     info: { state: true },
     error: { state: true },
-    route: { state: true },
+    hashRoute: { state: true },
     devices: { state: true },
     devicesError: { state: true },
     takenAt: { state: true },
@@ -78,7 +78,11 @@ export class TabulaPanel extends LitElement {
   declare hass?: HomeAssistant;
   declare info?: PanelInfo;
   declare error?: string;
-  declare route: string;
+  /**
+   * The panel's own hash route. Not `route`: HA's panel resolver assigns its
+   * own `route` object ({prefix, path}) to every custom panel element.
+   */
+  declare hashRoute: string;
   declare devices?: PanelDevice[];
   declare devicesError?: string;
   /** When the shown snapshot was taken (ISO); the list is not polled. */
@@ -95,7 +99,7 @@ export class TabulaPanel extends LitElement {
 
   constructor() {
     super();
-    this.route = routeOf(window.location?.hash ?? "");
+    this.hashRoute = routeOf(window.location?.hash ?? "");
     this.filter = "";
     this.tab = "overview";
     this.settingsDirty = false;
@@ -118,13 +122,13 @@ export class TabulaPanel extends LitElement {
 
   private readonly onHashChange = (): void => {
     const next = routeOf(window.location?.hash ?? "");
-    if (next !== this.route && !this.confirmLeave()) {
+    if (next !== this.hashRoute && !this.confirmLeave()) {
       // Stay: put the address back where the panel is (a dirty settings form).
-      window.history.replaceState(null, "", this.route);
+      window.history.replaceState(null, "", this.hashRoute);
       return;
     }
     this.settingsDirty = false;
-    this.route = next;
+    this.hashRoute = next;
   };
 
   /** A dirty settings form asks before the browser unloads the panel. */
@@ -156,7 +160,7 @@ export class TabulaPanel extends LitElement {
   };
 
   protected override updated(changed: PropertyValueMap<this>): void {
-    if (changed.has("route")) {
+    if (changed.has("hashRoute")) {
       // A new device route starts on the overview tab.
       this.tab = "overview";
     }
@@ -288,10 +292,10 @@ export class TabulaPanel extends LitElement {
   }
 
   private renderRoute(): TemplateResult | typeof nothing {
-    if (this.route === PROFILES_ROUTE) {
+    if (this.hashRoute === PROFILES_ROUTE) {
       return html`<tabula-profiles .hass=${this.hass}></tabula-profiles>`;
     }
-    const deviceId = deviceIdFromRoute(this.route);
+    const deviceId = deviceIdFromRoute(this.hashRoute);
     return deviceId === null ? this.renderDevices() : this.renderDeviceRoute(deviceId);
   }
 

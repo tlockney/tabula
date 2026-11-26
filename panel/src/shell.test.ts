@@ -86,6 +86,23 @@ describe("tabula-panel shell", () => {
   });
 });
 
+describe("inside Home Assistant", () => {
+  it("keeps rendering when HA sets its own route object on the element", async () => {
+    // partial-panel-resolver assigns `route` ({prefix, path}), `panel` and
+    // `narrow` to every custom panel; none of them may clobber panel state.
+    const element = await mount(
+      fakeHass(async (msg) => (msg.type === "tabula/panel_info" ? INFO : [])),
+    );
+    const host = element as unknown as Record<string, unknown>;
+    host.route = { prefix: "/tabularium", path: "" };
+    host.narrow = false;
+    host.panel = { url_path: "tabularium" };
+    await settle(element);
+    expect(element.shadowRoot?.textContent ?? "").toContain("Tabularium");
+    expect(element.shadowRoot?.textContent ?? "").toContain("2 devices");
+  });
+});
+
 describe("hash routes", () => {
   it("keeps a hash route and falls back to the landing route", () => {
     expect(routeOf("#/devices/abc")).toBe("#/devices/abc");
