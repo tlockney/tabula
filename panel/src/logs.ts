@@ -459,4 +459,6 @@ export class TabulaLogs extends LitElement {
   }
 }
 
-customElements.define("tabula-logs", TabulaLogs);
+if (!customElements.get("tabula-logs")) {
+  customElements.define("tabula-logs", TabulaLogs);
+}
