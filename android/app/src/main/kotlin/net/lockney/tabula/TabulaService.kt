@@ -43,8 +43,24 @@ import net.lockney.tabula.ha.TlpClient
  * paired). A revocation clears the credential and returns to pairing.
  */
 class TabulaService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + net.lockney.tabula.ha.lastResortHandler(::onUncaught),
+    )
     private var job: Job? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /**
+     * Last line of defence (issue #117): every network path catches its own
+     * failures, so this should never run. If one slips through it is logged
+     * instead of killing the process, and if it ended the session, the
+     * session starts again after BACKOFF_MAX (ADR 0002), as a reconnect would.
+     */
+    private fun onUncaught(e: Throwable) {
+        Log.e(TAG, "uncaught failure in a service coroutine", e)
+        mainHandler.postDelayed({
+            if (job?.isActive != true && store.isPaired) startSession()
+        }, (net.lockney.tabula.core.Constants.BACKOFF_MAX_S * 1000).toLong())
+    }
     private lateinit var store: TabulaStore
     private lateinit var wifiLock: WifiManager.WifiLock
     private lateinit var panel: AndroidPanel
@@ -583,6 +599,7 @@ class TabulaService : Service() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         screensaver.stop()
         startPage.stop()
         stopPageListener?.invoke()

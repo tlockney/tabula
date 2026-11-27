@@ -1,6 +1,7 @@
 package net.lockney.tabula.ha
 
 import java.net.URI
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -76,7 +77,17 @@ class ExternalAuthBridge(
         if (!DashboardLinks.sameOrigin(pageUrl, haOrigin)) return null
         val request = parseAuthPayload(payload) ?: return null
         if (request.callback != CALLBACK_SET_TOKEN) return null
-        val token = access(request.force)
+        val token = try {
+            access(request.force)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // No token now: DNS still down as the radio comes back, HA
+            // unreachable, credential revoked or not paired yet (issue #117).
+            // A failed answer lets the frontend retry; an exception here would
+            // escape the caller's coroutine and kill the app.
+            return BridgeAnswer("$CALLBACK_SET_TOKEN(false)", haOrigin)
+        }
         val body = buildJsonObject {
             put("access_token", token.token)
             put("expires_in", token.remainingSeconds)

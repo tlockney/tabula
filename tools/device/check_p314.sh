@@ -38,6 +38,9 @@ shift_interval="${TABULA_SHIFT_INTERVAL:-10}"
 step() { echo; echo "== $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# shellcheck source=prompt.sh
+source "$(dirname "$0")/prompt.sh"
+
 ha_call() { # ha_call <domain> <service> <json body>
     curl -fsS -X POST \
         -H "Authorization: Bearer ${TABULA_HA_TOKEN}" -H "Content-Type: application/json" \
@@ -59,8 +62,6 @@ wait_for() { # wait_for <description> <timeout s> <command...>
     done
     echo "-- $what after ${waited}s"
 }
-# shellcheck source=prompt.sh
-source "$(dirname "$0")/prompt.sh"
 tap_centre() { # only while the screensaver shows: the overlay takes the touch
     local size w h
     size="$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tail -1)"
